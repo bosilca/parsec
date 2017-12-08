@@ -7,7 +7,8 @@ extern "C" %{
  */
 
 #include "parsec/data_internal.h"
-#include "parsec/data_dist/matrix/matrix.h"
+#include "data_dist/matrix/matrix.h"
+#include "data_dist/matrix/broadcast_wrapper.h"
 
 typedef struct {
     parsec_data_collection_t super;
@@ -128,20 +129,22 @@ k = 0 .. 0
 
 : descA(k)
 
-  READ A  <- descA(k)
-          -> A recv(0 .. NT) [type_remote = STYPE]
+READ A  <- descA(k)
+        -> A recv(1 .. NT-1) [type_remote = STYPE]
 BODY
-    printf( "bcast_send(k = %d\n", k);
+    printf( "bcast_send(k = %d)\n", k);
 END
 
 
 recv(k)
-    k = 1 .. NT
+    k = 1 .. NT-1
+
 : descA(k)
-  RW A <- A send(0) [type_remote = RTYPE]
-          -> descA(k)
+
+RW A <- A send(0) [type_remote = RTYPE]
+     -> descA(k)  [type = RTYPE]
 BODY
-    printf( "bcast_recv(k = %d)\n", k);
+    printf( "bcast_recv(k = %d) got %d (ptr %p)\n", k, *(int*)A, (void*)A);
 END
 
 extern "C" %{
@@ -198,14 +201,6 @@ void parsec_broadcast_Destruct( parsec_taskpool_t *o )
 {
     parsec_broadcast_taskpool_t *tp = (parsec_broadcast_taskpool_t *)o;
     parsec_data_collection_t *dc = (parsec_data_collection_t*)tp->_g_descA;
-
-    int i;
-    for (i = 0; i < tp->_g_NT; ++i) {
-        if (dc->rank_of(dc, i) == dc->myrank) {
-            *(tp->_g_descA->data) = dc->data_of(dc, i);
-            break;
-        }
-    }
 
     release_rank_array(dc);
 

@@ -2,7 +2,9 @@
 #
 # Sources generated from JDF
 #
-include(ParsecCompilePTG)
+include(RulesJDF)
+set(generated_jdf "")
+
 
 include_directories(BEFORE ${CMAKE_CURRENT_BINARY_DIR})
 
@@ -27,7 +29,7 @@ set_property(SOURCE "${CMAKE_CURRENT_SOURCE_DIR}/reduce_col.jdf"
                     "${CMAKE_CURRENT_SOURCE_DIR}/reduce.jdf"
              APPEND PROPERTY PTGPP_COMPILE_OPTIONS "--Wremoteref")
 
-target_ptg_sources(parsec PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/reduce_col.jdf;${CMAKE_CURRENT_SOURCE_DIR}/reduce_row.jdf;${CMAKE_CURRENT_SOURCE_DIR}/reduce.jdf;${CMAKE_CURRENT_SOURCE_DIR}/diag_band_to_rect.jdf;${CMAKE_CURRENT_SOURCE_DIR}/apply.jdf")
+target_ptg_sources(parsec PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/reduce_col.jdf;${CMAKE_CURRENT_SOURCE_DIR}/reduce_row.jdf;${CMAKE_CURRENT_SOURCE_DIR}/reduce.jdf;${CMAKE_CURRENT_SOURCE_DIR}/diag_band_to_rect.jdf;${CMAKE_CURRENT_SOURCE_DIR}/apply.jdf;${CMAKE_CURRENT_SOURCE_DIR}/broadcast.jdf")
 
 target_sources(parsec PRIVATE ${sources})
 
