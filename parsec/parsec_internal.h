@@ -115,28 +115,28 @@ typedef void (*parsec_destruct_fn_t)(parsec_taskpool_t* tp);
  *        as provided by the Domain Specific Language.
  */
 struct parsec_taskpool_s {
-    parsec_list_item_t         super;     /**< A PaRSEC taskpool is also a list_item, so it can be chained into different lists */
-    uint32_t                   taskpool_id; /**< Taskpool are uniquely globally consistently named */
-    char*                      taskpool_name; /**< Taskpools are not uniquely named for profiling */
-    volatile int32_t           nb_tasks;  /**< A placeholder for the upper level to count (if necessary) the tasks
-                                           *   in the taskpool. This value is checked upon each task completion by
-                                           *   the runtime, to see if the taskpool is completed (a nb_tasks equal
-                                           *   to zero signal a completed taskpool). However, in order to prevent
-                                           *   multiple completions of the taskpool due to multiple tasks completing
-                                           *   simultaneously, the runtime reuse this value (once set to zero), for
-                                           *   internal purposes (in which case it is atomically set to
-                                           *   PARSEC_RUNTIME_RESERVED_NB_TASKS).
-                                           */
-    int16_t                    taskpool_type;
-    uint16_t                   devices_index_mask; /**< A bitmask of devices indexes this taskpool has been registered with */
-    uint32_t                   nb_task_classes;      /**< Number of task classes in the taskpool */
-    int32_t                    priority;             /**< A constant used to bump the priority of tasks related to this taskpool */
-    volatile int32_t           nb_pending_actions;  /**< Internal counter of pending actions tracking all runtime
-                                                     *   activities (such as communications, data movement, and
-                                                     *   so on). Also, its value is increase by one for all the tasks
-                                                     *   in the taskpool. This extra reference will be removed upon
-                                                     *   completion of all tasks.
-                                                     */
+    parsec_list_item_t          super;     /**< A PaRSEC taskpool is also a list_item, so it can be chained into different lists */
+    uint32_t                    taskpool_id; /**< Taskpool are uniquely globally consistently named */
+    char*                       taskpool_name; /**< Taskpools are not uniquely named for profiling */
+    volatile int32_t            nb_tasks;  /**< A placeholder for the upper level to count (if necessary) the tasks
+                                            *   in the taskpool. This value is checked upon each task completion by
+                                            *   the runtime, to see if the taskpool is completed (a nb_tasks equal
+                                            *   to zero signal a completed taskpool). However, in order to prevent
+                                            *   multiple completions of the taskpool due to multiple tasks completing
+                                            *   simultaneously, the runtime reuse this value (once set to zero), for
+                                            *   internal purposes (in which case it is atomically set to
+                                            *   PARSEC_RUNTIME_RESERVED_NB_TASKS).
+                                            */
+    int16_t                     taskpool_type;
+    uint16_t                    devices_index_mask; /**< A bitmask of devices indexes this taskpool has been registered with */
+    uint32_t                    nb_task_classes;      /**< Number of task classes in the taskpool */
+    volatile int32_t            nb_pending_actions;  /**< Internal counter of pending actions tracking all runtime
+                                                      *   activities (such as communications, data movement, and
+                                                      *   so on). Also, its value is increase by one for all the tasks
+                                                      *   in the taskpool. This extra reference will be removed upon
+                                                      *   completion of all tasks.
+                                                      */
+    int64_t                     priority;             /**< A constant used to bump the priority of tasks related to this taskpool */
     parsec_context_t*           context;   /**< The PaRSEC context on which this taskpool was enqueued */
     parsec_startup_fn_t         startup_hook;  /**< Pointer to the function that generates initial tasks */
     const parsec_task_class_t** task_classes_array; /**< Array of task classes that build this DAG */
