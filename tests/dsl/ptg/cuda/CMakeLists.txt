@@ -19,6 +19,13 @@ if(PARSEC_HAVE_CUDA)
     target_ptg_sources(stage PRIVATE "stage_custom.jdf")
     target_link_libraries(stage PRIVATE CUDA::cublas)
 
+    find_package(CUDAToolkit)
+    enable_language(CUDA)
+    parsec_addtest_executable(C HelloWorldCuda SOURCES HelloWorldCuda_kernel.cu )
+    target_include_directories(HelloWorldCuda PRIVATE $<$<NOT:${PARSEC_BUILD_INPLACE}>:${CMAKE_CURRENT_SOURCE_DIR}>)
+    target_ptg_sources(HelloWorldCuda PRIVATE "HelloWorldCuda.jdf")
+    target_link_libraries(HelloWorldCuda PRIVATE CUDA::cublas)
+
   endif( NOT TARGET CUDA::cublas )
 
   # Testing for geting best device

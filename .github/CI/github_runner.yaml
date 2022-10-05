@@ -1,0 +1,21 @@
+spack:
+  definitions:
+  - pkgs:
+    - gcc@12.1.0
+    - git
+    - patch
+    - flex
+    - bison
+    - hwloc
+    - python@3
+    - py-cython
+    - cmake
+    - ninja
+    - otf2@2.3
+    - openmpi
+
+  view: true
+  concretization: together
+  specs:
+    - matrix:
+      - [$pkgs]

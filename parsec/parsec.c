@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2009-2021 The University of Tennessee and The University
+ * Copyright (c) 2009-2022 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  */
@@ -362,7 +362,7 @@ static void parsec_vp_init( parsec_vp_t *vp,
 
 static int check_overlapping_binding(parsec_context_t *context);
 
-#define DEFAULT_APPNAME "app_name_%d"
+#define DEFAULT_APP_NAME "app_name"
 
 #define GET_INT_ARGV(CMD, ARGV, VALUE) \
 do { \
@@ -442,10 +442,7 @@ parsec_context_t* parsec_init( int nb_cores, int* pargc, char** pargv[] )
             fprintf(stderr, "%s: command line error (%d)\n", (*pargv)[0], ret);
         }
     } else {
-        ret = asprintf( &parsec_app_name, DEFAULT_APPNAME, (int)getpid() );
-        if (ret == -1) {
-            parsec_app_name = strdup( "app_name" );
-        }
+        parsec_app_name = strdup( DEFAULT_APP_NAME );
     }
 
     ret = parsec_mca_cmd_line_process_args(cmd_line, &ctx_environ, &environ);
@@ -484,11 +481,6 @@ parsec_context_t* parsec_init( int nb_cores, int* pargc, char** pargv[] )
 
 #if defined(PARSEC_HAVE_HWLOC)
     parsec_hwloc_init();
-#if defined(PARSEC_OSX)
-    if( slow_bind_warning && 0 == parsec_debug_rank )
-        parsec_warning("/!\\ PERFORMANCE MIGHT BE REDUCED /!\\: "
-                       "OS X < 10.13 does not support thread/process binding.\n");
-#endif  /* defined(PARSEC_OSX) */
 #endif  /* defined(HWLOC) */
 
     if( parsec_cmd_line_is_taken(cmd_line, "ht") ) {
@@ -701,11 +693,17 @@ parsec_context_t* parsec_init( int nb_cores, int* pargc, char** pargv[] )
 #if defined(PARSEC_PROF_TRACE)
     if( (0 != strncasecmp(parsec_enable_profiling, "<none>", 6)) && (0 == parsec_profiling_init( profiling_id )) ) {
         int i, l;
-        char *cmdline_info = basename(parsec_app_name);
+        char *cmdline_info = NULL;
 
         /* Use either the app name (argv[0]) or the user provided filename */
         if( 0 == strncmp(parsec_enable_profiling, "<app>", 5) ) {
+            /* Specialize the profiling filename to avoid collision with other instances */
+            ret = asprintf( &cmdline_info, "%s_%d", basename(parsec_app_name), (int)getpid() );
+            if (ret < 0) {
+                cmdline_info = strdup(DEFAULT_APP_NAME);
+            }
             ret = parsec_profiling_dbp_start( cmdline_info, parsec_app_name );
+            free(cmdline_info);
         } else {
             ret = parsec_profiling_dbp_start( parsec_enable_profiling, parsec_app_name );
         }
@@ -867,8 +865,6 @@ parsec_context_t* parsec_init( int nb_cores, int* pargc, char** pargv[] )
     }
 
     __parsec_thread_init( &startup[0] );
-
-    remote_dep_mpi_initialize_execution_stream(context);
 
     /* Wait until all threads are done binding themselves */
     parsec_barrier_wait( &(context->barrier) );
@@ -2179,6 +2175,7 @@ void parsec_taskpool_unregister( parsec_taskpool_t* tp )
 
 void parsec_taskpool_free(parsec_taskpool_t *tp)
 {
+    print_task_migrated_per_tp();
     assert(NULL != tp);
     PARSEC_OBJ_RELEASE(tp);
 }

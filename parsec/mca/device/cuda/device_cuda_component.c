@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2010-2020 The University of Tennessee and The University
+ * Copyright (c) 2010-2022 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  */
@@ -26,6 +26,8 @@
 #include <cuda.h>
 #include <cuda_runtime_api.h>
 
+#include "parsec/mca/device/cuda/device_cuda_migrate.h"
+
 PARSEC_OBJ_CLASS_INSTANCE(parsec_device_cuda_module_t, parsec_device_module_t, NULL, NULL);
 
 static int device_cuda_component_open(void);
@@ -35,9 +37,14 @@ static int device_cuda_component_register(void);
 
 /* mca params */
 int parsec_device_cuda_enabled_index, parsec_device_cuda_enabled;
-int parsec_cuda_sort_pending = 0;
+int parsec_cuda_sort_pending = 0, parsec_cuda_max_streams = PARSEC_GPU_MAX_STREAMS;
 int parsec_cuda_memory_block_size, parsec_cuda_memory_percentage, parsec_cuda_memory_number_of_blocks;
 char* parsec_cuda_lib_path = NULL;
+int parsec_cuda_migrate_tasks = 0;
+int parsec_migrate_statistics = 0;
+int parsec_cuda_iterative = 0;
+int parsec_cuda_migrate_chunk_size = 0;
+int parsec_cuda_migrate_task_selection = 0;
 
 static int cuda_mask, cuda_nvlink_mask;
 
@@ -189,9 +196,30 @@ static int device_cuda_component_register(void)
     (void)parsec_mca_param_reg_int_name("device_cuda", "max_number_of_ejected_data",
                                         "Sets up the maximum number of blocks that can be ejected from GPU memory",
                                         false, false, MAX_PARAM_COUNT, &parsec_gpu_d2h_max_flows);
+    (void)parsec_mca_param_reg_int_name("device_cuda", "max_streams",
+                                        "Maximum number of Streams to use for the GPU engine; 2 streams are used for communication between host and device, so the minimum is 3",
+                                        false, false, PARSEC_GPU_MAX_STREAMS, &parsec_cuda_max_streams);
     (void)parsec_mca_param_reg_int_name("device_cuda", "sort_pending_tasks",
                                         "Boolean to let the GPU engine sort the first pending tasks stored in the list",
                                         false, false, 0, &parsec_cuda_sort_pending);
+    (void)parsec_mca_param_reg_int_name("device_cuda", "migrate_tasks",
+                                        "Boolean to let the GPU engine migrate tasks",
+                                        false, false, 0, &parsec_cuda_migrate_tasks);
+    (void)parsec_mca_param_reg_int_name("device_cuda", "migrate_statistics",
+                                        "Boolean to print migrate statistics",
+                                        false, false, 0, &parsec_migrate_statistics);
+    (void)parsec_mca_param_reg_int_name("device_cuda", "iterative",
+                                        "Boolean to let the GPU know the workload is iterative",
+                                        false, false, 0, &parsec_cuda_iterative);
+    (void)parsec_mca_param_reg_int_name("device_cuda", "migrate_chunk_size",
+                                        "Integer to let the GPU know the number of tasks to be migrated in a single go",
+                                        false, false, 5, &parsec_cuda_migrate_chunk_size);
+    (void)parsec_mca_param_reg_int_name("device_cuda", "migrate_task_selection",
+                                        "Integer to choose the method of task selection during migration",
+                                        false, false, 1, &parsec_cuda_migrate_task_selection);
+
+                                        
+
 #if defined(PARSEC_PROF_TRACE)
     (void)parsec_mca_param_reg_int_name("device_cuda", "one_profiling_stream_per_cuda_stream",
                                         "Boolean to separate the profiling of each cuda stream into a single profiling stream",
@@ -252,6 +280,8 @@ static int device_cuda_component_open(void)
         return MCA_ERROR;
     }
 
+    parsec_cuda_migrate_init(parsec_device_cuda_enabled);
+
     return MCA_SUCCESS;
 }
 
@@ -270,6 +300,8 @@ static int device_cuda_component_close(void)
     if( NULL == parsec_device_cuda_component.modules ) {  /* No devices */
         return MCA_SUCCESS;
     }
+
+    parsec_cuda_migrate_fini();
 
     for( i = 0; NULL != (cdev = (parsec_device_cuda_module_t*)parsec_device_cuda_component.modules[i]); i++ ) {
         parsec_device_cuda_component.modules[i] = NULL;

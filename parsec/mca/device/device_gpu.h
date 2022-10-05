@@ -18,7 +18,7 @@
 BEGIN_C_DECLS
 
 #define PARSEC_GPU_USE_PRIORITIES     1
-#define PARSEC_MAX_STREAMS            6
+#define PARSEC_GPU_MAX_STREAMS        6
 #define PARSEC_MAX_EVENTS_PER_STREAM  4
 #define PARSEC_GPU_MAX_WORKSPACE      2
 
@@ -84,10 +84,37 @@ struct parsec_gpu_task_s {
     parsec_complete_stage_function_t complete_stage;
     parsec_stage_in_function_t      *stage_in;
     parsec_stage_out_function_t     *stage_out;
+    int                              migrate_status;
+    int32_t                          posssible_candidate[MAX_PARAM_COUNT];
+    parsec_data_copy_t*              candidate[MAX_PARAM_COUNT]; 
+    parsec_data_copy_t*              original_data_in[MAX_PARAM_COUNT]; 
+    int32_t                          data_retained;
 #if defined(PARSEC_PROF_TRACE)
     int                              prof_key_end;
     uint64_t                         prof_event_id;
     uint32_t                         prof_tp_id;
+
+    double                           first_queue_time;
+    double                           select_time;
+    double                           second_queue_time;
+    double                           first_stage_in_time_start;
+    double                           sec_stage_in_time_start;
+    double                           first_stage_in_time_end;
+    double                           sec_stage_in_time_end;
+    double                           exec_time_start;
+    double                           exec_time_end;
+    double                           stage_out_time_start;
+    double                           stage_out_time_end;
+    double                           complete_time;
+    int32_t                          first_waiting_tasks;
+    int32_t                          sec_waiting_tasks;
+    int32_t                          nb_first_stage_in;
+    int32_t                          nb_sec_stage_in;
+    int32_t                          nb_first_stage_in_d2d;
+    int32_t                          nb_first_stage_in_h2d;
+    int32_t                          nb_sec_stage_in_d2d;
+    int32_t                          nb_sec_stage_in_h2d;
+    int32_t                          clock_speed;
 #endif
     union {
         struct {
@@ -115,6 +142,7 @@ struct parsec_gpu_task_s {
 struct parsec_device_gpu_module_s {
     parsec_device_module_t     super;
     uint8_t                    max_exec_streams;
+    uint8_t                    num_exec_streams;
     int16_t                    peer_access_mask;  /**< A bit set to 1 represent the capability of
                                                    *   the device to access directly the memory of
                                                    *   the index of the set bit device.

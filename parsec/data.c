@@ -43,6 +43,13 @@ static void parsec_data_copy_destruct(parsec_data_copy_t* obj)
 
     /* If the copy is still attached to a data we should detach it first */
     if( NULL != obj->original) {
+
+        if ( (obj->device_index == 0) && ( (obj->original != NULL && obj->original->device_copies[1] != NULL) || (obj->original != NULL && obj->original->device_copies[2] != NULL) || (obj->original != NULL && obj->original->device_copies[3] != NULL) ) )
+        {
+            PARSEC_DEBUG_VERBOSE(20, parsec_debug_output, "parsec_data_copy_destruct original %p device_0 %p device_1 %p device_2 %p", 
+            obj->original, obj->original->device_copies[0], obj->original->device_copies[1], obj->original->device_copies[2]);  
+        }
+
         parsec_data_copy_detach(obj->original, obj, obj->device_index);
         assert( NULL == obj->original );
     }
@@ -187,6 +194,50 @@ int parsec_data_copy_detach(parsec_data_t* data,
                             parsec_data_copy_t* copy,
                             uint8_t device)
 {
+    uint32_t i = 0;
+    int younger_version = -1;
+    parsec_data_copy_t* new_owner_copy = NULL;
+
+    /**
+     * @brief make sure the copy always has an owner if it is not the 
+     * last copy. This is required as in some instance (when migrating)
+     * without this the owner of a device points to a NULL.
+     */
+    if( data->owner_device == device)
+    {
+        for( i = 0; i < parsec_nb_devices; i++ ) 
+        {
+            if( i == device) continue;
+            if( NULL == data->device_copies[i] ) continue;
+            if( data->device_copies[i]->version < copy->version)
+            {
+                younger_version = i;
+                continue;
+            } 
+            
+            data->owner_device = data->device_copies[i]->device_index;
+            new_owner_copy = data->device_copies[i];
+            break;
+        }
+
+        if( (new_owner_copy == NULL) && (younger_version == -1) ) 
+        {
+            PARSEC_DEBUG_VERBOSE(10, parsec_debug_output,
+                         "DEV[%d]: parsec_data_copy_detach failed to identify new owner (last copy): original %p device_copy %p",
+                         device, data, copy);
+        }
+        if( (new_owner_copy == NULL) && (device > 1) && (younger_version > -1) ) 
+        {
+            PARSEC_DEBUG_VERBOSE(10, parsec_debug_output,
+                         "DEV[%d]: parsec_data_copy_detach failed to identify new owner (younger version exists in device %d): original %p device_copy %p",
+                         device, younger_version, data, copy);
+        }
+        if( new_owner_copy != NULL ) 
+            PARSEC_DEBUG_VERBOSE(10, parsec_debug_output,
+                         "DEV[%d]: identified new owner for original %p : device_copy %p  on device_index %d (old owner was copy %p on device_index %d)",
+                         device, data, new_owner_copy, new_owner_copy->device_index, copy, copy->device_index);
+    }
+
     parsec_data_copy_t* obj = data->device_copies[device];
     if( obj != copy ) {
         return PARSEC_ERR_NOT_FOUND;
@@ -304,8 +355,8 @@ void parsec_data_end_transfer_ownership_to_copy(parsec_data_t* data,
     assert(NULL != data);
     copy = data->device_copies[device];
     PARSEC_DEBUG_VERBOSE(10, parsec_debug_output,
-                         "DEV[%d]: end transfer ownership of data %p to copy %p in mode %d",
-                         device, data, copy, access_mode);
+                         "DEV[%d]: end transfer ownership of data %p to copy %p [dev_prvt %p] in mode %d",
+                         device, data, copy, copy->device_private, access_mode);
     assert( NULL != copy );
     if( PARSEC_FLOW_ACCESS_READ & access_mode ) {
         copy->coherency_state = PARSEC_DATA_COHERENCY_SHARED;
@@ -324,14 +375,15 @@ int parsec_data_start_transfer_ownership_to_copy(parsec_data_t* data,
     int valid_copy = data->owner_device;
     parsec_data_copy_t* copy;
 
+    //assert(data->owner_device != device);
     assert(NULL != data);
 
     copy = data->device_copies[device];
     assert( NULL != copy );
-    
+
     PARSEC_DEBUG_VERBOSE(10, parsec_debug_output,
-                         "DEV[%d]: start transfer ownership of data %p to copy %p in mode %d",
-                         device, data, copy, access_mode);
+                         "DEV[%d]: data %p device_copy %p device_index %d selected for ownership transfer (original %p coherency %d)",
+                         device, data, data->device_copies[valid_copy], valid_copy, data, PARSEC_DATA_COHERENCY_INVALID);
     
     switch( copy->coherency_state ) {
     case PARSEC_DATA_COHERENCY_INVALID:
@@ -345,6 +397,9 @@ int parsec_data_start_transfer_ownership_to_copy(parsec_data_t* data,
                 valid_copy = i;
             }
         }
+        PARSEC_DEBUG_VERBOSE(10, parsec_debug_output,
+                         "DEV[%d]: data %p device_copy %p device_index %d selected for ownership transfer (original %p coherency %d)",
+                         device, data, data->device_copies[valid_copy], valid_copy, data, PARSEC_DATA_COHERENCY_INVALID);
         break;
 
     case PARSEC_DATA_COHERENCY_SHARED:
@@ -354,6 +409,10 @@ int parsec_data_start_transfer_ownership_to_copy(parsec_data_t* data,
              && data->device_copies[i]->version > copy->version ) {
                 assert( (int)i == valid_copy );
                 transfer_required = 1;
+
+                PARSEC_DEBUG_VERBOSE(10, parsec_debug_output,
+                         "DEV[%d]: data %p device_copy %p device_index %d selected for ownership transfer (original %p coherency %d)",
+                         device, data, data->device_copies[valid_copy], valid_copy, data, PARSEC_DATA_COHERENCY_SHARED);
             }
 #if defined(PARSEC_DEBUG_PARANOID)
             else {
@@ -371,6 +430,10 @@ int parsec_data_start_transfer_ownership_to_copy(parsec_data_t* data,
         for( i = 0; i < parsec_nb_devices; i++ ) {
             if( device == i || NULL == data->device_copies[i] ) continue;
             assert( PARSEC_DATA_COHERENCY_INVALID == data->device_copies[i]->coherency_state );
+
+            PARSEC_DEBUG_VERBOSE(10, parsec_debug_output,
+                         "DEV[%d]: data %p device_copy %p device_index %d selected for ownership transfer (original %p coherency %d)",
+                         device, data, data->device_copies[valid_copy], valid_copy, data, PARSEC_DATA_COHERENCY_EXCLUSIVE);
         }
 #endif  /* defined(PARSEC_DEBUG_PARANOID) */
         break;
@@ -383,6 +446,9 @@ int parsec_data_start_transfer_ownership_to_copy(parsec_data_t* data,
             assert( PARSEC_DATA_COHERENCY_INVALID == data->device_copies[i]->coherency_state
                  || PARSEC_DATA_COHERENCY_SHARED == data->device_copies[i]->coherency_state );
             assert( copy->version >= data->device_copies[i]->version );
+            PARSEC_DEBUG_VERBOSE(10, parsec_debug_output,
+                         "DEV[%d]: data %p device_copy %p device_index %d selected for ownership transfer (original %p coherency %d)",
+                         device, data, data->device_copies[valid_copy], valid_copy, data, PARSEC_DATA_COHERENCY_OWNED);
         }
 #endif  /* defined(PARSEC_DEBUG_PARANOID) */
         break;
@@ -414,10 +480,17 @@ int parsec_data_start_transfer_ownership_to_copy(parsec_data_t* data,
         }
     }
 
+    if(data->device_copies[valid_copy] == NULL)
+        PARSEC_DEBUG_VERBOSE(10, parsec_debug_output,
+                         "DEV[%d]: data %p goes to NULL (%p) for device_copy %d",
+                         device, data, valid_copy);
+
+    assert( data->device_copies[valid_copy] != NULL );
     assert( (!transfer_required) || (data->device_copies[valid_copy]->version >= copy->version) );
 
     if( PARSEC_FLOW_ACCESS_READ & access_mode ) {
-        copy->readers++;
+        //copy->readers++;
+        PARSEC_DATA_COPY_INC_READERS(copy);
     }
     if( PARSEC_FLOW_ACCESS_WRITE & access_mode ) {
         data->owner_device = (uint8_t)device;
@@ -466,6 +539,9 @@ void parsec_data_copy_release(parsec_data_copy_t* copy)
 {
     /* TODO: Move the copy back to the CPU before destroying it */
     PARSEC_DATA_COPY_RELEASE(copy);
+    PARSEC_DEBUG_VERBOSE(20, parsec_debug_output,
+                            "PARSEC_DATA_COPY_RELEASE (parsec_cleanup_reshape_promise )copy %p [ref_count %d] for [original %p] ",
+                             copy, copy->super.super.obj_reference_count, copy->original);
 }
 
 void* parsec_data_copy_get_ptr(parsec_data_copy_t* data)

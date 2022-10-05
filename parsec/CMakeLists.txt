@@ -42,10 +42,12 @@ set(BASE_SOURCES
 
 if(FLEX_FOUND AND BISON_FOUND)
   # generate in the build dir
+  file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/utils")
   FLEX_TARGET(keyval_flex utils/keyval_lex.l utils/keyval_lex.l.c)
   FLEX_TARGET(show_help_flex utils/show_help_lex.l utils/show_help_lex.l.c)
 
   # Generate in the pregen dir, add to the non-automated rule
+  file(MAKE_DIRECTORY "${PARSEC_PREGEN_FLEX_BISON_DIR}/parsec/utils")
   FLEX_TARGET(pregen_keyval_flex utils/keyval_lex.l ${PARSEC_PREGEN_FLEX_BISON_DIR}/parsec/utils/keyval_lex.l.c COMPILE_FLAGS --noline)
   FLEX_TARGET(pregen_show_help_flex utils/show_help_lex.l ${PARSEC_PREGEN_FLEX_BISON_DIR}/parsec/utils/show_help_lex.l.c COMPILE_FLAGS --noline)
   add_custom_target(parsec_pregen_flex_utils SOURCES ${FLEX_pregen_keyval_flex_OUTPUTS} ${FLEX_pregen_show_help_flex_OUTPUTS})
@@ -111,6 +113,9 @@ set(SOURCES
   mempool.c
   private_mempool.c
   remote_dep.c
+  parsec_comm_engine.c
+  parsec_mpi_funnelled.c
+  remote_dep_mpi.c
   scheduling.c
   compound.c
   vpmap.c
@@ -229,6 +234,7 @@ if( BUILD_PARSEC )
     $<$<BOOL:${PARSEC_HAVE_OTF2}>:OTF2::OTF2>
     $<$<BOOL:${MPI_C_FOUND}>:MPI::MPI_C>
     $<$<BOOL:${PARSEC_HAVE_CUDA}>:CUDA::cudart>
+    $<$<BOOL:${PARSEC_HAVE_CUDA}>:CUDA::nvml>
     ${EXTRA_LIBS}
     INTERFACE
     ${PARSEC_ATOMIC_SUPPORT_LIBS}
@@ -241,26 +247,6 @@ if( BUILD_PARSEC )
   # major version of PaRSEC.
   set_target_properties(parsec PROPERTIES VERSION ${PARSEC_VERSION_MAJOR}.${PARSEC_VERSION_MINOR}.${PARSEC_VERSION_RELEASE}
     SOVERSION ${PARSEC_VERSION_MAJOR})
-
-  if( PARSEC_PAPI_SDE )
-    # This file is in fact provided by PAPI SDE, to serve as a fallback in case PAPI
-    # is not selected / loaded. It should be dynamic library that comes after PAPI
-    if(NOT TARGET parsec-papi-sde)
-      add_library(parsec-papi-sde SHARED papi_sde_interface.c)
-    endif(NOT TARGET parsec-papi-sde)
-    # parsec-papi-sde must come last in EXTRA_LIBS: it is to be preceded by papi if
-    # PAPI is loaded so that the weak symbols in it are overcome by PAPI
-    target_link_libraries(parsec
-      PUBLIC parsec-papi-sde $<$<BOOL:${PAPI_FOUND}>:PAPI::PAPI>)
-
-    # parsec-papi-sde has to be installed, to provide the default empty functions
-    set_property(TARGET parsec-papi-sde
-                 APPEND PROPERTY
-                        PUBLIC_HEADER_H papi_sde_interface.h)
-    install(TARGETS parsec-papi-sde
-      EXPORT parsec-targets
-      DESTINATION ${PARSEC_INSTALL_LIBDIR})
-  endif( PARSEC_PAPI_SDE )
 
   set_property(TARGET parsec
                APPEND PROPERTY
@@ -286,11 +272,17 @@ if( BUILD_PARSEC )
   get_target_property(_public_headers parsec PUBLIC_HEADER_H)
   foreach(_FILE ${_public_headers})
     get_filename_component(_DIR ${_FILE} DIRECTORY)
+    if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${_FILE}")
+      set(_FILE "${CMAKE_CURRENT_BINARY_DIR}/${_FILE}")
+    endif()
     INSTALL(FILES ${_FILE} DESTINATION ${PARSEC_INSTALL_INCLUDEDIR}/parsec/${_DIR})
   endforeach()
   get_target_property(_private_headers parsec PRIVATE_HEADER_H)
   foreach(_FILE ${_private_headers})
     get_filename_component(_DIR ${_FILE} DIRECTORY)
+    if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${_FILE}")
+      set(_FILE "${CMAKE_CURRENT_BINARY_DIR}/${_FILE}")
+    endif()
     INSTALL(FILES ${_FILE} DESTINATION ${PARSEC_INSTALL_INCLUDEDIR}/parsec/${_DIR})
   endforeach()
 
@@ -307,6 +299,8 @@ if( BUILD_PARSEC )
           ${CMAKE_CURRENT_SOURCE_DIR}/dictionary.h
           ${CMAKE_CURRENT_SOURCE_DIR}/data.h
           ${CMAKE_CURRENT_SOURCE_DIR}/private_mempool.h
+          ${CMAKE_CURRENT_SOURCE_DIR}/bindthread.h
+          ${CMAKE_CURRENT_SOURCE_DIR}/parsec_comm_engine.h
           ${CMAKE_CURRENT_SOURCE_DIR}/include/parsec/deprecated.h
           DESTINATION ${PARSEC_INSTALL_INCLUDEDIR}/parsec)
 

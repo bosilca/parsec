@@ -1,0 +1,131 @@
+extern "C" %{
+
+#include "parsec.h"
+#include <stdlib.h> 
+#include<mpi.h>
+
+#include "parsec/parsec_config.h"
+#include "parsec/utils/mca_param.h"
+
+
+
+#include "parsec/mca/device/cuda/device_cuda_internal.h"
+#include "parsec/data_distribution.h"
+#include "parsec/data_dist/matrix/matrix.h"
+#include "parsec/data_dist/matrix/two_dim_rectangle_cyclic.h"
+#include "parsec/execution_stream.h"
+#include "parsec/class/info.h"
+
+#if defined(PARSEC_HAVE_CUDA)
+#include "parsec/mca/device/cuda/device_cuda_internal.h"
+#include <cublas.h>
+#endif  /* defined(PARSEC_HAVE_CUDA) */
+
+void HelloWorld_cuda_kernel(double *A_double, int k);
+
+%}
+
+dcA       [type = "parsec_matrix_block_cyclic_t*"]
+
+Start(k)
+
+k = 0 .. 0
+
+: dcA(0, 0 )
+
+RW  A <- dcA(0, 0 )
+         -> A HelloWorldCuda( 1 )
+
+BODY
+{
+   printf("Start on the CPU \n");
+}
+END
+
+
+
+HelloWorldCuda(k)
+
+k = 1 .. 20
+
+: dcA(0, 0 )
+
+RW A <- ( k == 1) ? A Start( 0 ) : A HelloWorldCuda(k-1)
+     -> ( k < 20) ? A HelloWorldCuda(k+1) : dcA(0, 0 )
+
+BODY [type=CUDA weight=1]
+{ 
+    HelloWorld_cuda_kernel((double *) A, k);
+}
+END
+
+
+extern "C" %{
+
+int main(int argc, char *argv[])
+{
+    parsec_context_t* parsec;
+    int i, rc, rank, world;
+    parsec_HelloWorldCuda_taskpool_t *tp;
+    parsec_matrix_block_cyclic_t *dcA;  
+
+#if defined(PARSEC_HAVE_MPI)
+    {
+        int provided;
+        MPI_Init_thread(&argc, &argv, MPI_THREAD_SERIALIZED, &provided);
+    }
+    MPI_Comm_size(MPI_COMM_WORLD, &world);
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+#else
+    printf("Works only with MPI!!!);
+    exit(0);
+#endif
+
+    parsec = parsec_init(-1, &argc, &argv);
+
+    dcA = (parsec_matrix_block_cyclic_t*)calloc(1, sizeof(parsec_matrix_block_cyclic_t));
+    parsec_matrix_block_cyclic_init(dcA,
+                               PARSEC_MATRIX_DOUBLE,
+                               PARSEC_MATRIX_TILE,
+                               0,
+                               100, 100,   /* Tile size */
+                               100, 100,   /* Global matrix size (what is stored)*/
+                               0, 0,    /* Staring point in the global matrix */
+                               100, 100,    /* Submatrix size (the one concerned by the computation */
+                               1, 1,    /* process process grid */
+                               1, 1,   /* k-cyclicity */
+                               0, 0);   /* starting point on the process grid */
+
+    dcA->mat = parsec_data_allocate((size_t)dcA->super.nb_local_tiles *
+                                    (size_t)dcA->super.bsiz *
+                                    (size_t)parsec_datadist_getsizeoftype(dcA->super.mtype));
+
+    parsec_data_collection_set_key((parsec_data_collection_t*)dcA, "A");
+
+    for(i = 0; i < dcA->super.nb_local_tiles * dcA->super.mb * dcA->super.nb; i++)
+        ((double*)dcA->mat)[i] = 0;
+
+    tp = parsec_HelloWorldCuda_new(dcA);
+
+    parsec_add2arena( &tp->arenas_datatypes[PARSEC_HelloWorldCuda_DEFAULT_ADT_IDX],
+                      parsec_datatype_double_t, PARSEC_MATRIX_FULL,
+                      1, dcA->super.mb, dcA->super.nb, dcA->super.mb,
+                      PARSEC_ARENA_ALIGNMENT_SSE, -1 );
+
+   
+    rc = parsec_context_add_taskpool( parsec, &tp->super );
+    rc = parsec_context_start(parsec);
+    rc = parsec_context_wait(parsec);
+
+    free(dcA->mat);
+    parsec_tiled_matrix_destroy((parsec_tiled_matrix_t*)dcA);
+
+    parsec_fini(&parsec);
+#if defined(PARSEC_HAVE_MPI)
+    MPI_Finalize();
+#endif
+
+    return 0;
+}
+
+%}

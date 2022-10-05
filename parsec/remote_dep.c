@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2009-2019 The University of Tennessee and The University
+ * Copyright (c) 2009-2022 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  */
@@ -24,17 +24,17 @@
  * -  3: communication thread is up but sleeping
  */
 int parsec_communication_engine_up = -1;
-static int parsec_comm_output_stream = 0;
-static int parsec_comm_verbose = 0;
+int parsec_comm_output_stream = 0;
+int parsec_comm_verbose = 0;
 
 #ifdef DISTRIBUTED
 
 /* comm_yield mode: see valid values in the corresponding mca_register */
-static int comm_yield = 1;
+int comm_yield = 1;
 /* comm_yield_duration (ns) */
-static int comm_yield_ns = 5000;
+int comm_yield_ns = 5000;
 /* comm_thread_multiple: see values in the corresponding mca_register */
-static int parsec_param_comm_thread_multiple = -1;
+int parsec_param_comm_thread_multiple = -1;
 
 static int remote_dep_bcast_star_child(int me, int him);
 #ifdef PARSEC_DIST_COLLECTIVES
@@ -47,7 +47,7 @@ static int (*remote_dep_bcast_child)(int me, int him) = remote_dep_bcast_chainpi
 #define remote_dep_bcast_child(me, him) remote_dep_bcast_start_child(me, him)
 #endif
 
-static int remote_dep_bind_thread(parsec_context_t* context);
+int remote_dep_bind_thread(parsec_context_t* context);
 
 /* Clear the already forwarded remote dependency matrix */
 static inline void
@@ -90,7 +90,7 @@ remote_dep_is_forwarded(parsec_execution_stream_t* es,
     return (int) ((rdeps->remote_dep_fw_mask[boffset] & mask) != 0);
 }
 
-
+#if 0
 /* make sure we don't leave before serving all data deps */
 static inline void
 remote_dep_inc_flying_messages(parsec_taskpool_t* handle)
@@ -105,10 +105,11 @@ remote_dep_dec_flying_messages(parsec_taskpool_t *handle)
 {
     (void)parsec_taskpool_update_runtime_nbtask(handle, -1);
 }
+#endif
 
 /* Mark that ncompleted of the remote deps are finished, and return the remote dep to
  * the free items queue if it is now done */
-static inline int
+int
 remote_dep_complete_and_cleanup(parsec_remote_deps_t** deps,
                                 int ncompleted)
 {
@@ -142,7 +143,7 @@ remote_dep_complete_and_cleanup(parsec_remote_deps_t** deps,
     return 0;
 }
 
-inline parsec_remote_deps_t* remote_deps_allocate( parsec_lifo_t* lifo )
+parsec_remote_deps_t* remote_deps_allocate( parsec_lifo_t* lifo )
 {
     parsec_remote_deps_t* remote_deps = (parsec_remote_deps_t*)parsec_lifo_pop(lifo);
     uint32_t i, rank_bit_size;
@@ -220,12 +221,14 @@ inline void remote_deps_free(parsec_remote_deps_t* deps)
 
 #endif
 
+#if 0
 #ifdef PARSEC_HAVE_MPI
 #include "remote_dep_mpi.c"
 
 #else
 #endif /* NO TRANSPORT */
 
+#endif
 
 #ifdef DISTRIBUTED
 
@@ -586,7 +589,7 @@ int parsec_remote_dep_activate(parsec_execution_stream_t* es,
 }
 
 parsec_remote_dep_context_t parsec_remote_dep_context;
-static int parsec_remote_dep_inited = 0;
+int parsec_remote_dep_inited = 0;
 
 /* THIS FUNCTION MUST NOT BE CALLED WHILE REMOTE DEP IS ON.
  * NOT THREAD SAFE (AND SHOULD NOT BE) */
@@ -637,28 +640,26 @@ void remote_deps_allocation_fini(void)
 }
 
 /* Bind the communication thread on an unused core if possible */
-static int remote_dep_bind_thread(parsec_context_t* context)
+int remote_dep_bind_thread(parsec_context_t* context)
 {
 #if defined(PARSEC_HAVE_HWLOC) && defined(PARSEC_HAVE_HWLOC_BITMAP)
     char *str = NULL;
     if( context->comm_th_core >= 0 ) {
         /* Bind to the specified core */
         if(parsec_bindthread(context->comm_th_core, -1) == context->comm_th_core) {
-            parsec_debug_verbose(4, parsec_comm_output_stream, "Communication thread bound to physical core %d",  context->comm_th_core);
 
             /* Check if this core is not used by a computation thread */
             if( hwloc_bitmap_isset(context->cpuset_free_mask, context->comm_th_core) ) {
                 /* The thread enjoys an exclusive core. Force disable comm_yield. */
+                parsec_debug_verbose(4, parsec_comm_output_stream, "Communication thread bound to physical core %d (without yield back-off)",  context->comm_th_core);
                 comm_yield = 0;
             } else {
                 /* The thread shares the core. Let comm_yield as user-set. */
-                parsec_debug_verbose(4, parsec_comm_output_stream, "Communication thread is bound to core %d which is also hosting a compute execution unit", context->comm_th_core);
+                parsec_debug_verbose(4, parsec_comm_output_stream, "Communication thread is bound to core %d (with%s yield back-off); This core is also hosting a compute execution unit", context->comm_th_core, comm_yield? "": "out");
             }
         } else {
-#if !defined(PARSEC_OSX)
             /* There is no guarantee the thread doesn't share the core. Let comm_yield as user-set. */
             parsec_warning("Request to bind the communication thread on core %d failed.", context->comm_th_core);
-#endif  /* !defined(PARSEC_OSX) */
         }
     } else {
         /* bind the communication thread to any available core (which means described by the
@@ -679,8 +680,8 @@ static int remote_dep_bind_thread(parsec_context_t* context)
         }
         parsec_debug_verbose(4, parsec_comm_output_stream,
                             "Communication thread bound on the cpu mask %s (with%s yield back-off)",
-                            str, (comm_yield ? "" : "out"));
-        free(str);
+                            str? str: "NOT BOUND", (comm_yield ? "" : "out"));
+        if(str) free(str);
     }
 #else /* NO PARSEC_HAVE_HWLOC */
     /* If we don't have hwloc, try to bind the thread on the core #nbcore as the

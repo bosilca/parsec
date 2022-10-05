@@ -14,6 +14,7 @@
 #include "parsec/execution_stream.h"
 #include "parsec/utils/argv.h"
 #include "parsec/parsec_internal.h"
+#include "parsec/mca/device/cuda/device_cuda_migrate.h"
 
 #include <stdlib.h>
 #if defined(PARSEC_HAVE_ERRNO_H)
@@ -45,6 +46,8 @@ static parsec_device_module_t **modules_activated = NULL;
 
 static mca_base_component_t **device_components = NULL;
 
+extern int parsec_cuda_iterative;
+
 /**
  * Temporary solution: Use the following two arrays to taskpool the weight and
  * the load on different devices. These arrays are not available before the
@@ -56,6 +59,14 @@ float *parsec_device_hweight = NULL;
 float *parsec_device_sweight = NULL;
 float *parsec_device_dweight = NULL;
 float *parsec_device_tweight = NULL;
+
+/**
+ * Load balance skew we are willing to accept to favor RO data reuse
+ * on GPU: a value of 20% means that we will schedule tasks on the preferred
+ * GPU except if it is loaded 1.2 times as much as the best load balance option
+ */
+static int parsec_device_load_balance_skew = 20;
+static float load_balance_skew;
 
 /**
  * Try to find the best device to execute the kernel based on the compute
@@ -70,8 +81,15 @@ float *parsec_device_tweight = NULL;
 
 int parsec_get_best_device( parsec_task_t* this_task, double ratio )
 {
-    int i, dev_index = -1, data_index;
+    int i, dev_index = -1, data_index, prefer_index = -1;
     parsec_taskpool_t* tp = this_task->taskpool;
+
+    if(parsec_cuda_iterative)
+    {
+        // if task to device mapping is already available use that
+        dev_index = find_task_to_device_mapping(this_task);
+        if(dev_index != -1) return dev_index;
+    }
 
     /* Select the location of the first data that is used in READ/WRITE or pick the
      * location of one of the READ data. For now use the last one.
@@ -97,25 +115,24 @@ int parsec_get_best_device( parsec_task_t* this_task, double ratio )
                 dev_index = this_task->data[data_index].data_in->original->owner_device;
                 break;
             }
-            /* If we reach here, we cannot yet decide which device to run on based on the WRITE
-             * constraints, so let's pick the data for a READ flow.
-             */
         }
+        /* If we reach here, we cannot yet decide which device to run on based on the WRITE
+         * constraints, so let's pick the data for a READ flow.
+         */
         data_index = this_task->task_class->in[i]->flow_index;
         if( this_task->data[data_index].data_in->original->preferred_device > 1 ) {
-            dev_index = this_task->data[data_index].data_in->original->preferred_device;
+            prefer_index = this_task->data[data_index].data_in->original->preferred_device;
         } else if( this_task->data[data_index].data_in->original->owner_device > 1 ) {
-            dev_index  = this_task->data[data_index].data_in->original->owner_device;
+            prefer_index  = this_task->data[data_index].data_in->original->owner_device;
         }
     }
 
     /* 0 is CPU, and 1 is recursive device */
-    if( dev_index <= 1 ) {  /* This is the first time we see this data for a GPU.
-                             * Let's decide which GPU will work on it. */
+    if( dev_index <= 1 ) {  /* This is the first time we see this data for a GPU, let's decide which GPU will work on it. */
         int best_index;
         float weight, best_weight = parsec_device_load[0] + ratio * parsec_device_sweight[0];
 
-        /* Start with a valid device for this task */
+        /* Warn if there is no valid device for this task */
         for(best_index = 0; best_index < parsec_mca_device_enabled(); best_index++) {
             parsec_device_module_t *dev = parsec_mca_device_get(best_index);
 
@@ -128,7 +145,6 @@ int parsec_get_best_device( parsec_task_t* this_task, double ratio )
             if((NULL != this_task->task_class->incarnations[i].hook) && (this_task->chore_mask & (1 << i)))
                 break;
         }
-
         if(parsec_mca_device_enabled() == best_index) {
             /* We tried all possible devices, and none of them have an implementation
              * for this task! */
@@ -137,6 +153,17 @@ int parsec_get_best_device( parsec_task_t* this_task, double ratio )
             return -1;
         }
 
+        /* If we have a preferred device, start with it, but still consider
+         * other options to have some load balance */
+        if( -1 != prefer_index ) {
+            best_index = prefer_index;
+            /* we still prefer this device, until it is twice as loaded as the
+             * real best load balance device */
+            best_weight = load_balance_skew * (parsec_device_load[prefer_index] + ratio * parsec_device_sweight[prefer_index]);
+        }
+
+        /* Consider how adding the current task would change load balancing
+         * betwen devices */
         /* Start at 2, to skip the recursive body */
         for( dev_index = 2; dev_index < parsec_mca_device_enabled(); dev_index++ ) {
             /* Skip the device if it is not configured */
@@ -192,6 +219,13 @@ int parsec_mca_device_init(void)
     (void)parsec_mca_param_reg_int_name("device", "show_statistics",
                                         "Show the detailed devices statistics upon exit",
                                         false, false, 0, NULL);
+    (void)parsec_mca_param_reg_int_name("device", "load_balance_skew",
+                                        "Allow load balancing to skew by x%% to favor data reuse",
+                                        false, false, 0, NULL);
+    if( 0 < (rc = parsec_mca_param_find("device", NULL, "load_balance_skew")) ) {
+        parsec_mca_param_lookup_int(rc, &parsec_device_load_balance_skew);
+    }
+    load_balance_skew = 1.f/(parsec_device_load_balance_skew/100.f+1.f);
     if( 0 < (rc = parsec_mca_param_find("device", NULL, "verbose")) ) {
         parsec_mca_param_lookup_int(rc, &parsec_device_verbose);
     }
@@ -285,15 +319,16 @@ void parsec_mca_device_dump_and_reset_statistics(parsec_context_t* parsec_contex
 {
     int *device_counter, total = 0;
     uint64_t total_data_in = 0,     total_data_out = 0;
-    uint64_t total_required_in = 0, total_required_out = 0;
+    uint64_t total_required_in = 0, total_required_out = 0, total_d2d = 0;
     uint64_t *transferred_in, *transferred_out;
     uint64_t *required_in,    *required_out;
+    uint64_t *d2d, d2dtmp;
     float gtotal = 0.0;
-    float best_data_in, best_data_out;
+    float best_data_in, best_data_out, best_d2d;
     float best_required_in, best_required_out;
-    char *data_in_unit, *data_out_unit;
+    char *data_in_unit, *data_out_unit, *d2d_unit;
     char *required_in_unit, *required_out_unit;
-    char percent1[64], percent2[64];
+    char percent1[64], percent2[64], percent3[64];
     parsec_device_module_t *device;
     uint32_t i;
 
@@ -303,6 +338,7 @@ void parsec_mca_device_dump_and_reset_statistics(parsec_context_t* parsec_contex
     transferred_out = (uint64_t*)calloc(parsec_nb_devices, sizeof(uint64_t));
     required_in     = (uint64_t*)calloc(parsec_nb_devices, sizeof(uint64_t));
     required_out    = (uint64_t*)calloc(parsec_nb_devices, sizeof(uint64_t));
+    d2d             = (uint64_t*)calloc(parsec_nb_devices, sizeof(uint64_t));
 
     /**
      * Save the statistics locally.
@@ -312,22 +348,23 @@ void parsec_mca_device_dump_and_reset_statistics(parsec_context_t* parsec_contex
         assert( i == device->device_index );
         /* Save the statistics */
         device_counter[device->device_index]  += device->executed_tasks;
-        transferred_in[device->device_index]  += device->transferred_data_in;
-        transferred_out[device->device_index] += device->transferred_data_out;
+        transferred_in[device->device_index]  += device->data_in_from_device[0];
+        total_data_in                         += device->data_in_from_device[0];
+        transferred_out[device->device_index] += device->data_out_to_host;
         required_in[device->device_index]     += device->required_data_in;
         required_out[device->device_index]    += device->required_data_out;
+        d2dtmp = 0;
+        for(unsigned int j = 1; j < device->data_in_array_size; j++) {
+            d2dtmp                            += device->data_in_from_device[i];
+        }
+        d2d[device->device_index]             += d2dtmp;
         /* Update the context-level statistics */
         total              += device->executed_tasks;
-        total_data_in      += device->transferred_data_in;
-        total_data_out     += device->transferred_data_out;
+        total_data_in      += d2dtmp;
+        total_data_out     += device->data_out_to_host;
         total_required_in  += device->required_data_in;
         total_required_out += device->required_data_out;
-
-        device->executed_tasks       = 0;
-        device->transferred_data_in  = 0;
-        device->transferred_data_out = 0;
-        device->required_data_in     = 0;
-        device->required_data_out    = 0;
+        total_d2d          += d2dtmp;
     }
 
     /* Print statistics */
@@ -335,11 +372,11 @@ void parsec_mca_device_dump_and_reset_statistics(parsec_context_t* parsec_contex
     if( 0 == total_data_out ) total_data_out = 1;
     gtotal = (float)total;
 
-    printf("--------------------------------------------------------------------------------------------------\n");
-    printf("|         |                    |         Data In                |         Data Out               |\n");
-    printf("|Rank %3d |  # KERNEL |    %%   |  Required  |   Transfered(%%)   |  Required  |   Transfered(%%)   |\n",
-           (NULL == parsec_context ? -1 : parsec_context->my_rank));
-    printf("|---------|-----------|--------|------------|-------------------|------------|-------------------|\n");
+    printf("+----------------------------------------------------------------------------------------------------------------------------+\n");
+    printf("|         |                    |                       Data In                              |         Data Out               |\n");
+    printf("|Rank %3d |  # KERNEL |    %%   |  Required  |   Transfered H2D(%%)   |   Transfered D2D(%%)   |  Required  |   Transfered(%%)   |\n",
+           (NULL == parsec_context ? parsec_debug_rank : parsec_context->my_rank));
+    printf("|---------|-----------|--------|------------|-----------------------|-----------------------|------------|-------------------|\n");
     for( i = 0; i < parsec_nb_devices; i++ ) {
         if( NULL == (device = parsec_devices[i]) ) continue;
 
@@ -347,11 +384,15 @@ void parsec_mca_device_dump_and_reset_statistics(parsec_context_t* parsec_contex
         parsec_compute_best_unit( required_out[i],    &best_required_out, &required_out_unit );
         parsec_compute_best_unit( transferred_in[i],  &best_data_in,      &data_in_unit      );
         parsec_compute_best_unit( transferred_out[i], &best_data_out,     &data_out_unit     );
+        parsec_compute_best_unit( total_d2d,          &best_d2d,          &d2d_unit          );
+        parsec_compute_best_unit( d2d[i],             &best_d2d,          &d2d_unit          );
 
-        printf("|  Dev %2d |%10d | %6.2f | %8.2f%2s | %8.2f%2s(%5.2f) | %8.2f%2s | %8.2f%2s(%5.2f) | %s\n",
+        printf("|  Dev %2d |%10d | %6.2f | %8.2f%2s |   %8.2f%2s(%5.2f)   |   %8.2f%2s(%5.2f)   | %8.2f%2s | %8.2f%2s(%5.2f) | %s\n",
                device->device_index, device_counter[i], (device_counter[i]/gtotal)*100.00,
                best_required_in,  required_in_unit,  best_data_in,  data_in_unit,
                (((double)transferred_in[i])  / (double)required_in[i] ) * 100.0,
+               best_d2d, d2d_unit,
+               (((double)d2d[i])/ (double)required_in[i]) * 100.0,
                best_required_out, required_out_unit, best_data_out, data_out_unit,
                (((double)transferred_out[i]) / (double)required_out[i]) * 100.0, device->name );
     }
@@ -365,27 +406,77 @@ void parsec_mca_device_dump_and_reset_statistics(parsec_context_t* parsec_contex
 
     if( 0 == total_required_in ) {
         snprintf(percent1, 64, "nan");
-    } else {
-        snprintf(percent1, 64, "%5.2f",  ((double)total_data_in  / (double)total_required_in ) * 100.0);
-    }
-    if( 0 == total_required_out ) {
         snprintf(percent2, 64, "nan");
     } else {
-        snprintf(percent2, 64, "%5.2f", ((double)total_data_out / (double)total_required_out) * 100.0);
+        snprintf(percent1, 64, "%5.2f",  ((double)total_data_in  / (double)total_required_in ) * 100.0);
+        snprintf(percent2, 64, "%5.2f", ((double)total_d2d / (double)total_required_in) * 100.0);
     }
-    printf("|All Devs |%10d | %5.2f | %8.2f%2s | %8.2f%2s(%s) | %8.2f%2s | %8.2f%2s(%s) |\n",
+    if( 0 == total_required_out ) {
+        snprintf(percent3, 64, "nan");
+    } else {
+        snprintf(percent3, 64, "%5.2f", ((double)total_data_out / (double)total_required_out) * 100.0);
+    }
+    printf("|All Devs |%10d | %5.2f | %8.2f%2s |   %8.2f%2s(%s)   |   %8.2f%2s(%s)   | %8.2f%2s | %8.2f%2s(%s) |\n",
            total, (total/gtotal)*100.00,
-           best_required_in,  required_in_unit,  best_data_in,  data_in_unit,
-           percent1,
-           best_required_out, required_out_unit, best_data_out, data_out_unit,
-           percent2);
-    printf("-------------------------------------------------------------------------------------------------\n");
+           best_required_in,  required_in_unit,  best_data_in,  data_in_unit, percent1,
+            best_d2d, d2d_unit, percent2,
+            best_required_out, required_out_unit, best_data_out, data_out_unit, percent3);
+     printf("+----------------------------------------------------------------------------------------------------------------------------+\n");
+
+
+     printf("\n"
+            "Full transfer matrix:\n"
+            "dst\\src ");
+     for(i = 0; i < parsec_nb_devices; i++) {
+         if(NULL ==  parsec_devices[i]) continue;
+         printf("%10d ", i);
+     }
+     printf("\n");
+     // 0 is stored in the other devices, because they push to 0, 0 doesn't pull data.
+     printf(" %3d        -     ", 0);
+     for(i = 1; i < parsec_nb_devices; i++) {
+         if( NULL == (device = parsec_devices[i]) ) continue;
+         assert( i == device->device_index );
+         parsec_compute_best_unit(device->data_out_to_host, &best_d2d, &d2d_unit);
+         printf(" %8.2f%2s", best_d2d, d2d_unit);
+     }
+     printf("\n");
+     // The other devices pull data, and they have counted locally how much
+     for(i = 1; i < parsec_nb_devices; i++) {
+         if( NULL == (device = parsec_devices[i]) ) continue;
+         assert( i == device->device_index );
+         printf(" %3d   ", i);
+         for(unsigned int j = 0; j < parsec_nb_devices; j++) {
+             if( device->data_in_array_size ) {
+                 d2dtmp = device->data_in_from_device[j];
+             } else {
+                 d2dtmp = 0;
+             }
+             parsec_compute_best_unit( d2dtmp, &best_d2d, &d2d_unit);
+             if(i!=j) printf(" %8.2f%2s", best_d2d, d2d_unit);
+             else printf("     -     ");
+         }
+         printf("\n");
+     }
 
     free(device_counter);
     free(transferred_in);
     free(transferred_out);
     free(required_in);
     free(required_out);
+
+    /**
+      * Reset the statistics for next turn if there is one.
+      */
+     for(i = 0; i < parsec_nb_devices; i++) {
+         if( NULL == (device = parsec_devices[i]) ) continue;
+         assert( i == device->device_index );
+         device->executed_tasks       = 0;
+         memset(device->data_in_from_device, 0, sizeof(uint64_t)*device->data_in_array_size);
+         device->data_out_to_host     = 0;
+         device->required_data_in     = 0;
+         device->required_data_out    = 0;
+     }
 }
 
 int parsec_mca_device_fini(void)
@@ -654,18 +745,24 @@ static int cpu_weights(parsec_device_module_t* device, int nstreams)
 #if defined(__x86_64__) || defined(__i386__)
 #if defined(PARSEC_HAVE_BUILTIN_CPU)
     __builtin_cpu_init();
+#if defined(__AVX__)
+    if(__builtin_cpu_supports("avx")) {
+        fp_ipc = 16;
+        dp_ipc = 8;
+    }
+#endif  /* defined(__AVX__) */
+#if defined(__AVX2__)
+    if(__builtin_cpu_supports("avx2")) {
+        fp_ipc = 32;
+        dp_ipc = 16;
+    }
+#endif  /* defined(__AVX2__) */
+#if defined(__AVX512F__)
     if(__builtin_cpu_supports("avx512f")) {
         fp_ipc = 64;
         dp_ipc = 32;
     }
-    else if(__builtin_cpu_supports("avx2")) {
-        fp_ipc = 32;
-        dp_ipc = 16;
-    }
-    else if(__builtin_cpu_supports("avx")) {
-        fp_ipc = 16;
-        dp_ipc = 8;
-    }
+#endif  /* defined(__AVX512F__) */
 #else
     if( strstr(cpu_flags, " avx512f") ) {
         fp_ipc = 64;
@@ -768,6 +865,8 @@ int parsec_mca_device_attach(parsec_context_t* context)
         parsec_device_cpus = (parsec_device_module_t*)calloc(1, sizeof(parsec_device_module_t));
         parsec_device_cpus->name = "default";
         parsec_device_cpus->type = PARSEC_DEV_CPU;
+        parsec_device_cpus->data_in_from_device = (uint64_t*)calloc(2, sizeof(uint64_t));
+         parsec_device_cpus->data_in_array_size = 2;
         cpu_weights(parsec_device_cpus, nb_total_comp_threads);
         parsec_device_cpus->taskpool_register = device_taskpool_register_static;
         parsec_mca_device_add(context, parsec_device_cpus);
@@ -778,6 +877,8 @@ int parsec_mca_device_attach(parsec_context_t* context)
         parsec_device_recursive = (parsec_device_module_t*)calloc(1, sizeof(parsec_device_module_t));
         parsec_device_recursive->name = "recursive";
         parsec_device_recursive->type = PARSEC_DEV_RECURSIVE;
+        parsec_device_recursive->data_in_from_device = (uint64_t*)calloc(2, sizeof(uint64_t));
+        parsec_device_recursive->data_in_array_size = 2;
         parsec_device_recursive->device_hweight = parsec_device_cpus->device_hweight;
         parsec_device_recursive->device_tweight = parsec_device_cpus->device_tweight;
         parsec_device_recursive->device_sweight = parsec_device_cpus->device_sweight;
@@ -857,6 +958,11 @@ int parsec_mca_device_remove(parsec_device_module_t* device)
     parsec_devices[device->device_index] = NULL;
     device->context = NULL;
     device->device_index = -1;
+    if(NULL != device->data_in_from_device) {
+         free(device->data_in_from_device);
+         device->data_in_from_device = NULL;
+         device->data_in_array_size = 0;
+     }
   unlock_and_return_rc:
     parsec_atomic_unlock(&parsec_devices_mutex);  /* CRITICAL SECTION: END */
     return rc;
