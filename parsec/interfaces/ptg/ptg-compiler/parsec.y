@@ -302,6 +302,7 @@ process_datatype(jdf_datatransfer_type_t *datatype,
 %type <dataflow>dataflow
 %type <named_expr>named_expr
 %type <named_expr>named_expr_list
+%type <expr>array_offset
 %type <dep>dependencies
 %type <dep>dependency
 %type <guarded_call>guarded_call
@@ -641,17 +642,18 @@ simulation_cost:
              |  {   $$ = NULL; }
              ;
 
-partitioning:   COLON VAR OPEN_PAR expr_list CLOSE_PAR
+partitioning:   COLON VAR array_offset OPEN_PAR expr_list CLOSE_PAR
               {
                   jdf_data_entry_t* data;
                   jdf_call_t *c = new(jdf_call_t);
                   int nbparams;
 
                   c->var = NULL;
+                  c->array_offset = $3;
                   c->func_or_mem = $2;
                   data = jdf_find_or_create_data(&current_jdf, $2);
-                  c->parameters = $4;
-                  JDF_COUNT_LIST_ENTRIES($4, jdf_expr_t, next, nbparams);
+                  c->parameters = $5;
+                  JDF_COUNT_LIST_ENTRIES($5, jdf_expr_t, next, nbparams);
                   if( data->nbparams != -1 ) {
                       if( data->nbparams != nbparams ) {
                           jdf_fatal(current_lineno, "Data %s used with %d parameters at line %d while used with %d parameters line %d\n",
@@ -662,8 +664,16 @@ partitioning:   COLON VAR OPEN_PAR expr_list CLOSE_PAR
                       data->nbparams          = nbparams;
                   }
                   $$ = c;
-                  JDF_OBJECT_LINENO($$) = JDF_OBJECT_LINENO($4);
+                  JDF_OBJECT_LINENO($$) = JDF_OBJECT_LINENO($5);
               }
+             /*
+             | COLON VAR PROPERTIES_ON expr_simple PROPERTIES_OFF OPEN_PAR expr_list_range CLOSE_PAR
+             {
+             	  printf("coucou ! %s, %s\n", $2, $4);
+             }
+              
+             |  PROPERTIES_ON expr_list PROPERTIES_OFF
+             {   printf("coucou\n"); }*/
          ;
 
 dataflow_list:  dataflow dataflow_list
@@ -685,7 +695,7 @@ optional_flow_flags :
          |      { $$ = JDF_FLOW_TYPE_READ | JDF_FLOW_TYPE_WRITE; }
          ;
 
-dataflow:       optional_flow_flags VAR dependencies
+dataflow:       optional_flow_flags VAR array_offset dependencies
                 {
                     for(jdf_global_entry_t* g = current_jdf.globals; g != NULL; g = g->next) {
                         if( !strcmp(g->name, $2) ) {
@@ -698,7 +708,8 @@ dataflow:       optional_flow_flags VAR dependencies
                     jdf_dataflow_t *flow  = new(jdf_dataflow_t);
                     flow->flow_flags      = $1;
                     flow->varname         = $2;
-                    flow->deps            = $3;
+                    flow->array_offset    = $3;
+                    flow->deps            = $4;
 
                     $$ = flow;
                     if( NULL == $3) {
@@ -729,6 +740,16 @@ named_expr_list: VAR ASSIGNMENT expr_range
         |  named_expr_list COMMA VAR ASSIGNMENT expr_range
                {
                    $$ = named_expr_push_in_scope($3, $5);
+               }
+       ;
+
+array_offset: PROPERTIES_ON expr_simple PROPERTIES_OFF
+               {
+                   $$ = $2;
+               }
+        |
+               {
+                   $$ = NULL;
                }
        ;
 
@@ -899,6 +920,7 @@ call:         named_expr VAR VAR OPEN_PAR expr_list_range CLOSE_PAR
               {
                   jdf_call_t *c = new(jdf_call_t);
                   c->var = $2;
+                  c->array_offset = NULL;
                   c->local_defs = $1;
                   c->func_or_mem = $3;
                   c->parameters = $5;
@@ -907,21 +929,22 @@ call:         named_expr VAR VAR OPEN_PAR expr_list_range CLOSE_PAR
                   assert( 0 != JDF_OBJECT_LINENO($$) );
                   named_expr_pop_scope();
               }
-       |      VAR OPEN_PAR expr_list_range CLOSE_PAR
+       |      VAR array_offset OPEN_PAR expr_list_range CLOSE_PAR
               {
                   jdf_data_entry_t* data;
                   jdf_call_t *c = new(jdf_call_t);
                   int nbparams;
 
                   c->var = NULL;
+                  c->array_offset = $2;
                   c->func_or_mem = $1;
-                  c->parameters = $3;
+                  c->parameters = $4;
                   c->local_defs = NULL;
-                  JDF_OBJECT_LINENO(c) = JDF_OBJECT_LINENO($3);
+                  JDF_OBJECT_LINENO(c) = JDF_OBJECT_LINENO($4);
                   $$ = c;
                   assert( 0 != JDF_OBJECT_LINENO($$) );
                   data = jdf_find_or_create_data(&current_jdf, $1);
-                  JDF_COUNT_LIST_ENTRIES($3, jdf_expr_t, next, nbparams);
+                  JDF_COUNT_LIST_ENTRIES($4, jdf_expr_t, next, nbparams);
                   if( data->nbparams != -1 ) {
                       if( data->nbparams != nbparams ) {
                           jdf_fatal(current_lineno, "Data %s used with %d parameters at line %d while used with %d parameters line %d\n",
@@ -931,12 +954,13 @@ call:         named_expr VAR VAR OPEN_PAR expr_list_range CLOSE_PAR
                   } else {
                       data->nbparams          = nbparams;
                   }
-                  JDF_OBJECT_LINENO(data) = JDF_OBJECT_LINENO($3);
+                  JDF_OBJECT_LINENO(data) = JDF_OBJECT_LINENO($4);
               }
        |      DATA_NEW
               {
                   jdf_call_t *c = new(jdf_call_t);
                   c->var = NULL;
+                  c->array_offset = NULL;
                   c->local_defs = NULL;
                   c->func_or_mem = strdup(PARSEC_WRITE_MAGIC_NAME);
                   c->parameters = NULL;
@@ -947,6 +971,7 @@ call:         named_expr VAR VAR OPEN_PAR expr_list_range CLOSE_PAR
              {
                   jdf_call_t *c = new(jdf_call_t);
                   c->var = NULL;
+                  c->array_offset = NULL;
                   c->local_defs = NULL;
                   c->func_or_mem = strdup(PARSEC_NULL_MAGIC_NAME);
                   c->parameters = NULL;
