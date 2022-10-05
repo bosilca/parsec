@@ -756,12 +756,29 @@ static char *dump_data_initialization_from_data_array(void **elem, void *arg)
 
     string_arena_init(sa);
 
+    expr_info_t expr_info = EMPTY_EXPR_INFO;
+
+    expr_info.sa = sa;
+    expr_info.prefix = "";
+    expr_info.suffix = "";
+
+    /*if(f->array_offset != NULL)
+    {
+        string_arena_add_string(sa,  "  for(int i=0;i<(");
+        dump_expr((void**)f->array_offset, &expr_info);
+                                
+        string_arena_add_string(sa, ");++i) {\n");
+    }*/
     string_arena_add_string(sa,
-                            "  parsec_data_copy_t *_f_%s = this_task->data._f_%s.data_%s;\n",
+                            "    parsec_data_copy_t *_f_%s = this_task->data._f_%s.data_%s;\n",
                             varname, f->varname, where);
     string_arena_add_string(sa,
-                            "  void *%s = PARSEC_DATA_COPY_GET_PTR(_f_%s); (void)%s;\n",
+                            "    void *%s = PARSEC_DATA_COPY_GET_PTR(_f_%s); (void)%s;\n",
                             varname, varname, varname);
+    /*if(f->array_offset != NULL)
+    {
+        string_arena_add_string(sa, "  }\n");
+    }*/
     return string_arena_get_string(sa);
 }
 

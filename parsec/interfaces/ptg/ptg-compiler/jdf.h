@@ -284,6 +284,7 @@ struct jdf_dataflow {
     jdf_flow_flags_t          flow_flags;
     jdf_dataflow_t           *next;
     char                     *varname;
+    struct jdf_expr          *array_offset;
     struct jdf_dep           *deps;
     uint8_t                   flow_index;
     uint32_t                  flow_dep_mask_out;
@@ -338,6 +339,7 @@ typedef struct jdf_call {
     struct jdf_object_t       super;
     struct jdf_expr          *local_defs;     /**< Each call can have some local indicies, allowing to define sets of deps */
     char                     *var;             /**< If func_or_mem is a function, var is the name of the flow on that function */
+    struct jdf_expr          *array_offset;    /**< Offset required if var is an array */
     char                     *func_or_mem;     /**< string of the function (task class) or data collection referred to in this call */
     struct jdf_expr          *parameters;      /**< list of parameters for that task class / data collection */
 } jdf_call_t;
