@@ -280,6 +280,7 @@ process_datatype(jdf_datatransfer_type_t *datatype,
     jdf_def_list_t       *property;
     jdf_name_list_t      *name_list;
     jdf_variable_list_t  *variable_list;
+    jdf_flow_specifier_t *flow_specifier;
     jdf_dataflow_t       *dataflow;
     jdf_expr_t           *named_expr;
     jdf_dep_t            *dep;
@@ -298,11 +299,13 @@ process_datatype(jdf_datatransfer_type_t *datatype,
 %type <variable_list>local_variable
 %type <variable_list>local_variables
 %type <call>partitioning
+%type <flow_specifier>flow_specifier
 %type <dataflow>dataflow_list
 %type <dataflow>dataflow
 %type <named_expr>named_expr
 %type <named_expr>named_expr_list
 %type <expr>array_offset
+%type <expr>array_offset_or_nothing
 %type <dep>dependencies
 %type <dep>dependency
 %type <guarded_call>guarded_call
@@ -642,7 +645,7 @@ simulation_cost:
              |  {   $$ = NULL; }
              ;
 
-partitioning:   COLON VAR array_offset OPEN_PAR expr_list CLOSE_PAR
+partitioning:   COLON VAR array_offset_or_nothing OPEN_PAR expr_list CLOSE_PAR
               {
                   jdf_data_entry_t* data;
                   jdf_call_t *c = new(jdf_call_t);
@@ -695,7 +698,32 @@ optional_flow_flags :
          |      { $$ = JDF_FLOW_TYPE_READ | JDF_FLOW_TYPE_WRITE; }
          ;
 
-dataflow:       optional_flow_flags VAR array_offset dependencies
+/*
+typedef struct jdf_flow_specifier {
+    struct jdf_object_t       super;
+    struct jdf_expr          *array_offset;
+    struct jdf_expr          *expr;
+} jdf_flow_specifier_t;
+*/
+
+flow_specifier: array_offset named_expr
+                {
+                    jdf_flow_specifier_t *f = new(jdf_flow_specifier_t);
+                    f->array_offset = $1;
+                    f->expr = $2;
+                    $$ = f;
+                }
+        |
+                {
+                    jdf_flow_specifier_t *f = new(jdf_flow_specifier_t);
+                    f->array_offset = NULL;
+                    f->expr = NULL;
+                    $$ = f;
+                }
+         ;
+
+
+dataflow:       optional_flow_flags VAR flow_specifier dependencies
                 {
                     for(jdf_global_entry_t* g = current_jdf.globals; g != NULL; g = g->next) {
                         if( !strcmp(g->name, $2) ) {
@@ -705,17 +733,19 @@ dataflow:       optional_flow_flags VAR array_offset dependencies
                         }
                     }
 
+                    jdf_flow_specifier_t *flow_specifier = $3;
+
                     jdf_dataflow_t *flow  = new(jdf_dataflow_t);
                     flow->flow_flags      = $1;
                     flow->varname         = $2;
-                    flow->array_offset    = $3;
+                    flow->array_offset    = flow_specifier->array_offset;
                     flow->deps            = $4;
 
                     $$ = flow;
-                    if( NULL == $3) {
+                    if( NULL == $4) {
                         JDF_OBJECT_LINENO($$) = current_lineno;
                     } else {
-                        JDF_OBJECT_LINENO($$) = JDF_OBJECT_LINENO($3);
+                        JDF_OBJECT_LINENO($$) = JDF_OBJECT_LINENO($4);
                     }
                 }
         ;
@@ -743,14 +773,21 @@ named_expr_list: VAR ASSIGNMENT expr_range
                }
        ;
 
+array_offset_or_nothing: array_offset
+                        {
+                            $$ = $1;
+                        }
+                |       { $$ = NULL; }
+                ;
+
 array_offset: PROPERTIES_ON expr_simple PROPERTIES_OFF
                {
                    $$ = $2;
                }
-        |
+        /*|
                {
                    $$ = NULL;
-               }
+               }*/
        ;
 
 dependencies:  dependency dependencies
@@ -929,7 +966,7 @@ call:         named_expr VAR VAR OPEN_PAR expr_list_range CLOSE_PAR
                   assert( 0 != JDF_OBJECT_LINENO($$) );
                   named_expr_pop_scope();
               }
-       |      VAR array_offset OPEN_PAR expr_list_range CLOSE_PAR
+       |      VAR array_offset_or_nothing OPEN_PAR expr_list_range CLOSE_PAR
               {
                   jdf_data_entry_t* data;
                   jdf_call_t *c = new(jdf_call_t);

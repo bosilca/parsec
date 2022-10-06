@@ -268,6 +268,12 @@ typedef struct jdf_def_list {
     struct jdf_def_list *properties;
 } jdf_def_list_t;
 
+typedef struct jdf_flow_specifier {
+    struct jdf_object_t       super;
+    struct jdf_expr          *array_offset;
+    struct jdf_expr          *expr;
+} jdf_flow_specifier_t;
+
 typedef struct jdf_dataflow jdf_dataflow_t;
 typedef struct jdf_dep jdf_dep_t;
 typedef uint32_t jdf_flow_flags_t;
