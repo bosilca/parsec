@@ -956,35 +956,35 @@ guarded_call: call
               }
        ;
 
-call:         named_expr VAR VAR OPEN_PAR expr_list_range CLOSE_PAR
+call:         named_expr VAR array_offset_or_nothing VAR OPEN_PAR expr_list_range CLOSE_PAR
               {
                   jdf_call_t *c = new(jdf_call_t);
                   c->var = $2;
-                  c->array_offset = NULL;
+                  c->array_offset = $3;
                   c->local_defs = $1;
-                  c->func_or_mem = $3;
-                  c->parameters = $5;
+                  c->func_or_mem = $4;
+                  c->parameters = $6;
                   $$ = c;
-                  JDF_OBJECT_LINENO($$) = JDF_OBJECT_LINENO($5);
+                  JDF_OBJECT_LINENO($$) = JDF_OBJECT_LINENO($6);
                   assert( 0 != JDF_OBJECT_LINENO($$) );
                   named_expr_pop_scope();
               }
-       |      VAR array_offset_or_nothing OPEN_PAR expr_list_range CLOSE_PAR
+       |      VAR OPEN_PAR expr_list_range CLOSE_PAR
               {
                   jdf_data_entry_t* data;
                   jdf_call_t *c = new(jdf_call_t);
                   int nbparams;
 
                   c->var = NULL;
-                  c->array_offset = $2;
+                  c->array_offset = NULL;
                   c->func_or_mem = $1;
-                  c->parameters = $4;
+                  c->parameters = $3;
                   c->local_defs = NULL;
-                  JDF_OBJECT_LINENO(c) = JDF_OBJECT_LINENO($4);
+                  JDF_OBJECT_LINENO(c) = JDF_OBJECT_LINENO($3);
                   $$ = c;
                   assert( 0 != JDF_OBJECT_LINENO($$) );
                   data = jdf_find_or_create_data(&current_jdf, $1);
-                  JDF_COUNT_LIST_ENTRIES($4, jdf_expr_t, next, nbparams);
+                  JDF_COUNT_LIST_ENTRIES($3, jdf_expr_t, next, nbparams);
                   if( data->nbparams != -1 ) {
                       if( data->nbparams != nbparams ) {
                           jdf_fatal(current_lineno, "Data %s used with %d parameters at line %d while used with %d parameters line %d\n",
@@ -994,7 +994,7 @@ call:         named_expr VAR VAR OPEN_PAR expr_list_range CLOSE_PAR
                   } else {
                       data->nbparams          = nbparams;
                   }
-                  JDF_OBJECT_LINENO(data) = JDF_OBJECT_LINENO($4);
+                  JDF_OBJECT_LINENO(data) = JDF_OBJECT_LINENO($3);
               }
        |      DATA_NEW
               {
