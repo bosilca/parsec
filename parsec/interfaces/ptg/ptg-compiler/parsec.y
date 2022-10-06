@@ -706,12 +706,15 @@ typedef struct jdf_flow_specifier {
 } jdf_flow_specifier_t;
 */
 
+
 flow_specifier: array_offset named_expr
                 {
                     jdf_flow_specifier_t *f = new(jdf_flow_specifier_t);
                     f->array_offset = $1;
                     f->expr = $2;
                     $$ = f;
+
+                    named_expr_pop_scope();
                 }
         |
                 {
