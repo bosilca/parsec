@@ -698,20 +698,12 @@ optional_flow_flags :
          |      { $$ = JDF_FLOW_TYPE_READ | JDF_FLOW_TYPE_WRITE; }
          ;
 
-/*
-typedef struct jdf_flow_specifier {
-    struct jdf_object_t       super;
-    struct jdf_expr          *array_offset;
-    struct jdf_expr          *expr;
-} jdf_flow_specifier_t;
-*/
 
-
-flow_specifier: array_offset named_expr
+flow_specifier: array_offset { named_expr_push_scope(); } named_expr
                 {
                     jdf_flow_specifier_t *f = new(jdf_flow_specifier_t);
                     f->array_offset = $1;
-                    f->expr = $2;
+                    f->expr = $3;
                     $$ = f;
 
                     named_expr_pop_scope();
@@ -735,6 +727,18 @@ dataflow:       optional_flow_flags VAR flow_specifier dependencies
                             YYERROR;
                         }
                     }
+
+/*
+jdf_dep_t *d = new(jdf_dep_t);
+    jdf_expr_t *expr;
+    jdf_expr_t *expr_remote;
+    jdf_expr_t *expr_data;
+    jdf_def_list_t* property = $4;
+    jdf_def_list_t* property_remote = $4;
+    jdf_def_list_t* property_data = $4;
+
+    d->local_defs = $2;
+*/
 
                     jdf_flow_specifier_t *flow_specifier = $3;
 
