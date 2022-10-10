@@ -115,6 +115,216 @@ jdf_create_properties_list( const char* name,
     return property;
 }
 
+
+// // used structures:
+// struct jdf_dep {
+//     struct jdf_object_t      super;
+//     jdf_dep_t               *next;
+//     struct jdf_expr         *local_defs;         /**< named ranges can specify sets of deps from this single dep */
+//     struct jdf_guarded_call *guard;               /**< there can be conditions and ternaries to produce the calls */
+//     jdf_datatransfer_type_t  datatype_local;      /**< type reshaping */
+//     jdf_datatransfer_type_t  datatype_remote;     /**< type for packing & sending to a remote */
+//     jdf_datatransfer_type_t  datatype_data;       /**< type applied to the data collection when reading or writing */
+//     jdf_dep_flags_t          dep_flags;           /**< flags (see JDF_DEP_* above) */
+//     uint8_t                  dep_index;           /**< the index of the dependency in the context of the function */
+//     uint8_t                  dep_datatype_index;  /**< the smallest index of all dependencies
+//                                                    *   sharing a common remote datatype. */
+// };
+
+// typedef enum { JDF_GUARD_UNCONDITIONAL,
+//                JDF_GUARD_BINARY,
+//                JDF_GUARD_TERNARY } jdf_guard_type_t;
+
+// typedef struct jdf_guarded_call {
+//     struct jdf_object_t       super;
+//     jdf_guard_type_t          guard_type;
+//     struct jdf_expr          *guard;
+//     struct jdf_def_list      *properties;
+//     struct jdf_call          *calltrue;
+//     struct jdf_call          *callfalse;
+// } jdf_guarded_call_t;
+
+// typedef struct jdf_call {
+//     struct jdf_object_t       super;
+//     struct jdf_expr          *local_defs;     /**< Each call can have some local indicies, allowing to define sets of deps */
+//     char                     *var;             /**< If func_or_mem is a function, var is the name of the flow on that function */
+//     struct jdf_expr          *array_offset;    /**< Offset required if var is an array */
+//     char                     *func_or_mem;     /**< string of the function (task class) or data collection referred to in this call */
+//     struct jdf_expr          *parameters;      /**< list of parameters for that task class / data collection */
+// } jdf_call_t;
+
+
+// typedef enum { JDF_EQUAL,
+//                JDF_NOTEQUAL,
+//                JDF_AND,
+//                JDF_OR,
+//                JDF_XOR,
+//                JDF_LESS,
+//                JDF_LEQ,
+//                JDF_MORE,
+//                JDF_MEQ,
+//                JDF_NOT,
+//                JDF_PLUS,
+//                JDF_MINUS,
+//                JDF_TIMES,
+//                JDF_DIV,
+//                JDF_MODULO,
+//                JDF_SHL,
+//                JDF_SHR,
+//                JDF_RANGE,
+//                JDF_TERNARY,
+//                JDF_VAR,
+//                JDF_STRING,
+//                JDF_CST,
+//                JDF_C_CODE
+// } jdf_expr_operand_t;
+
+// #define JDF_OP_IS_UNARY(op)    ( (op) == JDF_NOT )
+// #define JDF_OP_IS_TERNARY(op)  ( (op) == JDF_TERNARY )
+// #define JDF_OP_IS_CST(op)      ( (op) == JDF_CST )
+// #define JDF_OP_IS_STRING(op)   ( (op) == JDF_STRING )
+// #define JDF_OP_IS_VAR(op)      ( (op) == JDF_VAR )
+// #define JDF_OP_IS_C_CODE(op)   ( (op) == JDF_C_CODE )
+// #define JDF_OP_IS_BINARY(op)   ( !( JDF_OP_IS_UNARY(op) ||              \
+//                                     JDF_OP_IS_TERNARY(op) ||            \
+//                                     JDF_OP_IS_CST(op) ||                \
+//                                     JDF_OP_IS_VAR(op) ||                \
+//                                     JDF_OP_IS_C_CODE(op)) )
+
+// typedef struct jdf_expr {
+//     struct jdf_object_t           super;
+//     struct jdf_expr              *next;
+//     struct jdf_expr              *next_inline;
+//     struct jdf_expr              *local_variables; /**< the list of named local variables that are defined with
+//                                                     *   a named range and are used to define this expression */
+//     jdf_expr_operand_t            op;
+//     char                         *protected_by;    /**< if non NULL the function definition if protected by this #define */
+//     char                         *alias;           /**< if alias != NULL, this expression defines a local variable named alias */
+//     int                      ldef_index;           /**< if alias != NULL, the local variable is stored in ldef[ldef_index] */
+//     int                           scope;           /**< if alias != NULL, scope is the scope of that definition
+//                                                     *    (this is used internally by the parser to compute how many definitions to
+//                                                     *     remove; this is not used outside the parser) */
+//     union {
+//         struct {
+//             struct jdf_expr      *arg1;
+//             struct jdf_expr      *arg2;
+//             struct jdf_expr      *arg3;
+//         } ternary;
+//         struct {
+//             struct jdf_expr      *arg1;
+//             struct jdf_expr      *arg2;
+//         } binary;
+//         struct {
+//             struct jdf_expr      *arg;
+//         } unary;
+//         char                     *varname;
+//         struct {
+//             int                   type;
+//             union{
+//                 struct {
+//                     char                 *code;
+//                     int                   lineno;
+//                     char                 *fname;
+//                     jdf_function_entry_t *function_context;
+//                 } c_code;
+//                 int32_t           int32_cstval;
+//                 int64_t           int64_cstval;
+//                 float             float_cstval;
+//                 double            double_cstval;
+//             } w;
+//         } v;
+//     } u;
+// } jdf_expr_t;
+
+/*
+static void add_local_to_expr(jdf_expr_t *expr, jdf_expr_t *local)
+{
+    if(expr->)
+}
+*/
+
+static void add_local_to_call( jdf_call_t *call, jdf_expr_t *local )
+{
+    jdf_expr_t *l = call->local_defs;
+
+    jdf_expr_t *newdef = new(jdf_expr_t);
+    memcpy( newdef, local, sizeof(jdf_expr_t) );
+    newdef->next = call->local_defs;
+    call->local_defs = newdef;
+
+    printf( "Adding local %s to call %s\n", local->alias, call->func_or_mem );
+
+    //add_local_to_expr( call->parameters, local );
+}
+
+static void add_local_to_guarded_call(jdf_guarded_call_t *call, jdf_expr_t *variable)
+{
+    jdf_expr_t *e;
+    jdf_def_list_t *def;
+
+    if(call->guard_type == JDF_GUARD_UNCONDITIONAL) {
+        add_local_to_call(call->calltrue, variable);
+/*
+        jdf_expr_t *newdef = new(jdf_expr_t);
+        newdef->op = JDF_VAR;
+        newdef->u.varname = strdup(variable->alias);
+        newdef->next = call->local_defs;
+        call->local_defs = newdef;
+*/
+    }
+    else if(call->guard_type == JDF_GUARD_BINARY) {
+        add_local_to_call(call->calltrue, variable);
+        //add_local_to_call(call->callfalse, variable);
+    }
+    else if(call->guard_type == JDF_GUARD_TERNARY) {
+        add_local_to_call(call->calltrue, variable);
+        add_local_to_call(call->callfalse, variable);
+    }
+
+    printf("Adding local %s to guarded call %s\n", variable->alias, call->calltrue->func_or_mem);
+}
+
+static void add_locals_to_dep(jdf_dep_t *dep, jdf_expr_t *variables)
+{
+/*
+// each variable that is defined in the dataflow:
+                        while( dataflow_defs != NULL ) {
+                            jdf_def_list_t *newdef = new(jdf_def_list_t);
+                            newdef->name = strdup(dataflow_defs->alias);
+                            printf("added def %s to flow %s\n", newdef->name, flow->varname);
+                            newdef->next = def;
+                            def = newdef;
+                            dataflow_defs = dataflow_defs->next;
+                        }
+
+                        dep->local_defs = def;
+*/
+
+
+    jdf_expr_t *v;
+
+    // for each variable to add
+    for(v = variables; NULL != v; v = v->next) {
+        jdf_expr_t *def = dep->local_defs;
+
+        // add the current local to te guarded call
+        add_local_to_guarded_call(dep->guard, v);
+
+        // then inside the dep structure
+        jdf_expr_t *newdef = new(jdf_expr_t);
+        memcpy( newdef, v, sizeof(jdf_expr_t) );
+        newdef->next = dep->local_defs;
+        dep->local_defs = newdef;
+
+        printf( "Adding local %s to dep %p\n", v->alias, dep );
+
+        /*newdef->op = JDF_VAR;
+        newdef->u.v.varname = strdup(v->alias);
+        newdef->next = def;
+        dep->local_defs = newdef;*/
+    }
+}
+
 static jdf_data_entry_t* jdf_find_or_create_data(jdf_t* jdf, const char* dname)
 {
     jdf_data_entry_t* data = jdf->data;
@@ -578,6 +788,11 @@ function:       VAR OPEN_PAR param_list CLOSE_PAR properties local_variables sim
                     e->priority          = $10;
                     e->bodies            = $11;
 
+/*
+                    for(jdf_expr_t *el = e->locals; NULL != el; el = el->next) {
+                        printf("%s has a local named %s\n", e->fname, el->jdf_var);
+                    }*/
+
                     jdf_link_params_and_locals(e);  /* link params and locals */
                     jdf_assign_ldef_index(e);       /* find the datatype indexes */
 
@@ -698,15 +913,22 @@ optional_flow_flags :
          |      { $$ = JDF_FLOW_TYPE_READ | JDF_FLOW_TYPE_WRITE; }
          ;
 
+/*
+PROPERTIES_ON { named_expr_push_scope(); } named_expr_list PROPERTIES_OFF expr_simple
+            {
+                   $$ = $5;
+                   named_expr_pop_scope();
+            }
+*/
 
-flow_specifier: array_offset { named_expr_push_scope(); } named_expr
+flow_specifier: array_offset PROPERTIES_ON { named_expr_push_scope(); } named_expr_list PROPERTIES_OFF
                 {
                     jdf_flow_specifier_t *f = new(jdf_flow_specifier_t);
                     f->array_offset = $1;
-                    f->expr = $3;
+                    f->expr = $4;
                     $$ = f;
 
-                    named_expr_pop_scope();
+                   //named_expr_pop_scope();
                 }
         |
                 {
@@ -714,11 +936,15 @@ flow_specifier: array_offset { named_expr_push_scope(); } named_expr
                     f->array_offset = NULL;
                     f->expr = NULL;
                     $$ = f;
+
+                    /* We still create a new scope for the (inexisting) named range
+                    * as the scope will be popped unconditionally */
+                   named_expr_push_scope();
+                   //named_expr_pop_scope();
                 }
          ;
 
-
-dataflow:       optional_flow_flags VAR flow_specifier dependencies
+dataflow:       optional_flow_flags VAR flow_specifier dependencies { named_expr_pop_scope(); }
                 {
                     for(jdf_global_entry_t* g = current_jdf.globals; g != NULL; g = g->next) {
                         if( !strcmp(g->name, $2) ) {
@@ -740,13 +966,46 @@ jdf_dep_t *d = new(jdf_dep_t);
     d->local_defs = $2;
 */
 
+/*
+property:     VAR ASSIGNMENT expr_simple
+              {
+                  jdf_def_list_t* assign = new(jdf_def_list_t);
+                  assign->next              = NULL;
+                  assign->name              = strdup($1);
+                  assign->expr              = $3;
+                  JDF_OBJECT_LINENO(assign) = JDF_OBJECT_LINENO($3);
+                  $$ = assign;
+              }
+*/
+
                     jdf_flow_specifier_t *flow_specifier = $3;
 
                     jdf_dataflow_t *flow  = new(jdf_dataflow_t);
                     flow->flow_flags      = $1;
                     flow->varname         = $2;
+                    flow->local_variables = flow_specifier->expr;
                     flow->array_offset    = flow_specifier->array_offset;
                     flow->deps            = $4;
+
+/*
+                    // add the dataflow bound variables to each part of each dependency
+                    for(jdf_dep_t *dep = flow->deps; dep != NULL; dep = dep->next) {
+                        jdf_def_list_t *def = dep->local_defs;
+
+                        // variables defined in the whole dataflow
+                        jdf_expr_t *dataflow_defs = flow_specifier->expr;
+
+                        // add them to the current dependency
+                        add_locals_to_dep(dep, dataflow_defs);
+                    }
+*/
+
+/*
+                    // add the dataflow bound variables to each dependency
+                    for(jdf_dep_t *dep = flow->deps; dep != NULL; dep = dep->next) {
+                        add_defs_to_flow(flow, flow_specifier->expr);
+                    }
+*/
 
                     $$ = flow;
                     if( NULL == $4) {

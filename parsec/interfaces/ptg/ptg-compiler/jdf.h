@@ -289,6 +289,7 @@ struct jdf_dataflow {
     struct jdf_object_t       super;
     jdf_flow_flags_t          flow_flags;
     jdf_dataflow_t           *next;
+    struct jdf_expr          *local_variables;         /**< flows can specify a range */
     char                     *varname;
     struct jdf_expr          *array_offset;
     struct jdf_dep           *deps;

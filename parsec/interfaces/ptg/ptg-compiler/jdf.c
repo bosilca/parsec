@@ -1733,7 +1733,7 @@ int jdf_function_property_is_keyword(const char *name)
 
 int jdf_assign_ldef_index(jdf_function_entry_t *f)
 {
-    int nb_ldef_for_locals, nb_ldef_for_deps, nb_ldef_for_calls = 0;
+    int nb_ldef_for_locals, nb_ldef_for_deps, nb_ldef_for_flows, nb_ldef_for_calls = 0;
     jdf_expr_t *ld;
     jdf_variable_list_t *vl;
     jdf_dataflow_t *fl;
@@ -1762,9 +1762,21 @@ int jdf_assign_ldef_index(jdf_function_entry_t *f)
 
     nb_ldef_for_locals = f->nb_max_local_def;
     for(fl = f->dataflow; NULL != fl; fl = fl->next) {
+
+
+        nb_ldef_for_flows = nb_ldef_for_locals;
+        for(ld = fl->local_variables; NULL != ld; ld = ld->next) {
+            assert(NULL != ld->alias);
+            if( ld->ldef_index == -1 ) {
+                ld->ldef_index = nb_ldef_for_flows;
+                nb_ldef_for_flows++;
+                DO_DEBUG_VERBOSE(2, ({ fprintf(stderr, "  Flow for %s, flow %p: ldef %s is at %d\n", fl->varname, fl, ld->alias, ld->ldef_index); }) ); // TODO check
+            }
+        }
+
         int depi = 0;
         for(dep = fl->deps; NULL != dep; dep = dep->next, depi++) {
-            nb_ldef_for_deps = nb_ldef_for_locals;
+            nb_ldef_for_deps = nb_ldef_for_flows;
             for(ld = dep->local_defs; NULL != ld; ld = ld->next) {
                 assert(NULL != ld->alias);
                 if( ld->ldef_index == -1 ) {
@@ -1773,6 +1785,7 @@ int jdf_assign_ldef_index(jdf_function_entry_t *f)
                     DO_DEBUG_VERBOSE(2, ({ fprintf(stderr, "  Flow for %s, dep %d: ldef %s is at %d\n", fl->varname, depi, ld->alias, ld->ldef_index); }) );
                 }
             }
+
             switch( dep->guard->guard_type ) {
             case JDF_GUARD_UNCONDITIONAL:
             case JDF_GUARD_BINARY:
