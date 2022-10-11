@@ -835,8 +835,8 @@ static char *dump_data_initialization_from_data_array(void **elem, void *arg)
                                 "    _f_%s[%s] = this_task->data._f_%s.data_%s;\n",
                                 varname, f->local_variables->alias, f->varname, where);
         string_arena_add_string(sa,
-                                "    %s[i] = PARSEC_DATA_COPY_GET_PTR(_f_%s[%s]); (void)%s;\n",
-                                varname, varname, f->local_variables->alias, varname);
+                                "    %s[%s] = PARSEC_DATA_COPY_GET_PTR(_f_%s[%s]); (void)%s;\n",
+                                varname, f->local_variables->alias, varname, f->local_variables->alias, varname);
 
         string_arena_add_string(sa, "  }\n");
     }
@@ -6287,8 +6287,8 @@ static void jdf_generate_code_cache_awareness_update(const jdf_t *jdf, const jdf
             expr_info.suffix = "";
             expr_info.assignments = "parametrized flow range";
 
-            string_arena_add_string(sa, "  for(int i=0;i<(%s);++i) {\n", dump_expr((void**)df->array_offset, &expr_info));
-            string_arena_add_string(sa, "    cache_buf_referenced(es->closest_cache, %s[i]);\n", df->varname);
+            dump_parametrized_flow_loop(df, df->local_variables->alias, sa);
+            string_arena_add_string(sa, "    cache_buf_referenced(es->closest_cache, %s[%s]);\n", df->varname, df->local_variables->alias);
             string_arena_add_string(sa, "  }\n");
         }
         else
