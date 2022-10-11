@@ -756,29 +756,44 @@ static char *dump_data_initialization_from_data_array(void **elem, void *arg)
 
     string_arena_init(sa);
 
-    expr_info_t expr_info = EMPTY_EXPR_INFO;
-
-    expr_info.sa = sa;
-    expr_info.prefix = "";
-    expr_info.suffix = "";
-
-    /*if(f->array_offset != NULL)
+    if(f->array_offset != NULL)
     {
-        string_arena_add_string(sa,  "  for(int i=0;i<(");
-        dump_expr((void**)f->array_offset, &expr_info);
-                                
-        string_arena_add_string(sa, ");++i) {\n");
-    }*/
-    string_arena_add_string(sa,
-                            "    parsec_data_copy_t *_f_%s = this_task->data._f_%s.data_%s;\n",
-                            varname, f->varname, where);
-    string_arena_add_string(sa,
-                            "    void *%s = PARSEC_DATA_COPY_GET_PTR(_f_%s); (void)%s;\n",
-                            varname, varname, varname);
-    /*if(f->array_offset != NULL)
-    {
+        expr_info_t expr_info = EMPTY_EXPR_INFO;
+        expr_info.sa = string_arena_new(8);
+        expr_info.prefix = "";
+        expr_info.suffix = "";
+        expr_info.assignments = "parametrized flow range";
+
+
+        string_arena_add_string(sa,
+                                "  parsec_data_copy_t *_f_%s[(%s)];\n",
+                                varname, dump_expr((void**)f->array_offset, &expr_info), varname);
+        string_arena_add_string(sa,
+                                "  void *%s[(%s)]; (void)%s;\n",
+                                varname, dump_expr((void**)f->array_offset, &expr_info), varname); // TODO dump range instead of expr ...
+
+        string_arena_add_string(sa, "  /** Get data of parametrized flow's data %s */\n", varname);
+        string_arena_add_string(sa, "  for(int i=0;i<(%s);++i) {\n", dump_expr((void**)f->array_offset, &expr_info));
+
+
+        string_arena_add_string(sa,
+                                "    _f_%s[i] = this_task->data._f_%s.data_%s;\n",
+                                varname, f->varname, where);
+        string_arena_add_string(sa,
+                                "    %s[i] = PARSEC_DATA_COPY_GET_PTR(_f_%s[i]); (void)%s;\n",
+                                varname, varname, varname);
         string_arena_add_string(sa, "  }\n");
-    }*/
+    }
+    else
+    {
+        string_arena_add_string(sa,
+                                "  parsec_data_copy_t *_f_%s = this_task->data._f_%s.data_%s;\n",
+                                varname, f->varname, where);
+        string_arena_add_string(sa,
+                                "  void *%s = PARSEC_DATA_COPY_GET_PTR(_f_%s); (void)%s;\n",
+                                varname, varname, varname);
+    }
+
     return string_arena_get_string(sa);
 }
 
@@ -1489,6 +1504,12 @@ static void jdf_generate_predeclarations( const jdf_t *jdf )
     coutput("/** Predeclarations of the parameters */\n");
     for(f = jdf->functions; f != NULL; f = f->next) {
         for(fl = f->dataflow; fl != NULL; fl = fl->next) {
+            /*
+            if(f->dataflow->local_variables != NULL)
+            {
+                rc = asprintf(&JDF_OBJECT_ONAME( fl ), "parametrized_");
+            }
+            */
             rc = asprintf(&JDF_OBJECT_ONAME( fl ), "flow_of_%s_%s_for_%s", jdf_basename, f->fname, fl->varname);
             assert(rc != -1);
             coutput("static const parsec_flow_t %s;\n",
@@ -6173,9 +6194,53 @@ static void jdf_generate_code_cache_awareness_update(const jdf_t *jdf, const jdf
     sa = string_arena_new(64);
 
     (void)jdf;
-    UTIL_DUMP_LIST(sa, f->dataflow, next,
-                   dump_dataflow_varname, NULL,
-                   "", "  cache_buf_referenced(es->closest_cache, ", ");\n", "");
+    // if(f->dataflow && f->dataflow->array_offset != NULL)
+    // {
+    //     expr_info_t expr_info = EMPTY_EXPR_INFO;
+    //     expr_info.sa = string_arena_new(8);
+    //     expr_info.prefix = "";
+    //     expr_info.suffix = "";
+    //     expr_info.assignments = "parametrized flow range";
+
+    //     string_arena_add_string(sa, "  for(int i=0;i<(%s);++i) {\n", dump_expr((void**)f->dataflow->array_offset, &expr_info));
+    //     /*UTIL_DUMP_LIST(sa, f->dataflow, next,
+    //                dump_dataflow_varname, NULL,
+    //                "", "    cache_buf_referenced(es->closest_cache, ", "[i]);\n  }\n", "");*/
+
+    //     // add cache_buf_referenced for all the dataflow variables
+    //     jdf_dataflow_t *df;
+    //     for(df = f->dataflow; df != NULL; df = df->next) {
+    //         string_arena_add_string(sa, "    cache_buf_referenced(es->closest_cache, %s[i]);\n", df->varname);
+    //     }
+    
+    //     string_arena_add_string(sa, "  }\n");
+    // }
+    // else
+    // {
+    //     UTIL_DUMP_LIST(sa, f->dataflow, next,
+    //                dump_dataflow_varname, NULL,
+    //                "", "  cache_buf_referenced(es->closest_cache, ", ");\n", "");
+    // }
+
+    for(jdf_dataflow_t *df = f->dataflow; df != NULL; df = df->next) {
+        if(df->array_offset != NULL)
+        {
+            expr_info_t expr_info = EMPTY_EXPR_INFO;
+            expr_info.sa = string_arena_new(8);
+            expr_info.prefix = "";
+            expr_info.suffix = "";
+            expr_info.assignments = "parametrized flow range";
+
+            string_arena_add_string(sa, "  for(int i=0;i<(%s);++i) {\n", dump_expr((void**)df->array_offset, &expr_info));
+            string_arena_add_string(sa, "    cache_buf_referenced(es->closest_cache, %s[i]);\n", df->varname);
+            string_arena_add_string(sa, "  }\n");
+        }
+        else
+        {
+            string_arena_add_string(sa, "  cache_buf_referenced(es->closest_cache, %s);\n", df->varname);
+        }
+    }
+
     if( strlen(string_arena_get_string(sa)) ) {
             coutput("  /** Cache Awareness Accounting */\n"
                     "#if defined(PARSEC_CACHE_AWARENESS)\n"
