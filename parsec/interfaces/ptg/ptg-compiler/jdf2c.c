@@ -580,6 +580,63 @@ char * dump_expr(void **elem, void *arg)
 }
 
 /**
+ * dump_parametrized_flow_loop:
+ *   dumps the jdf_expr* pointed to by elem into arg->sa, prefixing each
+ *   non-global variable with arg->prefix
+ */
+char * dump_parametrized_flow_loop(jdf_dataflow_t *flow, const char *iterator_name, void *arg)
+{
+    //expr_info_t* expr_info = (expr_info_t*)arg;
+    jdf_dataflow_t *f = (jdf_dataflow_t*)flow;
+    string_arena_t *sa = arg;
+
+    if(f == NULL ) return "NULL";
+    //string_arena_init(sa);
+
+    // Generate the ranges
+    jdf_expr_t *variable=f->local_variables;
+    if(NULL != variable) {
+        if(variable->op == JDF_RANGE) {
+            expr_info_t expr_info = EMPTY_EXPR_INFO;
+            expr_info.sa = string_arena_new(64);
+            expr_info.prefix = "";
+            expr_info.suffix = "";
+            expr_info.assignments = "parametrized flow range";
+            
+            jdf_expr_t *from = variable->jdf_ta1;
+            jdf_expr_t *to = variable->jdf_ta2;
+            jdf_expr_t *step = variable->jdf_ta3;
+            
+            string_arena_add_string(sa, "  for(int %s=%s;",
+                    iterator_name,
+                    dump_expr((void**)from, &expr_info));
+            string_arena_add_string(sa, "%s<=%s;",
+                    iterator_name,
+                    dump_expr((void**)to, &expr_info));
+            string_arena_add_string(sa, "%s+=%s) {\n",
+                    iterator_name,
+                    dump_expr((void**)step, &expr_info));
+        }
+        else
+        {
+            jdf_fatal(JDF_OBJECT_LINENO(f), "The flow variable is not a range\n");
+        }
+
+
+        if(variable->next != NULL)
+        {
+            jdf_fatal(JDF_OBJECT_LINENO(f), "Parametrized flows can not handle more than one variable\n");
+        }
+    }
+    else
+    {
+        jdf_fatal(JDF_OBJECT_LINENO(f), "Parametrized flows must have a variable\n");
+    }
+
+    return string_arena_get_string(sa);
+}
+
+/**
  * Dump a predicate like
  *  #define F_pred(k, n, m) (__parsec_tp->ABC->rank == __parsec_tp->ABC->rank_of(__parsec_tp->ABC, k, n, m))
  * In case one of the arguments is an inline C we need to prepare the assignments to match the expected call
@@ -759,7 +816,7 @@ static char *dump_data_initialization_from_data_array(void **elem, void *arg)
     if(f->array_offset != NULL)
     {
         expr_info_t expr_info = EMPTY_EXPR_INFO;
-        expr_info.sa = string_arena_new(8);
+        expr_info.sa = string_arena_new(256);
         expr_info.prefix = "";
         expr_info.suffix = "";
         expr_info.assignments = "parametrized flow range";
@@ -767,51 +824,19 @@ static char *dump_data_initialization_from_data_array(void **elem, void *arg)
 
         string_arena_add_string(sa,
                                 "  parsec_data_copy_t *_f_%s[(%s)+1];\n",
-                                varname, dump_expr((void**)f->local_variables->jdf_ta2, &expr_info), varname);
+                                varname, dump_expr((void**)f->local_variables->jdf_ta2, &expr_info));
         string_arena_add_string(sa,
                                 "  void *%s[(%s)+1]; (void)%s;\n",
                                 varname, dump_expr((void**)f->local_variables->jdf_ta2, &expr_info), varname);
-
-        // Generate the ranges
-        jdf_expr_t *variable=f->local_variables;
-        if(NULL != variable) {
-            if(variable->op == JDF_RANGE) {
-                jdf_expr_t *from = variable->jdf_ta1;
-                jdf_expr_t *to = variable->jdf_ta2;
-                jdf_expr_t *step = variable->jdf_ta3;
-                
-                string_arena_add_string(sa, "  for(int %s=%s;",
-                        variable->alias,
-                        dump_expr((void**)from, &expr_info));
-                string_arena_add_string(sa, "%s<=%s;",
-                        variable->alias,
-                        dump_expr((void**)to, &expr_info));
-                string_arena_add_string(sa, "%s+=%s) {\n",
-                        variable->alias,
-                        dump_expr((void**)step, &expr_info));
-            }
-            else
-            {
-                jdf_fatal(JDF_OBJECT_LINENO(f), "The flow variable is not a range\n");
-            }
-
-
-            if(variable->next != NULL)
-            {
-                jdf_fatal(JDF_OBJECT_LINENO(f), "Parametrized flows can not handle more than one variable\n");
-            }
-        }
-        else
-        {
-            jdf_fatal(JDF_OBJECT_LINENO(f), "Parametrized flows must have a variable\n");
-        }
+//
+        dump_parametrized_flow_loop(f, f->local_variables->alias, sa);
 
         string_arena_add_string(sa,
                                 "    _f_%s[%s] = this_task->data._f_%s.data_%s;\n",
-                                varname, variable->alias, f->varname, where);
+                                varname, f->local_variables->alias, f->varname, where);
         string_arena_add_string(sa,
-                                "    %s[i] = PARSEC_DATA_COPY_GET_PTR(_f_%s[i]); (void)%s;\n",
-                                varname, variable->alias, varname, varname);
+                                "    %s[i] = PARSEC_DATA_COPY_GET_PTR(_f_%s[%s]); (void)%s;\n",
+                                varname, varname, f->local_variables->alias, varname);
 
         string_arena_add_string(sa, "  }\n");
     }
