@@ -925,7 +925,7 @@ flow_specifier: array_offset PROPERTIES_ON { named_expr_push_scope(); } named_ex
                 {
                     jdf_flow_specifier_t *f = new(jdf_flow_specifier_t);
                     f->array_offset = $1;
-                    f->expr = $4;
+                    f->variables = $4;
                     $$ = f;
 
                    //named_expr_pop_scope();
@@ -934,7 +934,7 @@ flow_specifier: array_offset PROPERTIES_ON { named_expr_push_scope(); } named_ex
                 {
                     jdf_flow_specifier_t *f = new(jdf_flow_specifier_t);
                     f->array_offset = NULL;
-                    f->expr = NULL;
+                    f->variables = NULL;
                     $$ = f;
 
                     /* We still create a new scope for the (inexisting) named range
@@ -983,7 +983,7 @@ property:     VAR ASSIGNMENT expr_simple
                     jdf_dataflow_t *flow  = new(jdf_dataflow_t);
                     flow->flow_flags      = $1;
                     flow->varname         = $2;
-                    flow->local_variables = flow_specifier->expr;
+                    flow->local_variables = flow_specifier->variables;
                     flow->array_offset    = flow_specifier->array_offset;
                     flow->deps            = $4;
 

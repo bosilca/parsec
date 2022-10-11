@@ -271,7 +271,7 @@ typedef struct jdf_def_list {
 typedef struct jdf_flow_specifier {
     struct jdf_object_t       super;
     struct jdf_expr          *array_offset;
-    struct jdf_expr          *expr;
+    struct jdf_expr          *variables;
 } jdf_flow_specifier_t;
 
 typedef struct jdf_dataflow jdf_dataflow_t;
