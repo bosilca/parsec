@@ -584,7 +584,7 @@ char * dump_expr(void **elem, void *arg)
  *   dumps the jdf_expr* pointed to by elem into arg->sa, prefixing each
  *   non-global variable with arg->prefix
  */
-char * dump_parametrized_flow_loop(jdf_dataflow_t *flow, const char *iterator_name, void *arg)
+void dump_parametrized_flow_loop(jdf_dataflow_t *flow, const char *iterator_name, void *arg)
 {
     //expr_info_t* expr_info = (expr_info_t*)arg;
     jdf_dataflow_t *f = (jdf_dataflow_t*)flow;
@@ -632,8 +632,6 @@ char * dump_parametrized_flow_loop(jdf_dataflow_t *flow, const char *iterator_na
     {
         jdf_fatal(JDF_OBJECT_LINENO(f), "Parametrized flows must have a variable\n");
     }
-
-    return string_arena_get_string(sa);
 }
 
 /**
@@ -7149,7 +7147,30 @@ static void jdf_generate_code_hook(const jdf_t *jdf,
             /* Applied only on the Write data, since the number of readers is not atomically increased yet */
             if ((fl->flow_flags & JDF_FLOW_TYPE_READ) &&
                 (fl->flow_flags & JDF_FLOW_TYPE_WRITE) ) {
-               coutput("    if ( NULL != _f_%s ) {\n"
+
+                if(fl->local_variables != NULL) {
+                    string_arena_t *sa = string_arena_new(64);
+                    dump_parametrized_flow_loop(fl, fl->local_variables->alias, sa);
+                    coutput("%s", string_arena_get_string(sa));
+
+                    coutput("    if ( NULL != _f_%s[%s] ) {\n"
+                       "      parsec_data_transfer_ownership_to_copy( _f_%s[%s]->original, 0 /* device */,\n"
+                       "                                           %s);\n"
+                       "    }\n",
+                       fl->varname,
+                       fl->local_variables->alias,
+                       fl->varname,
+                       fl->local_variables->alias,
+                       ((fl->flow_flags & JDF_FLOW_TYPE_CTL) ? "PARSEC_FLOW_ACCESS_NONE" :
+                        ((fl->flow_flags & JDF_FLOW_TYPE_READ) ?
+                         ((fl->flow_flags & JDF_FLOW_TYPE_WRITE) ? "PARSEC_FLOW_ACCESS_RW" : "PARSEC_FLOW_ACCESS_READ") : "PARSEC_FLOW_ACCESS_WRITE")));
+
+                    coutput("  }\n");
+                }
+                else
+                {
+
+                    coutput("    if ( NULL != _f_%s ) {\n"
                        "      parsec_data_transfer_ownership_to_copy( _f_%s->original, 0 /* device */,\n"
                        "                                           %s);\n"
                        "    }\n",
@@ -7158,6 +7179,8 @@ static void jdf_generate_code_hook(const jdf_t *jdf,
                        ((fl->flow_flags & JDF_FLOW_TYPE_CTL) ? "PARSEC_FLOW_ACCESS_NONE" :
                         ((fl->flow_flags & JDF_FLOW_TYPE_READ) ?
                          ((fl->flow_flags & JDF_FLOW_TYPE_WRITE) ? "PARSEC_FLOW_ACCESS_RW" : "PARSEC_FLOW_ACCESS_READ") : "PARSEC_FLOW_ACCESS_WRITE")));
+
+                }
             }
         }
         coutput("#endif  /* defined(PARSEC_HAVE_CUDA) */\n");
