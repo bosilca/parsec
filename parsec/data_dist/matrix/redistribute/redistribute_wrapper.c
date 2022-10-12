@@ -204,4 +204,3 @@ int parsec_redistribute(parsec_context_t *parsec,
 
     return PARSEC_ERR_NOT_SUPPORTED;
 }
-

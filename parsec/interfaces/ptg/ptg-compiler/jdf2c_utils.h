@@ -15,6 +15,44 @@ typedef char *(*dumper_function_t)(void **elt, void *arg);
 #define FLOW_IS_PARAMETRIZED(flow) \
     ((flow)->local_variables != NULL)
 
+/**
+ * INDENTATION_IF_PARAMETRIZED:
+ *    Returns an indentation string if the flow is parametrized.
+ *  @param [IN] flow:         said flow.
+ *
+ *  @return a string containing an indentation if the flow is parametrized, an empty string otherwise.
+ */
+#define INDENTATION_IF_PARAMETRIZED(flow) \
+    ((FLOW_IS_PARAMETRIZED(flow)) ? "  " : "")
+
+/**
+ * DUMP_ARRAY_OFFSET_IF_PARAMETRIZED:
+ *    Tells whether a flow is parametrized or not.
+ *  @param [IN] sa:           the string arena to use.
+ *  @param [IN] flow:         the flow to test.
+ *
+ *  @return an empty string if not parametrized, [var] else (var being the name of the iterator variable).
+ */
+#define DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(sa, flow) \
+    util_dump_array_offset_if_parametrized(sa, flow)
+
+/**
+ * util_dump_array_offset_if_parametrized:
+ *   function used by the DUMP_ARRAY_OFFSET_IF_PARAMETRIZED* macros. Do not use directly.
+ */
+static inline char*
+util_dump_array_offset_if_parametrized(string_arena_t *sa, jdf_dataflow_t *flow)
+{
+    // reinit sa
+    string_arena_init(sa);
+
+    if (FLOW_IS_PARAMETRIZED(flow)) {
+        string_arena_add_string(sa, "[%s]", flow->local_variables->alias);
+    }
+
+    return string_arena_get_string(sa);
+}
+
 
 /**
  * UTIL_DUMP_LIST_FIELD:

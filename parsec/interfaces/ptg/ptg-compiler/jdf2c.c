@@ -581,8 +581,7 @@ char * dump_expr(void **elem, void *arg)
 
 /**
  * dump_parametrized_flow_loop:
- *   dumps the jdf_expr* pointed to by elem into arg->sa, prefixing each
- *   non-global variable with arg->prefix
+ *   dumps the loop preceding a block that needs an iterator for the parametrized flow
  */
 void dump_parametrized_flow_loop(jdf_dataflow_t *flow, const char *iterator_name, const char *indent, void *arg)
 {
@@ -633,6 +632,45 @@ void dump_parametrized_flow_loop(jdf_dataflow_t *flow, const char *iterator_name
         jdf_fatal(JDF_OBJECT_LINENO(f), "Parametrized flows must have a variable\n");
     }
 }
+
+/**
+ * dump_parametrized_flow_loop_end:
+ *  dumps the loop end corresponding to the loop preceding a block that needs an iterator for the parametrized flow
+ */
+void dump_parametrized_flow_loop_end(jdf_dataflow_t *flow, const char *indent, void *arg)
+{
+    jdf_dataflow_t *f = (jdf_dataflow_t*)flow;
+    string_arena_t *sa = arg;
+
+    if(f == NULL ) return;
+
+    string_arena_add_string(sa, "%s}\n", indent);
+}
+
+/**
+ * dump_parametrized_flow_loop_if_parametrized:
+ *   dumps the loop preceding a block that needs an iterator for the parametrized flow if the flow is parametrized
+ *   dumps nothing otherwise
+ */
+void dump_parametrized_flow_loop_if_parametrized(jdf_dataflow_t *flow, const char *indent, void *arg)
+{
+    if(FLOW_IS_PARAMETRIZED(flow)) {
+        dump_parametrized_flow_loop(flow, flow->local_variables->alias, indent, arg);
+    }
+}
+
+/**
+ * dump_parametrized_flow_loop_end_if_parametrized:
+ *  dumps the loop end corresponding to the loop preceding a block that needs an iterator for the parametrized flow if the flow is parametrized
+ *  dumps nothing otherwise
+ */
+void dump_parametrized_flow_loop_end_if_parametrized(jdf_dataflow_t *flow, const char *indent, void *arg)
+{
+    if(FLOW_IS_PARAMETRIZED(flow)) {
+        dump_parametrized_flow_loop_end(flow, indent, arg);
+    }
+}
+    
 
 /**
  * Dump a predicate like
@@ -811,8 +849,8 @@ static char *dump_data_initialization_from_data_array(void **elem, void *arg)
 
     string_arena_init(sa);
 
-    if(f->array_offset != NULL)
-    {
+    // if(f->array_offset != NULL)
+    // {
         expr_info_t expr_info = EMPTY_EXPR_INFO;
         expr_info.sa = string_arena_new(256);
         expr_info.prefix = "";
@@ -820,33 +858,52 @@ static char *dump_data_initialization_from_data_array(void **elem, void *arg)
         expr_info.assignments = "parametrized flow range";
 
 
-        string_arena_add_string(sa,
-                                "  parsec_data_copy_t *_f_%s[(%s)+1];\n",
-                                varname, dump_expr((void**)f->local_variables->jdf_ta2, &expr_info));
-        string_arena_add_string(sa,
-                                "  void *%s[(%s)+1]; (void)%s;\n",
-                                varname, dump_expr((void**)f->local_variables->jdf_ta2, &expr_info), varname);
+        if(FLOW_IS_PARAMETRIZED(f))
+        {
+            string_arena_add_string(sa,
+                                    "  parsec_data_copy_t *_f_%s[(%s)+1];\n",
+                                    varname, dump_expr((void**)f->local_variables->jdf_ta2, &expr_info));
+            string_arena_add_string(sa,
+                                    "  void *%s[(%s)+1]; (void)%s;\n",
+                                    varname, dump_expr((void**)f->local_variables->jdf_ta2, &expr_info), varname);
+        }
+        else
+        {
+            string_arena_add_string(sa,
+                                    "  parsec_data_copy_t *_f_%s;\n",
+                                    varname);
+            string_arena_add_string(sa,
+                                    "  void *%s;\n",
+                                    varname);
+        }
 
-        dump_parametrized_flow_loop(f, f->local_variables->alias, "  ", sa);
+        dump_parametrized_flow_loop_if_parametrized(f, "  ", sa);
+
+        string_arena_t *osa = string_arena_new(32);
 
         string_arena_add_string(sa,
-                                "    _f_%s[%s] = this_task->data._f_%s.data_%s;\n",
-                                varname, f->local_variables->alias, f->varname, where);
-        string_arena_add_string(sa,
-                                "    %s[%s] = PARSEC_DATA_COPY_GET_PTR(_f_%s[%s]); (void)%s;\n",
-                                varname, f->local_variables->alias, varname, f->local_variables->alias, varname);
+                                "%s  _f_%s%s = this_task->data._f_%s.data_%s;\n",
+                                INDENTATION_IF_PARAMETRIZED(f), varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, f),
+                                varname, where);
 
-        string_arena_add_string(sa, "  }\n");
-    }
-    else
-    {
         string_arena_add_string(sa,
-                                "  parsec_data_copy_t *_f_%s = this_task->data._f_%s.data_%s;\n",
-                                varname, f->varname, where);
-        string_arena_add_string(sa,
-                                "  void *%s = PARSEC_DATA_COPY_GET_PTR(_f_%s); (void)%s;\n",
-                                varname, varname, varname);
-    }
+                                "%s  %s%s = PARSEC_DATA_COPY_GET_PTR(_f_%s%s);\n",
+                                INDENTATION_IF_PARAMETRIZED(f), varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, f),
+                                varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, f));
+
+        string_arena_free(osa);
+
+        dump_parametrized_flow_loop_end_if_parametrized(f, "  ", sa);
+    // }
+    // else
+    // {
+    //     string_arena_add_string(sa,
+    //                             "  parsec_data_copy_t *_f_%s = this_task->data._f_%s.data_%s;\n",
+    //                             varname, f->varname, where);
+    //     string_arena_add_string(sa,
+    //                             "  void *%s = PARSEC_DATA_COPY_GET_PTR(_f_%s); (void)%s;\n",
+    //                             varname, varname, varname);
+    // }
 
     return string_arena_get_string(sa);
 }
