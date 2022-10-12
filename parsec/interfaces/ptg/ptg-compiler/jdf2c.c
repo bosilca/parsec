@@ -7251,29 +7251,29 @@ static void jdf_generate_code_hook(const jdf_t *jdf,
             if ((fl->flow_flags & JDF_FLOW_TYPE_READ) &&
                 (fl->flow_flags & JDF_FLOW_TYPE_WRITE) ) {
 
-                string_arena_t *sa = string_arena_new(64);
-                string_arena_t *osa = string_arena_new(16);
-                dump_parametrized_flow_loop_if_parametrized(fl, "  ", sa);
-                coutput("%s", string_arena_get_string(sa));
+                    string_arena_t *sa = string_arena_new(64);
+                    string_arena_t *osa = string_arena_new(16);
+                    dump_parametrized_flow_loop_if_parametrized(fl, "  ", sa);
+                    coutput("%s", string_arena_get_string(sa));
 
-                coutput("%s  if ( NULL != _f_%s%s ) {\n"
-                    "%s    parsec_data_transfer_ownership_to_copy( _f_%s%s->original, 0 /* device */,\n"
-                    "%s                                         %s);\n"
-                    "%s  }\n",
-                    INDENTATION_IF_PARAMETRIZED(fl), fl->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, fl),
-                    INDENTATION_IF_PARAMETRIZED(fl), fl->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, fl),
-                    INDENTATION_IF_PARAMETRIZED(fl), ((fl->flow_flags & JDF_FLOW_TYPE_CTL) ? "PARSEC_FLOW_ACCESS_NONE" :
-                    ((fl->flow_flags & JDF_FLOW_TYPE_READ) ?
-                        ((fl->flow_flags & JDF_FLOW_TYPE_WRITE) ? "PARSEC_FLOW_ACCESS_RW" : "PARSEC_FLOW_ACCESS_READ") : "PARSEC_FLOW_ACCESS_WRITE")),
-                    INDENTATION_IF_PARAMETRIZED(fl));
+                    coutput("%s  if ( NULL != _f_%s%s ) {\n"
+                       "%s    parsec_data_transfer_ownership_to_copy( _f_%s%s->original, 0 /* device */,\n"
+                       "%s                                         %s);\n"
+                       "%s  }\n",
+                       INDENTATION_IF_PARAMETRIZED(fl), fl->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, fl),
+                       INDENTATION_IF_PARAMETRIZED(fl), fl->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, fl),
+                       INDENTATION_IF_PARAMETRIZED(fl), ((fl->flow_flags & JDF_FLOW_TYPE_CTL) ? "PARSEC_FLOW_ACCESS_NONE" :
+                        ((fl->flow_flags & JDF_FLOW_TYPE_READ) ?
+                         ((fl->flow_flags & JDF_FLOW_TYPE_WRITE) ? "PARSEC_FLOW_ACCESS_RW" : "PARSEC_FLOW_ACCESS_READ") : "PARSEC_FLOW_ACCESS_WRITE")),
+                        INDENTATION_IF_PARAMETRIZED(fl));
 
-                string_arena_init(sa);
+                    string_arena_init(sa);
 
-                dump_parametrized_flow_loop_end_if_parametrized(fl, "  ", sa);
-                coutput("%s", string_arena_get_string(sa));
+                    dump_parametrized_flow_loop_end_if_parametrized(fl, "  ", sa);
+                    coutput("%s", string_arena_get_string(sa));
 
-                string_arena_free(sa);
-                string_arena_free(osa);
+                    string_arena_free(sa);
+                    string_arena_free(osa);
 
             }
         }
@@ -7387,25 +7387,59 @@ static void jdf_generate_code_hooks(const jdf_t *jdf,
 
 static void jdf_generate_code_free_hash_table_entry(const jdf_t *jdf, const jdf_function_entry_t *f, int consume_repo, int release_inputs)
 {
-    jdf_dataflow_t *dl;
+    jdf_dataflow_t *df;
 
     coutput("  if( action_mask & PARSEC_ACTION_RELEASE_LOCAL_REFS ) {\n");
 
-    for( dl = f->dataflow; dl != NULL; dl = dl->next ) {
-        if( dl->flow_flags & JDF_FLOW_TYPE_CTL ) continue;
+    for( df = f->dataflow; df != NULL; df = df->next ) {
+        if( df->flow_flags & JDF_FLOW_TYPE_CTL ) continue;
         if(consume_repo){
-            coutput("    if( NULL != this_task->data._f_%s.source_repo_entry ) {\n"
-                    "        data_repo_entry_used_once( this_task->data._f_%s.source_repo, this_task->data._f_%s.source_repo_entry->ht_item.key );\n"
-                    "    }\n",
-                    dl->varname,
-                    dl->varname, dl->varname);
+            // TODO: This is not correct, only one dep should be released (not dump_parametrized_flow_loop_if_parametrized)
+            string_arena_t *sa = string_arena_new(128);
+            dump_parametrized_flow_loop_if_parametrized(df, "    ", sa);
+            coutput("%s", string_arena_get_string(sa));
+
+            string_arena_t *osa = string_arena_new(64);
+
+
+            coutput("%s    if( NULL != this_task->data._f_%s%s.source_repo_entry ) {\n"
+                    "%s        data_repo_entry_used_once( this_task->data._f_%s%s.source_repo, this_task->data._f_%s%s.source_repo_entry->ht_item.key );\n"
+                    "%s    }\n",
+                    INDENTATION_IF_PARAMETRIZED(df), df->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, df),
+                    INDENTATION_IF_PARAMETRIZED(df), df->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, df), df->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, df),
+                    INDENTATION_IF_PARAMETRIZED(df));
+
+            string_arena_free(osa);
+
+            string_arena_init(sa);
+            dump_parametrized_flow_loop_end_if_parametrized(df, "    ", sa);
+            coutput("%s", string_arena_get_string(sa));
+
+            string_arena_free(sa);
         }
         if(release_inputs){
-            if( dl->flow_flags & (JDF_FLOW_TYPE_READ | JDF_FLOW_TYPE_WRITE) ) {
-                coutput("    if( NULL != this_task->data._f_%s.data_in ) {\n"
-                        "        PARSEC_DATA_COPY_RELEASE(this_task->data._f_%s.data_in);\n"
-                        "    }\n",
-                        dl->varname, dl->varname);
+            if( df->flow_flags & (JDF_FLOW_TYPE_READ | JDF_FLOW_TYPE_WRITE) ) {
+                // TODO: This is not correct, only one dep should be released (not dump_parametrized_flow_loop_if_parametrized)
+                string_arena_t *sa = string_arena_new(128);
+                dump_parametrized_flow_loop_if_parametrized(df, "    ", sa);
+                coutput("%s", string_arena_get_string(sa));
+
+                string_arena_t *osa = string_arena_new(64);
+
+                coutput("%s    if( NULL != this_task->data._f_%s%s.data_in ) {\n"
+                        "%s        PARSEC_DATA_COPY_RELEASE(this_task->data._f_%s%s.data_in);\n"
+                        "%s    }\n",
+                        INDENTATION_IF_PARAMETRIZED(df), df->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, df),
+                        INDENTATION_IF_PARAMETRIZED(df), df->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, df),
+                        INDENTATION_IF_PARAMETRIZED(df));
+
+                string_arena_free(osa);
+
+                string_arena_init(sa);
+                dump_parametrized_flow_loop_end_if_parametrized(df, "    ", sa);
+                coutput("%s", string_arena_get_string(sa));
+
+                string_arena_free(sa);
             }
         }
         (void)jdf;  /* just to keep the compilers happy regarding the goto to an empty statement */
@@ -7870,6 +7904,7 @@ jdf_generate_code_iterate_successors_or_predecessors(const jdf_t *jdf,
     string_arena_t *sa1 = string_arena_new(64);
     string_arena_t *sa2 = string_arena_new(64);
     string_arena_t *sa_ontask     = string_arena_new(64);
+    string_arena_t *osa           = string_arena_new(64);
     string_arena_t *sa_coutput    = string_arena_new(1024);
     string_arena_t *sa_deps       = string_arena_new(1024);
     string_arena_t *sa_datatype   = string_arena_new(1024);
@@ -7946,6 +7981,7 @@ jdf_generate_code_iterate_successors_or_predecessors(const jdf_t *jdf,
         flowtomem = 0;
         depnb = 0;
         last_datatype_idx = -1;
+        string_arena_init(osa);
         string_arena_init(sa_coutput);
         string_arena_init(sa_deps);
         string_arena_init(sa_datatype);
@@ -7959,9 +7995,14 @@ jdf_generate_code_iterate_successors_or_predecessors(const jdf_t *jdf,
         string_arena_init(sa_type_r);
         nb_open_ldef = 0;
 
+
+        dump_parametrized_flow_loop_if_parametrized(fl, "    ", sa_coutput);
+
         string_arena_add_string(sa_coutput,
-                "    data.data   = this_task->data._f_%s.data_out;\n",
-                fl->varname);
+                "%s    data.data   = this_task->data._f_%s%s.data_out;\n",
+                INDENTATION_IF_PARAMETRIZED(fl), fl->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, fl));
+
+        dump_parametrized_flow_loop_end_if_parametrized(fl, "    ", sa_coutput);
 
         for(dl = fl->deps; dl != NULL; dl = dl->next) {
             if( !(dl->dep_flags & flow_type) ) continue;
@@ -8259,6 +8300,7 @@ jdf_generate_code_iterate_successors_or_predecessors(const jdf_t *jdf,
     string_arena_free(sa_ontask);
     string_arena_free(sa1);
     string_arena_free(sa2);
+    string_arena_free(osa);
     string_arena_free(sa_coutput);
     string_arena_free(sa_deps);
     string_arena_free(sa_datatype);
