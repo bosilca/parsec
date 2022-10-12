@@ -1426,7 +1426,8 @@ static inline char* jdf_generate_task_typedef(void **elt, void* arg)
             }
             else
             { // Parametrized flow
-                string_arena_add_string(sa_data, "  parsec_data_pair_t _f_%s[MAX_DATAFLOWS_PER_TASK];\n", df->varname);
+                // Becomes an array of data pairs
+                string_arena_add_string(sa_data, "  parsec_data_pair_t *_f_%s;\n", df->varname);
             }
         }
     }
@@ -3111,6 +3112,28 @@ static void jdf_generate_startup_tasks(const jdf_t *jdf, const jdf_function_entr
             fname, parsec_get_name(jdf, f, "task_t"),
             parsec_get_name(jdf, f, "task_t"),
             jdf_basename, jdf_basename);
+    
+
+    // Generate the code to initialize the parametrized flow variables
+    for(jdf_dataflow_t *fl=f->dataflow; NULL != fl; fl=fl->next) {
+        if( NULL != fl->local_variables ) { // If is parametrized
+            expr_info_t expr_info = EMPTY_EXPR_INFO;
+            expr_info.sa = string_arena_new(32);
+            expr_info.prefix = "";
+            expr_info.suffix = "";
+            expr_info.assignments = "max parametrized dataflow";
+
+            jdf_expr_t *variable = jdf_expr_lv_first(fl->local_variables);
+            assert(variable->op == JDF_RANGE);
+            jdf_expr_t *max_parametrized_flow = variable->jdf_ta2;
+
+            coutput("  this_task->data._f_%s = alloca(sizeof(parsec_data_pair_t)*((%s)+1));\n",
+                    fl->varname, dump_expr((void**)max_parametrized_flow, &expr_info));
+            coutput("  assert( NULL != this_task->data._f_%s );\n", fl->varname);
+            coutput("  memset(this_task->data._f_%s, 0, sizeof(parsec_data_pair_t)*((%s)+1));\n",
+                    fl->varname, dump_expr((void**)max_parametrized_flow, &expr_info));
+        }
+    }
 
     for(vl = f->locals; vl != NULL; vl = vl->next)
         coutput("  int %s = this_task->locals.%s.value;  /* retrieve value saved during the last iteration */\n", vl->name, vl->name);
@@ -4407,6 +4430,7 @@ static void jdf_generate_one_function( const jdf_t *jdf, jdf_function_entry_t *f
     jdf_generate_code_release_deps(jdf, f, prefix);
     string_arena_add_string(sa, "  .release_deps = (parsec_release_deps_t*)%s,\n", prefix);
 
+// Parametrized flows: TODO
     sprintf(prefix, "data_lookup_of_%s_%s", jdf_basename, f->fname);
     jdf_generate_code_data_lookup(jdf, f, prefix);
     string_arena_add_string(sa, "  .prepare_output = (parsec_hook_t*)%s,\n", "NULL");
