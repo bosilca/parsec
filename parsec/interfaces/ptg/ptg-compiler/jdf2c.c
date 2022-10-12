@@ -1421,7 +1421,7 @@ static inline char* jdf_generate_task_typedef(void **elt, void* arg)
     {
         jdf_dataflow_t *df;
         for(df = f->dataflow; df != NULL; df = df->next) {
-            if( df->local_variables == NULL ) {
+            if( !FLOW_IS_PARAMETRIZED(df) ) {
                 string_arena_add_string(sa_data, "  parsec_data_pair_t _f_%s;\n", df->varname);
             }
             else
@@ -1576,12 +1576,6 @@ static void jdf_generate_predeclarations( const jdf_t *jdf )
     coutput("/** Predeclarations of the parameters */\n");
     for(f = jdf->functions; f != NULL; f = f->next) {
         for(fl = f->dataflow; fl != NULL; fl = fl->next) {
-            /*
-            if(f->dataflow->local_variables != NULL)
-            {
-                rc = asprintf(&JDF_OBJECT_ONAME( fl ), "parametrized_");
-            }
-            */
             rc = asprintf(&JDF_OBJECT_ONAME( fl ), "flow_of_%s_%s_for_%s", jdf_basename, f->fname, fl->varname);
             assert(rc != -1);
             coutput("static const parsec_flow_t %s;\n",
@@ -3269,7 +3263,7 @@ static void jdf_generate_startup_tasks(const jdf_t *jdf, const jdf_function_entr
         struct jdf_dataflow *dataflow = f->dataflow;
         for(idx = 0; NULL != dataflow; idx++, dataflow = dataflow->next ) {
 
-            if(dataflow->local_variables == NULL)
+            if(!FLOW_IS_PARAMETRIZED(dataflow))
             {
                 coutput("%s  new_task->data._f_%s.source_repo_entry = NULL;\n"
                         "%s  new_task->data._f_%s.source_repo       = NULL;\n"
@@ -6345,7 +6339,7 @@ static void jdf_generate_code_cache_awareness_update(const jdf_t *jdf, const jdf
     // }
 
     for(jdf_dataflow_t *df = f->dataflow; df != NULL; df = df->next) {
-        if(df->array_offset != NULL)
+        if(FLOW_IS_PARAMETRIZED(df))
         {
             expr_info_t expr_info = EMPTY_EXPR_INFO;
             expr_info.sa = string_arena_new(8);
@@ -7216,7 +7210,7 @@ static void jdf_generate_code_hook(const jdf_t *jdf,
             if ((fl->flow_flags & JDF_FLOW_TYPE_READ) &&
                 (fl->flow_flags & JDF_FLOW_TYPE_WRITE) ) {
 
-                if(fl->local_variables != NULL) {
+                if(FLOW_IS_PARAMETRIZED(fl)) {
                     string_arena_t *sa = string_arena_new(64);
                     dump_parametrized_flow_loop(fl, fl->local_variables->alias, "  ", sa);
                     coutput("%s", string_arena_get_string(sa));

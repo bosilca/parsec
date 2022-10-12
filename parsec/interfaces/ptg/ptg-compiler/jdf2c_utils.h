@@ -6,6 +6,17 @@
 typedef char *(*dumper_function_t)(void **elt, void *arg);
 
 /**
+ * FLOW_IS_PARAMETRIZED:
+ *    Tells whether a flow is parametrized or not.
+ *  @param [IN] flow:         the flow to test.
+ *
+ *  @return a boolean value.
+ */
+#define FLOW_IS_PARAMETRIZED(flow) \
+    ((flow)->local_variables != NULL)
+
+
+/**
  * UTIL_DUMP_LIST_FIELD:
  *    Iterate over the elements of a list, transforming each field element in a string using a parameter function,
  *    and concatenate all strings.
