@@ -7251,39 +7251,30 @@ static void jdf_generate_code_hook(const jdf_t *jdf,
             if ((fl->flow_flags & JDF_FLOW_TYPE_READ) &&
                 (fl->flow_flags & JDF_FLOW_TYPE_WRITE) ) {
 
-                if(FLOW_IS_PARAMETRIZED(fl)) {
-                    string_arena_t *sa = string_arena_new(64);
-                    dump_parametrized_flow_loop(fl, fl->local_variables->alias, "  ", sa);
-                    coutput("%s", string_arena_get_string(sa));
+                string_arena_t *sa = string_arena_new(64);
+                string_arena_t *osa = string_arena_new(16);
+                dump_parametrized_flow_loop_if_parametrized(fl, "  ", sa);
+                coutput("%s", string_arena_get_string(sa));
 
-                    coutput("    if ( NULL != _f_%s[%s] ) {\n"
-                       "      parsec_data_transfer_ownership_to_copy( _f_%s[%s]->original, 0 /* device */,\n"
-                       "                                           %s);\n"
-                       "    }\n",
-                       fl->varname,
-                       fl->local_variables->alias,
-                       fl->varname,
-                       fl->local_variables->alias,
-                       ((fl->flow_flags & JDF_FLOW_TYPE_CTL) ? "PARSEC_FLOW_ACCESS_NONE" :
-                        ((fl->flow_flags & JDF_FLOW_TYPE_READ) ?
-                         ((fl->flow_flags & JDF_FLOW_TYPE_WRITE) ? "PARSEC_FLOW_ACCESS_RW" : "PARSEC_FLOW_ACCESS_READ") : "PARSEC_FLOW_ACCESS_WRITE")));
+                coutput("%s  if ( NULL != _f_%s%s ) {\n"
+                    "%s    parsec_data_transfer_ownership_to_copy( _f_%s%s->original, 0 /* device */,\n"
+                    "%s                                         %s);\n"
+                    "%s  }\n",
+                    INDENTATION_IF_PARAMETRIZED(fl), fl->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, fl),
+                    INDENTATION_IF_PARAMETRIZED(fl), fl->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, fl),
+                    INDENTATION_IF_PARAMETRIZED(fl), ((fl->flow_flags & JDF_FLOW_TYPE_CTL) ? "PARSEC_FLOW_ACCESS_NONE" :
+                    ((fl->flow_flags & JDF_FLOW_TYPE_READ) ?
+                        ((fl->flow_flags & JDF_FLOW_TYPE_WRITE) ? "PARSEC_FLOW_ACCESS_RW" : "PARSEC_FLOW_ACCESS_READ") : "PARSEC_FLOW_ACCESS_WRITE")),
+                    INDENTATION_IF_PARAMETRIZED(fl));
 
-                    coutput("  }\n");
-                }
-                else
-                {
+                string_arena_init(sa);
 
-                    coutput("    if ( NULL != _f_%s ) {\n"
-                       "      parsec_data_transfer_ownership_to_copy( _f_%s->original, 0 /* device */,\n"
-                       "                                           %s);\n"
-                       "    }\n",
-                       fl->varname,
-                       fl->varname,
-                       ((fl->flow_flags & JDF_FLOW_TYPE_CTL) ? "PARSEC_FLOW_ACCESS_NONE" :
-                        ((fl->flow_flags & JDF_FLOW_TYPE_READ) ?
-                         ((fl->flow_flags & JDF_FLOW_TYPE_WRITE) ? "PARSEC_FLOW_ACCESS_RW" : "PARSEC_FLOW_ACCESS_READ") : "PARSEC_FLOW_ACCESS_WRITE")));
+                dump_parametrized_flow_loop_end_if_parametrized(fl, "  ", sa);
+                coutput("%s", string_arena_get_string(sa));
 
-                }
+                string_arena_free(sa);
+                string_arena_free(osa);
+
             }
         }
         coutput("#endif  /* defined(PARSEC_HAVE_CUDA) */\n");
