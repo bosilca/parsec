@@ -849,61 +849,49 @@ static char *dump_data_initialization_from_data_array(void **elem, void *arg)
 
     string_arena_init(sa);
 
-    // if(f->array_offset != NULL)
-    // {
-        expr_info_t expr_info = EMPTY_EXPR_INFO;
-        expr_info.sa = string_arena_new(256);
-        expr_info.prefix = "";
-        expr_info.suffix = "";
-        expr_info.assignments = "parametrized flow range";
+    expr_info_t expr_info = EMPTY_EXPR_INFO;
+    expr_info.sa = string_arena_new(256);
+    expr_info.prefix = "";
+    expr_info.suffix = "";
+    expr_info.assignments = "parametrized flow range";
 
 
-        if(FLOW_IS_PARAMETRIZED(f))
-        {
-            string_arena_add_string(sa,
-                                    "  parsec_data_copy_t *_f_%s[(%s)+1];\n",
-                                    varname, dump_expr((void**)f->local_variables->jdf_ta2, &expr_info));
-            string_arena_add_string(sa,
-                                    "  void *%s[(%s)+1]; (void)%s;\n",
-                                    varname, dump_expr((void**)f->local_variables->jdf_ta2, &expr_info), varname);
-        }
-        else
-        {
-            string_arena_add_string(sa,
-                                    "  parsec_data_copy_t *_f_%s;\n",
-                                    varname);
-            string_arena_add_string(sa,
-                                    "  void *%s;\n",
-                                    varname);
-        }
-
-        dump_parametrized_flow_loop_if_parametrized(f, "  ", sa);
-
-        string_arena_t *osa = string_arena_new(32);
-
+    if(FLOW_IS_PARAMETRIZED(f))
+    {
         string_arena_add_string(sa,
-                                "%s  _f_%s%s = this_task->data._f_%s.data_%s;\n",
-                                INDENTATION_IF_PARAMETRIZED(f), varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, f),
-                                varname, where);
-
+                                "  parsec_data_copy_t *_f_%s[(%s)+1];\n",
+                                varname, dump_expr((void**)f->local_variables->jdf_ta2, &expr_info));
         string_arena_add_string(sa,
-                                "%s  %s%s = PARSEC_DATA_COPY_GET_PTR(_f_%s%s);\n",
-                                INDENTATION_IF_PARAMETRIZED(f), varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, f),
-                                varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, f));
+                                "  void *%s[(%s)+1]; (void)%s;\n",
+                                varname, dump_expr((void**)f->local_variables->jdf_ta2, &expr_info), varname);
+    }
+    else
+    {
+        string_arena_add_string(sa,
+                                "  parsec_data_copy_t *_f_%s;\n",
+                                varname);
+        string_arena_add_string(sa,
+                                "  void *%s; (void)%s;\n",
+                                varname, varname);
+    }
 
-        string_arena_free(osa);
+    dump_parametrized_flow_loop_if_parametrized(f, "  ", sa);
 
-        dump_parametrized_flow_loop_end_if_parametrized(f, "  ", sa);
-    // }
-    // else
-    // {
-    //     string_arena_add_string(sa,
-    //                             "  parsec_data_copy_t *_f_%s = this_task->data._f_%s.data_%s;\n",
-    //                             varname, f->varname, where);
-    //     string_arena_add_string(sa,
-    //                             "  void *%s = PARSEC_DATA_COPY_GET_PTR(_f_%s); (void)%s;\n",
-    //                             varname, varname, varname);
-    // }
+    string_arena_t *osa = string_arena_new(32);
+
+    string_arena_add_string(sa,
+                            "%s  _f_%s%s = this_task->data._f_%s.data_%s;\n",
+                            INDENTATION_IF_PARAMETRIZED(f), varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, f),
+                            varname, where);
+
+    string_arena_add_string(sa,
+                            "%s  %s%s = PARSEC_DATA_COPY_GET_PTR(_f_%s%s);\n",
+                            INDENTATION_IF_PARAMETRIZED(f), varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, f),
+                            varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, f));
+
+    string_arena_free(osa);
+
+    dump_parametrized_flow_loop_end_if_parametrized(f, "  ", sa);
 
     return string_arena_get_string(sa);
 }
@@ -3320,42 +3308,37 @@ static void jdf_generate_startup_tasks(const jdf_t *jdf, const jdf_function_entr
         struct jdf_dataflow *dataflow = f->dataflow;
         for(idx = 0; NULL != dataflow; idx++, dataflow = dataflow->next ) {
 
-            if(!FLOW_IS_PARAMETRIZED(dataflow))
-            {
-                coutput("%s  new_task->data._f_%s.source_repo_entry = NULL;\n"
-                        "%s  new_task->data._f_%s.source_repo       = NULL;\n"
-                        "%s  new_task->data._f_%s.data_in         = NULL;\n"
-                        "%s  new_task->data._f_%s.data_out        = NULL;\n"
-                        "%s  new_task->data._f_%s.fulfill         = 0;\n",
-                        indent(nesting), dataflow->varname,
-                        indent(nesting), dataflow->varname,
-                        indent(nesting), dataflow->varname,
-                        indent(nesting), dataflow->varname,
-                        indent(nesting), dataflow->varname);
-            }
-            else
-            { // Parametrized flow
-                nesting++;
+                if(FLOW_IS_PARAMETRIZED(dataflow)) {
+                    nesting++;
+                }
         
-                string_arena_t *sa = string_arena_new(64);
-                dump_parametrized_flow_loop(dataflow, dataflow->local_variables->alias, indent(nesting), sa);
+                string_arena_t *osa = string_arena_new(16);
+
+                string_arena_t *sa = string_arena_new(256);
+                dump_parametrized_flow_loop_if_parametrized(dataflow, indent(nesting), sa);
                 coutput("%s", string_arena_get_string(sa));
                 
-                coutput("%s  new_task->data._f_%s[%s].source_repo_entry = NULL;\n"
-                        "%s  new_task->data._f_%s[%s].source_repo       = NULL;\n"
-                        "%s  new_task->data._f_%s[%s].data_in         = NULL;\n"
-                        "%s  new_task->data._f_%s[%s].data_out        = NULL;\n"
-                        "%s  new_task->data._f_%s[%s].fulfill         = 0;\n",
-                        indent(nesting), dataflow->varname, dataflow->local_variables->alias,
-                        indent(nesting), dataflow->varname, dataflow->local_variables->alias,
-                        indent(nesting), dataflow->varname, dataflow->local_variables->alias,
-                        indent(nesting), dataflow->varname, dataflow->local_variables->alias,
-                        indent(nesting), dataflow->varname, dataflow->local_variables->alias);
+                coutput("%s  new_task->data._f_%s%s.source_repo_entry = NULL;\n"
+                        "%s  new_task->data._f_%s%s.source_repo       = NULL;\n"
+                        "%s  new_task->data._f_%s%s.data_in         = NULL;\n"
+                        "%s  new_task->data._f_%s%s.data_out        = NULL;\n"
+                        "%s  new_task->data._f_%s%s.fulfill         = 0;\n",
+                        indent(nesting), dataflow->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, dataflow),
+                        indent(nesting), dataflow->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, dataflow),
+                        indent(nesting), dataflow->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, dataflow),
+                        indent(nesting), dataflow->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, dataflow),
+                        indent(nesting), dataflow->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, dataflow));
 
-                coutput("%s}\n", indent(nesting));
+                string_arena_init(sa);
+                dump_parametrized_flow_loop_end_if_parametrized(dataflow, indent(nesting), sa);
+                coutput("%s", string_arena_get_string(sa));
                 
-                nesting--;
-            }
+                string_arena_free(sa);
+                string_arena_free(osa);
+
+                if(FLOW_IS_PARAMETRIZED(dataflow)) {
+                    nesting--;
+                }
         }
     }
 
