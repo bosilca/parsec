@@ -156,6 +156,9 @@ typedef int32_t parsec_dependency_t;
  * A set of constants defining the capabilities of the underlying
  * runtime.
  */
+
+#define MAX_DATAFLOWS_PER_TASK  16
+
 #define MAX_LOCAL_COUNT  20
 #define MAX_PARAM_COUNT  20
 

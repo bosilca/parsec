@@ -584,14 +584,13 @@ char * dump_expr(void **elem, void *arg)
  *   dumps the jdf_expr* pointed to by elem into arg->sa, prefixing each
  *   non-global variable with arg->prefix
  */
-void dump_parametrized_flow_loop(jdf_dataflow_t *flow, const char *iterator_name, void *arg)
+void dump_parametrized_flow_loop(jdf_dataflow_t *flow, const char *iterator_name, const char *indent, void *arg)
 {
     //expr_info_t* expr_info = (expr_info_t*)arg;
     jdf_dataflow_t *f = (jdf_dataflow_t*)flow;
     string_arena_t *sa = arg;
 
-    if(f == NULL ) return "NULL";
-    //string_arena_init(sa);
+    if(f == NULL ) return;
 
     // Generate the ranges
     jdf_expr_t *variable=f->local_variables;
@@ -607,7 +606,8 @@ void dump_parametrized_flow_loop(jdf_dataflow_t *flow, const char *iterator_name
             jdf_expr_t *to = variable->jdf_ta2;
             jdf_expr_t *step = variable->jdf_ta3;
             
-            string_arena_add_string(sa, "  for(int %s=%s;",
+            string_arena_add_string(sa, "%sfor(int %s=%s;",
+                    indent,
                     iterator_name,
                     dump_expr((void**)from, &expr_info));
             string_arena_add_string(sa, "%s<=%s;",
@@ -826,8 +826,8 @@ static char *dump_data_initialization_from_data_array(void **elem, void *arg)
         string_arena_add_string(sa,
                                 "  void *%s[(%s)+1]; (void)%s;\n",
                                 varname, dump_expr((void**)f->local_variables->jdf_ta2, &expr_info), varname);
-//
-        dump_parametrized_flow_loop(f, f->local_variables->alias, sa);
+
+        dump_parametrized_flow_loop(f, f->local_variables->alias, "  ", sa);
 
         string_arena_add_string(sa,
                                 "    _f_%s[%s] = this_task->data._f_%s.data_%s;\n",
@@ -1413,8 +1413,25 @@ static inline char* jdf_generate_task_typedef(void **elt, void* arg)
     }
     
     JDF_COUNT_LIST_ENTRIES(f->dataflow, jdf_dataflow_t, next, nb_flows);
+    /*
     UTIL_DUMP_LIST_FIELD(sa_data, f->dataflow, next, varname, dump_string, NULL,
                          "", "  parsec_data_pair_t _f_", ";\n", ";\n");
+    */
+    // Add the list of data to sa_data without UTIL_DUMP_LIST_FIELD
+    {
+        jdf_dataflow_t *df;
+        for(df = f->dataflow; df != NULL; df = df->next) {
+            if( df->local_variables == NULL ) {
+                string_arena_add_string(sa_data, "  parsec_data_pair_t _f_%s;\n", df->varname);
+            }
+            else
+            { // Parametrized flow
+                string_arena_add_string(sa_data, "  parsec_data_pair_t _f_%s[MAX_DATAFLOWS_PER_TASK];\n", df->varname);
+            }
+        }
+    }
+    
+
     string_arena_init(sa);
     /* Prepare the structure for the named assignments */
     string_arena_add_string(sa,
@@ -3228,16 +3245,43 @@ static void jdf_generate_startup_tasks(const jdf_t *jdf, const jdf_function_entr
     {
         struct jdf_dataflow *dataflow = f->dataflow;
         for(idx = 0; NULL != dataflow; idx++, dataflow = dataflow->next ) {
-            coutput("%s  new_task->data._f_%s.source_repo_entry = NULL;\n"
-                    "%s  new_task->data._f_%s.source_repo       = NULL;\n"
-                    "%s  new_task->data._f_%s.data_in         = NULL;\n"
-                    "%s  new_task->data._f_%s.data_out        = NULL;\n"
-                    "%s  new_task->data._f_%s.fulfill         = 0;\n",
-                    indent(nesting), dataflow->varname,
-                    indent(nesting), dataflow->varname,
-                    indent(nesting), dataflow->varname,
-                    indent(nesting), dataflow->varname,
-                    indent(nesting), dataflow->varname);
+
+            if(dataflow->local_variables == NULL)
+            {
+                coutput("%s  new_task->data._f_%s.source_repo_entry = NULL;\n"
+                        "%s  new_task->data._f_%s.source_repo       = NULL;\n"
+                        "%s  new_task->data._f_%s.data_in         = NULL;\n"
+                        "%s  new_task->data._f_%s.data_out        = NULL;\n"
+                        "%s  new_task->data._f_%s.fulfill         = 0;\n",
+                        indent(nesting), dataflow->varname,
+                        indent(nesting), dataflow->varname,
+                        indent(nesting), dataflow->varname,
+                        indent(nesting), dataflow->varname,
+                        indent(nesting), dataflow->varname);
+            }
+            else
+            { // Parametrized flow
+                nesting++;
+        
+                string_arena_t *sa = string_arena_new(64);
+                dump_parametrized_flow_loop(dataflow, dataflow->local_variables->alias, indent(nesting), sa);
+                coutput("%s", string_arena_get_string(sa));
+                
+                coutput("%s  new_task->data._f_%s[%s].source_repo_entry = NULL;\n"
+                        "%s  new_task->data._f_%s[%s].source_repo       = NULL;\n"
+                        "%s  new_task->data._f_%s[%s].data_in         = NULL;\n"
+                        "%s  new_task->data._f_%s[%s].data_out        = NULL;\n"
+                        "%s  new_task->data._f_%s[%s].fulfill         = 0;\n",
+                        indent(nesting), dataflow->varname, dataflow->local_variables->alias,
+                        indent(nesting), dataflow->varname, dataflow->local_variables->alias,
+                        indent(nesting), dataflow->varname, dataflow->local_variables->alias,
+                        indent(nesting), dataflow->varname, dataflow->local_variables->alias,
+                        indent(nesting), dataflow->varname, dataflow->local_variables->alias);
+
+                coutput("%s}\n", indent(nesting));
+                
+                nesting--;
+            }
         }
     }
 
@@ -6285,7 +6329,7 @@ static void jdf_generate_code_cache_awareness_update(const jdf_t *jdf, const jdf
             expr_info.suffix = "";
             expr_info.assignments = "parametrized flow range";
 
-            dump_parametrized_flow_loop(df, df->local_variables->alias, sa);
+            dump_parametrized_flow_loop(df, df->local_variables->alias, "  ", sa);
             string_arena_add_string(sa, "    cache_buf_referenced(es->closest_cache, %s[%s]);\n", df->varname, df->local_variables->alias);
             string_arena_add_string(sa, "  }\n");
         }
@@ -7150,7 +7194,7 @@ static void jdf_generate_code_hook(const jdf_t *jdf,
 
                 if(fl->local_variables != NULL) {
                     string_arena_t *sa = string_arena_new(64);
-                    dump_parametrized_flow_loop(fl, fl->local_variables->alias, sa);
+                    dump_parametrized_flow_loop(fl, fl->local_variables->alias, "  ", sa);
                     coutput("%s", string_arena_get_string(sa));
 
                     coutput("    if ( NULL != _f_%s[%s] ) {\n"
