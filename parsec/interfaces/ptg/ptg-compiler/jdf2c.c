@@ -5676,6 +5676,10 @@ jdf_generate_code_call_initialization(const jdf_t *jdf, const jdf_call_t *call,
     sa = string_arena_new(64);
     sa2 = string_arena_new(64);
 
+    string_arena_t *osa;
+    osa = string_arena_new(64);
+    string_arena_init(osa);
+
     info.sa = sa2;
     info.prefix = "";
     info.suffix = "";
@@ -5722,9 +5726,9 @@ jdf_generate_code_call_initialization(const jdf_t *jdf, const jdf_call_t *call,
              spaces, flow->varname, flow->flow_index, dl->dep_index, string_arena_get_string(sa) );
     string_arena_init(sa);
 
-    coutput("%s  if( NULL == (chunk = this_task->data._f_%s.data_in) ) {\n"
+    coutput("%s  if( NULL == (chunk = this_task->data._f_%s%s.data_in) ) {\n"
             "%s  /* No data set up by predecessor on this task input flow */\n",
-             spaces, flow->varname,
+             spaces, flow->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, flow),
              spaces);
 
     /* Function calls */
@@ -5744,9 +5748,9 @@ jdf_generate_code_call_initialization(const jdf_t *jdf, const jdf_call_t *call,
         jdf_generate_code_reshape_input_from_dep(jdf, f, flow, dl, spaces);
 
         coutput("%s    ACQUIRE_FLOW(this_task, \"%s\", &%s_%s, \"%s\", target_locals, chunk);\n"
-                "%s    this_task->data._f_%s.data_out = chunk;\n",
+                "%s    this_task->data._f_%s%s.data_out = chunk;\n",
                 spaces, flow->varname, jdf_basename, call->func_or_mem, call->var,
-                spaces, flow->varname);
+                spaces, flow->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, flow));
 
     }
     else {
@@ -5767,9 +5771,9 @@ jdf_generate_code_call_initialization(const jdf_t *jdf, const jdf_call_t *call,
 
             jdf_generate_code_reshape_input_from_desc(jdf, f, flow, dl, spaces);
 
-            coutput("%s    this_task->data._f_%s.data_out = chunk;\n"
+            coutput("%s    this_task->data._f_%s%s.data_out = chunk;\n"
                     "%s    PARSEC_OBJ_RETAIN(chunk);\n",
-                    spaces, flow->varname,
+                    spaces, flow->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, flow),
                     spaces);
 
         }
@@ -5796,10 +5800,10 @@ jdf_generate_code_call_initialization(const jdf_t *jdf, const jdf_call_t *call,
 
                 coutput("%s    chunk = parsec_arena_get_copy(%s->arena, %s, target_device, %s->opaque_dtt);\n"
                         "%s    chunk->original->owner_device = target_device;\n"
-                        "%s    this_task->data._f_%s.data_out = chunk;\n",
+                        "%s    this_task->data._f_%s%s.data_out = chunk;\n",
                         spaces, string_arena_get_string(sa), string_arena_get_string(sa2), string_arena_get_string(sa),
                         spaces,
-                        spaces, flow->varname);
+                        spaces, flow->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, flow));
 
                 string_arena_free(info.sa);
             }
@@ -5834,6 +5838,8 @@ jdf_generate_code_call_initialization(const jdf_t *jdf, const jdf_call_t *call,
                 spaces, JDF_OBJECT_ONAME( flow ),
                 spaces);
     }
+
+    string_arena_free(osa);
     string_arena_free(sa);
     string_arena_free(sa2);
 }
@@ -5941,21 +5947,39 @@ static void jdf_generate_code_flow_initialization(const jdf_t *jdf,
     char* condition[] = {"    if( %s ) {\n", "    else if( %s ) {\n"};
 
     if( JDF_FLOW_TYPE_CTL & flow->flow_flags ) {
+        string_arena_t *sa;
+        sa = string_arena_new(64);
+        string_arena_init(sa);
+        dump_parametrized_flow_loop_if_parametrized(flow, "  ", sa);
+        coutput("%s", string_arena_get_string(sa));
+
+
         coutput("  /* %s is a control flow */\n"
-                "  this_task->data._f_%s.data_in         = NULL;\n"
-                "  this_task->data._f_%s.data_out        = NULL;\n"
-                "  this_task->data._f_%s.source_repo       = NULL;\n"
-                "  this_task->data._f_%s.source_repo_entry = NULL;\n",
+                "%s  this_task->data._f_%s%s.data_in         = NULL;\n"
+                "%s  this_task->data._f_%s%s.data_out        = NULL;\n"
+                "%s  this_task->data._f_%s%s.source_repo       = NULL;\n"
+                "%s  this_task->data._f_%s%s.source_repo_entry = NULL;\n",
                 flow->varname,
-                flow->varname,
-                flow->varname,
-                flow->varname,
-                flow->varname);
+                INDENTATION_IF_PARAMETRIZED(flow), flow->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(sa, flow),
+                INDENTATION_IF_PARAMETRIZED(flow), flow->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(sa, flow),
+                INDENTATION_IF_PARAMETRIZED(flow), flow->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(sa, flow),
+                INDENTATION_IF_PARAMETRIZED(flow), flow->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(sa, flow));
+        
+        string_arena_init(sa);
+        dump_parametrized_flow_loop_end_if_parametrized(flow, "  ", sa);
+        coutput("%s", string_arena_get_string(sa));
+        string_arena_free(sa);
+
         return;
     }
 
+    string_arena_t *osa;
+    osa = string_arena_new(64);
+    dump_parametrized_flow_loop_if_parametrized(flow, "\n\n  ", osa);
+    coutput("%s", string_arena_get_string(osa));
+
     coutput("\n"
-            "if(! this_task->data._f_%s.fulfill ){ /* Flow %s */\n", flow->varname, flow->varname);
+            "if(! this_task->data._f_%s%s.fulfill ){ /* Flow %s */\n", flow->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, flow), flow->varname);
 
     coutput("  consumed_repo = NULL;\n"
             "  consumed_entry_key = 0;\n"
@@ -5969,9 +5993,9 @@ static void jdf_generate_code_flow_initialization(const jdf_t *jdf,
         }
     }
     if( !has_output_deps ) {
-        coutput("\n    this_task->data._f_%s.data_out = NULL;  /* input only */\n", flow->varname);
+        coutput("\n    this_task->data._f_%s%s.data_out = NULL;  /* input only */\n", flow->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, flow));
     } else {
-        coutput("\n    this_task->data._f_%s.data_out = NULL;  /* By default, if nothing matches */\n", flow->varname);
+        coutput("\n    this_task->data._f_%s%s.data_out = NULL;  /* By default, if nothing matches */\n", flow->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, flow));
     }
     
     sa  = string_arena_new(64);
@@ -6058,30 +6082,34 @@ static void jdf_generate_code_flow_initialization(const jdf_t *jdf,
         }
     }
  done_with_input:
-     coutput("    this_task->data._f_%s.data_in     = chunk;\n"
-             "    this_task->data._f_%s.source_repo       = consumed_repo;\n"
-             "    this_task->data._f_%s.source_repo_entry = consumed_entry;\n",
-             flow->varname,
-             flow->varname,
-             flow->varname);
+     coutput("    this_task->data._f_%s%s.data_in     = chunk;\n"
+             "    this_task->data._f_%s%s.source_repo       = consumed_repo;\n"
+             "    this_task->data._f_%s%s.source_repo_entry = consumed_entry;\n",
+             flow->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, flow),
+             flow->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, flow),
+             flow->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, flow));
      if( !(f->flags & JDF_FUNCTION_FLAG_NO_SUCCESSORS) ) {
         /* If we have consume from our repo, we clean up the repo entry for that flow,
          * so we don't have old stuff during release_deps_of when we will set up outputs
          * on our repo as a predecessor.
          */
-        coutput("    if( this_task->data._f_%s.source_repo_entry == this_task->repo_entry ){\n"
+        coutput("    if( this_task->data._f_%s%s.source_repo_entry == this_task->repo_entry ){\n"
                 "      /* in case we have consume from this task repo entry for the flow,\n"
                 "       * it is cleaned up, avoiding having old stuff during release_deps_of\n"
                 "       */\n"
                 "      this_task->repo_entry->data[%d] = NULL;\n"
                 "    }\n",
-                flow->varname,
+                flow->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, flow),
                 flow->flow_index);
     }
-    coutput("    this_task->data._f_%s.fulfill = 1;\n"
+    coutput("    this_task->data._f_%s%s.fulfill = 1;\n"
             "}\n\n",
-            flow->varname);/*    coutput("if(! this_task->data._f_%s.fulfill ){\n", flow->varname);*/
+            flow->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, flow));/*    coutput("if(! this_task->data._f_%s.fulfill ){\n", flow->varname);*/
 
+
+    string_arena_init(osa);
+    dump_parametrized_flow_loop_end_if_parametrized(flow, "  ", osa);
+    coutput("%s", string_arena_get_string(osa));
     
     string_arena_free(sa);
     if( NULL != sa2 )
@@ -6535,8 +6563,14 @@ jdf_generate_code_datatype_lookup(const jdf_t *jdf,
             if( !(fl->flow_flags & JDF_FLOW_IS_OUT) ) continue;
         }
         skip_condition = 0;  /* Assume we have a valid not-yet-optimized condition */
+
+        //string_arena *sa_parametrized_flow = string_arena_new(256);
+        //string_arena_init(sa_parametrized_flow);
+
         string_arena_add_string(sa_coutput, "if( (*flow_mask) & 0x%xU ) {  /* Flow %s */\n",
                                 (type == JDF_DEP_FLOW_OUT ? fl->flow_dep_mask_out : (1U << fl->flow_index)), fl->varname);
+
+        dump_parametrized_flow_loop_if_parametrized(fl, "  ", sa_coutput);
 
         last_datatype_idx = -1;
         continue_dependencies = 1;
@@ -6613,6 +6647,8 @@ jdf_generate_code_datatype_lookup(const jdf_t *jdf,
             if( !continue_dependencies ) break;
         }
         JDF_CODE_DATATYPE_DUMP(sa_coutput, current_mask, sa_cond, sa_datatype, skip_condition);
+
+        dump_parametrized_flow_loop_end_if_parametrized(fl, "  ", sa_coutput);
 
         string_arena_add_string(sa_coutput, "}  /* (flow_mask & 0x%xU) */\n",
                                 (type == JDF_DEP_FLOW_OUT ? fl->flow_dep_mask_out : (1U << fl->flow_index)));
