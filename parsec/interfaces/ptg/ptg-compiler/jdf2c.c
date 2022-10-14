@@ -605,9 +605,10 @@ void dump_parametrized_flow_loop(const jdf_dataflow_t *flow, const char *iterato
             jdf_expr_t *to = variable->jdf_ta2;
             jdf_expr_t *step = variable->jdf_ta3;
             
-            string_arena_add_string(sa, "%sfor(int %s=%s;",
+            string_arena_add_string(sa, "%s// Iterating over the parametrized flow %s\n%sfor(int %s=%s;",
                     indent,
-                    iterator_name,
+                    f->varname,
+                    indent, iterator_name,
                     dump_expr((void**)from, &expr_info));
             string_arena_add_string(sa, "%s<=%s;",
                     iterator_name,
@@ -6016,7 +6017,7 @@ static void jdf_generate_code_flow_initialization(const jdf_t *jdf,
 
     string_arena_t *osa;
     osa = string_arena_new(64);
-    dump_parametrized_flow_loop_if_parametrized(flow, "\n\n  ", osa);
+    dump_parametrized_flow_loop_if_parametrized(flow, "  ", osa);
     coutput("%s", string_arena_get_string(osa));
 
     coutput("\n"
