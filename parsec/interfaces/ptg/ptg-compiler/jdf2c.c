@@ -3165,25 +3165,19 @@ static void jdf_generate_startup_tasks(const jdf_t *jdf, const jdf_function_entr
     
 
     // Generate the code to initialize the parametrized flow variables
-    for(jdf_dataflow_t *fl=f->dataflow; NULL != fl; fl=fl->next) {
-        if( NULL != fl->local_variables ) { // If is parametrized
-            expr_info_t expr_info = EMPTY_EXPR_INFO;
-            expr_info.sa = string_arena_new(32);
-            expr_info.prefix = "";
-            expr_info.suffix = "";
-            expr_info.assignments = "max parametrized dataflow";
+    // for(jdf_dataflow_t *fl=f->dataflow; NULL != fl; fl=fl->next) {
+    //     if( NULL != fl->local_variables ) { // If is parametrized
+    //         expr_info_t expr_info = EMPTY_EXPR_INFO;
+    //         expr_info.sa = string_arena_new(32);
+    //         expr_info.prefix = "";
+    //         expr_info.suffix = "";
+    //         expr_info.assignments = "max parametrized dataflow";
 
-            jdf_expr_t *variable = jdf_expr_lv_first(fl->local_variables);
-            assert(variable->op == JDF_RANGE);
-            jdf_expr_t *max_parametrized_flow = variable->jdf_ta2;
-
-            coutput("  this_task->data._f_%s = alloca(sizeof(parsec_data_pair_t)*((%s)+1));\n",
-                    fl->varname, dump_expr((void**)max_parametrized_flow, &expr_info));
-            coutput("  assert( NULL != this_task->data._f_%s );\n", fl->varname);
-            coutput("  memset(this_task->data._f_%s, 0, sizeof(parsec_data_pair_t)*((%s)+1));\n",
-                    fl->varname, dump_expr((void**)max_parametrized_flow, &expr_info));
-        }
-    }
+    //         jdf_expr_t *variable = jdf_expr_lv_first(fl->local_variables);
+    //         assert(variable->op == JDF_RANGE);
+    //         jdf_expr_t *max_parametrized_flow = variable->jdf_ta2;
+    //     }
+    // }
 
     for(vl = f->locals; vl != NULL; vl = vl->next)
         coutput("  int %s = this_task->locals.%s.value;  /* retrieve value saved during the last iteration */\n", vl->name, vl->name);
@@ -3319,10 +3313,28 @@ static void jdf_generate_startup_tasks(const jdf_t *jdf, const jdf_function_entr
         struct jdf_dataflow *dataflow = f->dataflow;
         for(idx = 0; NULL != dataflow; idx++, dataflow = dataflow->next ) {
 
-                if(FLOW_IS_PARAMETRIZED(dataflow)) {
+                // If the flow is parametrized, the data is an "array" of data
+                if(FLOW_IS_PARAMETRIZED(dataflow))
+                {
+                    expr_info_t expr_info = EMPTY_EXPR_INFO;
+                    expr_info.sa = string_arena_new(32);
+                    expr_info.prefix = "";
+                    expr_info.suffix = "";
+                    expr_info.assignments = "max parametrized dataflow";
+
+                    jdf_expr_t *variable = jdf_expr_lv_first(dataflow->local_variables);
+                    assert(variable->op == JDF_RANGE);
+                    jdf_expr_t *max_parametrized_flow = variable->jdf_ta2;
+
+                    coutput("%s  new_task->data._f_%s = alloca(sizeof(parsec_data_pair_t)*((%s)+1));\n",
+                            indent(nesting), dataflow->varname, dump_expr((void**)max_parametrized_flow, &expr_info));
+                    coutput("%s  assert( NULL != new_task->data._f_%s );\n", indent(nesting), dataflow->varname);
+                    coutput("%s  memset(new_task->data._f_%s, 0, sizeof(parsec_data_pair_t)*((%s)+1));\n",
+                    indent(nesting), dataflow->varname, dump_expr((void**)max_parametrized_flow, &expr_info));
+
                     nesting++;
                 }
-        
+
                 string_arena_t *osa = string_arena_new(16);
 
                 string_arena_t *sa = string_arena_new(256);
