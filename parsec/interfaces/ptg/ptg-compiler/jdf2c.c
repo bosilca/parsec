@@ -899,7 +899,8 @@ static char *dump_data_initialization_from_data_array(void **elem, void *arg)
 static char *dump_data_copy_init_for_inline_function(void **elem, void *arg)
 {
     init_from_data_info_t *info = (init_from_data_info_t*)arg;
-    string_arena_t *sa = info->sa;
+    string_arena_t *sa = info->sa,
+            *osa = string_arena_new(32);
     const char *where = info->where;
     jdf_dataflow_t *f = (jdf_dataflow_t*)elem;
     char *varname = f->varname;
@@ -909,12 +910,22 @@ static char *dump_data_copy_init_for_inline_function(void **elem, void *arg)
     }
 
     string_arena_init(sa);
+
+    // dump a loop if parametrized
+    dump_parametrized_flow_loop_if_parametrized(f, "  ", sa);
+
     string_arena_add_string(sa,
-                            "  parsec_data_copy_t *_f_%s = this_task->data._f_%s.data_%s;\n"
-                            "  (void)_f_%s;",
-                            varname, f->varname, where,
-                            varname
+                            "%s  parsec_data_copy_t *_f_%s = this_task->data._f_%s%s.data_%s;\n"
+                            "%s  (void)_f_%s;",
+                            INDENTATION_IF_PARAMETRIZED(f), varname, f->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, f), where,
+                            INDENTATION_IF_PARAMETRIZED(f), varname
                             );
+
+    // dump the end of the loop if parametrized
+    dump_parametrized_flow_loop_end_if_parametrized(f, "  ", sa);
+
+    string_arena_free(osa);
+
     return string_arena_get_string(sa);
 }
 
@@ -5860,7 +5871,7 @@ static void jdf_generate_code_call_init_output(const jdf_t *jdf, const jdf_call_
                                                const char *spaces)
 {
     int dataindex;
-    string_arena_t *sa, *sa_arena, *sa_datatype, *sa_count ;
+    string_arena_t *sa, *sa_arena, *sa_datatype, *sa_count, *osa ;
     expr_info_t info = EMPTY_EXPR_INFO;
 
     if( (NULL != call) && (NULL != call->var) ) {
@@ -5885,6 +5896,7 @@ static void jdf_generate_code_call_init_output(const jdf_t *jdf, const jdf_call_
     }
 
     sa  = string_arena_new(64);
+    osa = string_arena_new(64);
 
     info.sa = sa;
     info.prefix = "";
@@ -5911,18 +5923,18 @@ static void jdf_generate_code_call_init_output(const jdf_t *jdf, const jdf_call_
     coutput("%s  /* Flow %s [%d] dependency [%d] pure output data  */\n",
              spaces, flow->varname, flow->flow_index, dl->dep_index);
 
-    coutput("%s  if( NULL == (chunk = this_task->data._f_%s.data_in) ) {\n"
+    coutput("%s  if( NULL == (chunk = this_task->data._f_%s%s.data_in) ) {\n"
             "%s     /* No data set up by predecessor */\n",
-             spaces, flow->varname,
+             spaces, flow->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, flow),
              spaces);
 
     coutput("%s    chunk = parsec_arena_get_copy(%s->arena, %s, target_device, %s);\n"
             "%s    chunk->original->owner_device = target_device;\n",
             spaces, string_arena_get_string(sa_arena), string_arena_get_string(sa_count), string_arena_get_string(sa_datatype),
             spaces);
-    coutput("%s    this_task->data._f_%s.data_out = chunk;\n"
+    coutput("%s    this_task->data._f_%s%s.data_out = chunk;\n"
             "%s  }\n",
-            spaces, flow->varname,
+            spaces, flow->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, flow),
             spaces);
 
 #if defined(PARSEC_DEBUG_NOISIER) || defined(PARSEC_DEBUG_PARANOID)
@@ -5937,6 +5949,7 @@ static void jdf_generate_code_call_init_output(const jdf_t *jdf, const jdf_call_
 #endif
 
     string_arena_free(sa);
+    string_arena_free(osa);
     string_arena_free(sa_arena);
     string_arena_free(sa_datatype);
     string_arena_free(sa_count);
@@ -6854,7 +6867,7 @@ static void jdf_generate_code_hook_cuda(const jdf_t *jdf,
     const char *dyldtype;
     const char *device;
     const char *weight;
-    string_arena_t *sa, *sa2, *sa3;
+    string_arena_t *sa, *sa2, *sa3, *osa;
     assignment_info_t ai;
     init_from_data_info_t ai2;
     jdf_dataflow_t *fl;
@@ -6874,6 +6887,7 @@ static void jdf_generate_code_hook_cuda(const jdf_t *jdf,
     sa  = string_arena_new(64);
     sa2 = string_arena_new(64);
     sa3 = string_arena_new(64);
+    osa = string_arena_new(64);
 
     ai.sa = sa2;
     ai.holder = "this_task->locals.";
@@ -6934,10 +6948,10 @@ static void jdf_generate_code_hook_cuda(const jdf_t *jdf,
 
         if(fl->flow_flags & JDF_FLOW_TYPE_CTL) continue;  /* control flow, nothing to store */
 
-        coutput("    data_repo_entry_t *e%s = this_task->data._f_%s.source_repo_entry;\n"
+        coutput("    data_repo_entry_t *e%s = this_task->data._f_%s%s.source_repo_entry;\n"
                 "    if( (NULL != e%s) && (e%s->sim_exec_date > this_task->sim_exec_date) )\n"
                 "      this_task->sim_exec_date = e%s->sim_exec_date;\n",
-                fl->varname, fl->varname,
+                fl->varname, fl->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, fl),
                 fl->varname, fl->varname,
                 fl->varname);
     }
@@ -6948,6 +6962,8 @@ static void jdf_generate_code_hook_cuda(const jdf_t *jdf,
             "      es->largest_simulation_date = this_task->sim_exec_date;\n"
             "  }\n"
             "#endif\n");
+
+
 
     jdf_generate_code_cache_awareness_update(jdf, f);
 
@@ -7183,6 +7199,7 @@ static void jdf_generate_code_hook_cuda(const jdf_t *jdf,
     string_arena_free(sa);
     string_arena_free(sa2);
     string_arena_free(sa3);
+    string_arena_free(osa);
 }
 
 static void jdf_generate_code_hook(const jdf_t *jdf,
@@ -7191,12 +7208,14 @@ static void jdf_generate_code_hook(const jdf_t *jdf,
                                    const char *name)
 {
     jdf_def_list_t* type_property;
-    string_arena_t *sa, *sa2;
+    string_arena_t *sa, *sa2, *osa;
     assignment_info_t ai;
     init_from_data_info_t ai2;
     jdf_dataflow_t *fl;
     int di;
     char* output;
+
+    osa = string_arena_new(32);
 
     jdf_find_property(body->properties, "type", &type_property);
     if(NULL != type_property) {
@@ -7270,12 +7289,23 @@ static void jdf_generate_code_hook(const jdf_t *jdf,
 
         if(fl->flow_flags & JDF_FLOW_TYPE_CTL) continue;  /* control flow, nothing to store */
 
-        coutput("    data_repo_entry_t *e%s = this_task->data._f_%s.source_repo_entry;\n"
-                "    if( (NULL != e%s) && (e%s->sim_exec_date > this_task->sim_exec_date) )\n"
-                "      this_task->sim_exec_date = e%s->sim_exec_date;\n",
-                fl->varname, fl->varname,
-                fl->varname, fl->varname,
-                fl->varname);
+        string_arena_t *sa = string_arena_new(64);
+        dump_parametrized_flow_loop_if_parametrized(fl, "  ", sa);
+        coutput("%s", string_arena_get_string(sa));
+
+        coutput("%s    data_repo_entry_t *e%s = this_task->data._f_%s%s.source_repo_entry;\n"
+                "%s    if( (NULL != e%s) && (e%s->sim_exec_date > this_task->sim_exec_date) )\n"
+                "%s      this_task->sim_exec_date = e%s->sim_exec_date;\n",
+                INDENTATION_IF_PARAMETRIZED(fl), fl->varname, fl->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, fl),
+                INDENTATION_IF_PARAMETRIZED(fl), fl->varname, fl->varname,
+                INDENTATION_IF_PARAMETRIZED(fl), fl->varname);
+        
+        string_arena_init(sa);
+
+        dump_parametrized_flow_loop_end_if_parametrized(fl, "  ", sa);
+        coutput("%s", string_arena_get_string(sa));
+
+        string_arena_free(sa);
     }
     coutput("    if( this_task->task_class->sim_cost_fct != NULL ) {\n"
             "      this_task->sim_exec_date += this_task->task_class->sim_cost_fct(this_task);\n"
@@ -7297,7 +7327,6 @@ static void jdf_generate_code_hook(const jdf_t *jdf,
                 (fl->flow_flags & JDF_FLOW_TYPE_WRITE) ) {
 
                     string_arena_t *sa = string_arena_new(64);
-                    string_arena_t *osa = string_arena_new(16);
                     dump_parametrized_flow_loop_if_parametrized(fl, "  ", sa);
                     coutput("%s", string_arena_get_string(sa));
 
@@ -7318,7 +7347,6 @@ static void jdf_generate_code_hook(const jdf_t *jdf,
                     coutput("%s", string_arena_get_string(sa));
 
                     string_arena_free(sa);
-                    string_arena_free(osa);
 
             }
         }
@@ -7340,6 +7368,7 @@ static void jdf_generate_code_hook(const jdf_t *jdf,
 
     string_arena_free(sa);
     string_arena_free(sa2);
+    string_arena_free(osa);
 
   hook_end_block:
     if( NULL != type_property)
