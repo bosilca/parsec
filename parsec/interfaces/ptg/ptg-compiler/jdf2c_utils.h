@@ -53,6 +53,27 @@ util_dump_array_offset_if_parametrized(string_arena_t *sa, const jdf_dataflow_t 
     return string_arena_get_string(sa);
 }
 
+/** 
+ * VARIABLE_IS_FLOW_LEVEL
+ *   Tells whether a variable is a flow level variable or not.
+ * @param [IN] var:           the variable to test.
+ * @param [IN] flow:          the flow to test.
+ * 
+ * @return a boolean value.
+ */
+#define VARIABLE_IS_FLOW_LEVEL(flow, var) \
+    variable_is_flow_level_util(flow, var)
+
+static inline int variable_is_flow_level_util(const jdf_dataflow_t *flow, const jdf_expr_t *var)
+{
+    for(jdf_expr_t *flow_variable=flow->local_variables; flow_variable!=NULL; flow_variable=flow_variable->next) {
+        if (strcmp(flow_variable->alias, var->alias) == 0) {
+            return 1;
+        }
+    }
+
+    return 0;
+}
 
 /**
  * UTIL_DUMP_LIST_FIELD:

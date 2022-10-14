@@ -7658,6 +7658,7 @@ static void jdf_generate_code_release_deps(const jdf_t *jdf, const jdf_function_
         "\n");
 }
 
+// TODO: not finished yet (parametrized flows wont work)
 static char *jdf_dump_context_assignment(string_arena_t *sa_open,
                                          const jdf_t *jdf,
                                          const jdf_function_entry_t *sourcef,
@@ -7816,6 +7817,13 @@ static char *jdf_dump_context_assignment(string_arena_t *sa_open,
                         assert( call_ld == ld );
                         call_ld = jdf_expr_lv_next(call->local_defs, call_ld);
                         continue; /* This local define was alredy issued above as part of the call */
+                    }
+                    if( variable_is_flow_level_util(flow, ld) )
+                    {
+                        string_arena_add_string(sa_open, "%s%s// skipping local %s because belongs to the flow level\n",
+                                        prefix, indent(nbopen), ld->alias);
+
+                        continue;
                     }
                     string_arena_add_string(sa_open, "%s%s  {\n"
                                             "%s%s    int %s; // TODO\n",
