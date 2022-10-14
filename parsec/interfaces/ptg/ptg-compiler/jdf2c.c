@@ -6132,6 +6132,7 @@ static void jdf_generate_code_call_final_write(const jdf_t *jdf,
                                                const jdf_dataflow_t *flow)
 {
     string_arena_t *sa, *sa2;
+    string_arena_t *osa;
     string_arena_t *sa_arena, *sa_tmp_type_src, *sa_tmp_type_dst;
     string_arena_t *sa_type_src, *sa_displ_src, *sa_count_src;
     string_arena_t *sa_type_dst, *sa_displ_dst, *sa_count_dst;
@@ -6144,6 +6145,7 @@ static void jdf_generate_code_call_final_write(const jdf_t *jdf,
 
     sa = string_arena_new(64);
     sa2 = string_arena_new(64);
+    osa = string_arena_new(16);
 
     sa_tmp_type_src = string_arena_new(64);
     sa_tmp_type_dst = string_arena_new(64);
@@ -6235,10 +6237,10 @@ static void jdf_generate_code_call_final_write(const jdf_t *jdf,
         }
 
         coutput("%s  data_t_desc = data_of_%s(%s);\n"
-                "%s  if( (NULL != this_task->data._f_%s.data_out) && (this_task->data._f_%s.data_out->original != data_t_desc) ) {\n"
+                "%s  if( (NULL != this_task->data._f_%s%s.data_out) && (this_task->data._f_%s%s.data_out->original != data_t_desc) ) {\n"
                 "%s    /* Writting back using remote_type */;\n"
                 "%s    parsec_dep_data_description_t data;\n"
-                "%s    data.data         = this_task->data._f_%s.data_out;\n"
+                "%s    data.data         = this_task->data._f_%s%s.data_out;\n"
                 "%s    data.local.arena        = %s;\n"
                 "%s    data.local.src_datatype = %s;\n"
                 "%s    data.local.src_count    = %s;\n"
@@ -6251,13 +6253,13 @@ static void jdf_generate_code_call_final_write(const jdf_t *jdf,
                 "%s    parsec_remote_dep_memcpy(es,\n"
                 "%s                            this_task->taskpool,\n"
                 "%s                            parsec_data_get_copy(data_of_%s(%s), 0),\n"
-                "%s                            this_task->data._f_%s.data_out, &data);\n"
+                "%s                            this_task->data._f_%s%s.data_out, &data);\n"
                 "%s  }\n",
                 spaces, call->func_or_mem, string_arena_get_string(sa),
-                spaces, flow->varname, flow->varname,
+                spaces, flow->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, flow), flow->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, flow),
                 spaces,
                 spaces,
-                spaces, flow->varname,
+                spaces, flow->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, flow),
                 spaces, string_arena_get_string(sa_arena),
                 spaces, string_arena_get_string(sa_type_src),
                 spaces, string_arena_get_string(sa_count_src),
@@ -6270,7 +6272,7 @@ static void jdf_generate_code_call_final_write(const jdf_t *jdf,
                 spaces,
                 spaces,
                 spaces, call->func_or_mem, string_arena_get_string(sa),
-                spaces, flow->varname,
+                spaces, flow->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, flow),
                 spaces);
 
         coutput("#if defined(PARSEC_PROF_GRAPHER) && defined(PARSEC_PROF_TRACE)\n"
@@ -6281,6 +6283,7 @@ static void jdf_generate_code_call_final_write(const jdf_t *jdf,
 
     string_arena_free(sa);
     string_arena_free(sa2);
+    string_arena_free(osa);
     string_arena_free(sa_arena);
     string_arena_free(sa_tmp_type_src);
     string_arena_free(sa_tmp_type_dst);
@@ -7763,7 +7766,7 @@ static char *jdf_dump_context_assignment(string_arena_t *sa_open,
                         continue; /* This local define was alredy issued above as part of the call */
                     }
                     string_arena_add_string(sa_open, "%s%s  {\n"
-                                            "%s%s    int %s;\n",
+                                            "%s%s    int %s; // TODO\n",
                                             prefix, indent(nbopen),
                                             prefix, indent(nbopen), ld->alias);
                     nbopen++;
