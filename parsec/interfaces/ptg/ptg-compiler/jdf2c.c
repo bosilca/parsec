@@ -5871,7 +5871,7 @@ static void jdf_generate_code_call_init_output(const jdf_t *jdf, const jdf_call_
                                                const char *spaces)
 {
     int dataindex;
-    string_arena_t *sa, *sa_arena, *sa_datatype, *sa_count, *osa ;
+    string_arena_t *sa, *sa_arena, *sa_datatype, *sa_count, *osa, *sa_loop ;
     expr_info_t info = EMPTY_EXPR_INFO;
 
     if( (NULL != call) && (NULL != call->var) ) {
@@ -5906,6 +5906,7 @@ static void jdf_generate_code_call_init_output(const jdf_t *jdf, const jdf_call_
     sa_arena  = string_arena_new(64);
     sa_datatype = string_arena_new(64);
     sa_count = string_arena_new(64);
+    sa_loop = string_arena_new(64);
     /* This is the case of a pure output data. There's no reshaping. New datacopy should be directly
      * allocated using the correct arena/datatype.
      */
@@ -5923,10 +5924,19 @@ static void jdf_generate_code_call_init_output(const jdf_t *jdf, const jdf_call_
     coutput("%s  /* Flow %s [%d] dependency [%d] pure output data  */\n",
              spaces, flow->varname, flow->flow_index, dl->dep_index);
 
+
+    // a priori, the loop should already be generated when entering jdf_generate_code_call_init_output
+    // dump_parametrized_flow_loop_if_parametrized(flow, "  ", sa_loop);
+    // coutput("%s", string_arena_get_string(sa_loop));
+
     coutput("%s  if( NULL == (chunk = this_task->data._f_%s%s.data_in) ) {\n"
             "%s     /* No data set up by predecessor */\n",
              spaces, flow->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, flow),
              spaces);
+    
+    // string_arena_init(sa_loop);
+    // dump_parametrized_flow_loop_end_if_parametrized(flow, "  ", sa_loop);
+    // coutput("%s", string_arena_get_string(sa_loop));
 
     coutput("%s    chunk = parsec_arena_get_copy(%s->arena, %s, target_device, %s);\n"
             "%s    chunk->original->owner_device = target_device;\n",
