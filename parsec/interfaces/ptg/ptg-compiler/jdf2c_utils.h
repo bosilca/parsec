@@ -41,7 +41,7 @@ typedef char *(*dumper_function_t)(void **elt, void *arg);
  *   function used by the DUMP_ARRAY_OFFSET_IF_PARAMETRIZED* macros. Do not use directly.
  */
 static inline char*
-util_dump_array_offset_if_parametrized(string_arena_t *sa, jdf_dataflow_t *flow)
+util_dump_array_offset_if_parametrized(string_arena_t *sa, const jdf_dataflow_t *flow)
 {
     // reinit sa
     string_arena_init(sa);

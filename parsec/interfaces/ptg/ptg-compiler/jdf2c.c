@@ -583,7 +583,7 @@ char * dump_expr(void **elem, void *arg)
  * dump_parametrized_flow_loop:
  *   dumps the loop preceding a block that needs an iterator for the parametrized flow
  */
-void dump_parametrized_flow_loop(jdf_dataflow_t *flow, const char *iterator_name, const char *indent, void *arg)
+void dump_parametrized_flow_loop(const jdf_dataflow_t *flow, const char *iterator_name, const char *indent, void *arg)
 {
     //expr_info_t* expr_info = (expr_info_t*)arg;
     jdf_dataflow_t *f = (jdf_dataflow_t*)flow;
@@ -637,7 +637,7 @@ void dump_parametrized_flow_loop(jdf_dataflow_t *flow, const char *iterator_name
  * dump_parametrized_flow_loop_end:
  *  dumps the loop end corresponding to the loop preceding a block that needs an iterator for the parametrized flow
  */
-void dump_parametrized_flow_loop_end(jdf_dataflow_t *flow, const char *indent, void *arg)
+void dump_parametrized_flow_loop_end(const jdf_dataflow_t *flow, const char *indent, void *arg)
 {
     jdf_dataflow_t *f = (jdf_dataflow_t*)flow;
     string_arena_t *sa = arg;
@@ -652,7 +652,7 @@ void dump_parametrized_flow_loop_end(jdf_dataflow_t *flow, const char *indent, v
  *   dumps the loop preceding a block that needs an iterator for the parametrized flow if the flow is parametrized
  *   dumps nothing otherwise
  */
-void dump_parametrized_flow_loop_if_parametrized(jdf_dataflow_t *flow, const char *indent, void *arg)
+void dump_parametrized_flow_loop_if_parametrized(const jdf_dataflow_t *flow, const char *indent, void *arg)
 {
     if(FLOW_IS_PARAMETRIZED(flow)) {
         dump_parametrized_flow_loop(flow, flow->local_variables->alias, indent, arg);
@@ -664,7 +664,7 @@ void dump_parametrized_flow_loop_if_parametrized(jdf_dataflow_t *flow, const cha
  *  dumps the loop end corresponding to the loop preceding a block that needs an iterator for the parametrized flow if the flow is parametrized
  *  dumps nothing otherwise
  */
-void dump_parametrized_flow_loop_end_if_parametrized(jdf_dataflow_t *flow, const char *indent, void *arg)
+void dump_parametrized_flow_loop_end_if_parametrized(const jdf_dataflow_t *flow, const char *indent, void *arg)
 {
     if(FLOW_IS_PARAMETRIZED(flow)) {
         dump_parametrized_flow_loop_end(flow, indent, arg);
@@ -880,9 +880,9 @@ static char *dump_data_initialization_from_data_array(void **elem, void *arg)
     string_arena_t *osa = string_arena_new(32);
 
     string_arena_add_string(sa,
-                            "%s  _f_%s%s = this_task->data._f_%s.data_%s;\n",
+                            "%s  _f_%s%s = this_task->data._f_%s%s.data_%s;\n",
                             INDENTATION_IF_PARAMETRIZED(f), varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, f),
-                            varname, where);
+                            varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, f), where);
 
     string_arena_add_string(sa,
                             "%s  %s%s = PARSEC_DATA_COPY_GET_PTR(_f_%s%s);\n",
@@ -5605,14 +5605,18 @@ jdf_generate_code_consume_predecessor_setup(const jdf_t *jdf, const jdf_call_t *
     (void)pred_var;
     /*final_check = case predecessor has set up stuff on our data */
 
+    string_arena_t *osa;
+    osa = string_arena_new(64);
+    string_arena_init(osa);
+
     if( final_check ){
 
-        coutput("%s    consumed_repo = this_task->data._f_%s.source_repo;\n"
-                "%s    consumed_entry = this_task->data._f_%s.source_repo_entry;\n"
-                "%s    consumed_entry_key = this_task->data._f_%s.source_repo_entry->ht_item.key;\n",
-                spaces, flow->varname,
-                spaces, flow->varname,
-                spaces, flow->varname);
+        coutput("%s    consumed_repo = this_task->data._f_%s%s.source_repo;\n"
+                "%s    consumed_entry = this_task->data._f_%s%s.source_repo_entry;\n"
+                "%s    consumed_entry_key = this_task->data._f_%s%s.source_repo_entry->ht_item.key;\n",
+                spaces, flow->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, flow),
+                spaces, flow->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, flow),
+                spaces, flow->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, flow));
         /* Is this current task repo or predecessor repo? Different flow index */
 
         coutput("%s    if( (reshape_entry != NULL) && (reshape_entry->data[%d] != NULL) ){\n"
@@ -5621,10 +5625,10 @@ jdf_generate_code_consume_predecessor_setup(const jdf_t *jdf, const jdf_call_t *
                 spaces, flow->flow_index,
                 spaces,
                 spaces, flow->flow_index);
-        coutput("%s        assert( (this_task->data._f_%s.source_repo == reshape_repo)\n"
-                "%s             && (this_task->data._f_%s.source_repo_entry == reshape_entry));\n",
-                spaces, flow->varname,
-                spaces, flow->varname);
+        coutput("%s        assert( (this_task->data._f_%s%s.source_repo == reshape_repo)\n"
+                "%s             && (this_task->data._f_%s%s.source_repo_entry == reshape_entry));\n",
+                spaces, flow->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, flow),
+                spaces, flow->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, flow));
         coutput("%s    }else{\n"
                 "%s        /* Reshape promise set up on input by predecessor is the predecesssor task repo */\n"
                 "%s        consumed_flow_index = %d;\n"
@@ -5661,6 +5665,8 @@ jdf_generate_code_consume_predecessor_setup(const jdf_t *jdf, const jdf_call_t *
                 spaces, pred_flow->flow_index,
                 spaces);
     }
+
+    string_arena_free(osa);
 }
 
 static void
@@ -5829,12 +5835,12 @@ jdf_generate_code_call_initialization(const jdf_t *jdf, const jdf_call_t *call,
 
         /* Code to create & fulfill a reshape promise locally in case this input dependency is typed */
         jdf_generate_code_reshape_input_from_dep(jdf, f, flow, dl, spaces);
-        coutput("%s    this_task->data._f_%s.data_out = parsec_data_get_copy(chunk->original, target_device);\n"
+        coutput("%s    this_task->data._f_%s%s.data_out = parsec_data_get_copy(chunk->original, target_device);\n"
                 "#if defined(PARSEC_PROF_GRAPHER) && defined(PARSEC_PROF_TRACE)\n"
                 "%s    parsec_prof_grapher_data_input(chunk->original, (parsec_task_t*)this_task, &%s, 0);\n"
                 "#endif\n"
                 "%s  }\n",
-                spaces, flow->varname,
+                spaces, flow->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, flow),
                 spaces, JDF_OBJECT_ONAME( flow ),
                 spaces);
     }
@@ -7372,19 +7378,34 @@ jdf_generate_code_complete_hook(const jdf_t *jdf,
             /**
              * The data_out might be NULL if we don't forward anything.
              */
-            coutput("  if ( NULL != this_task->data._f_%s.data_out ) {\n"
+
+            string_arena_t *osa = string_arena_new(128);
+
+            dump_parametrized_flow_loop_if_parametrized(fl, "  ", osa);
+            coutput("%s", string_arena_get_string(osa));
+
+            coutput("%s  if ( NULL != this_task->data._f_%s%s.data_out ) {\n"
                     "#if defined(PARSEC_DEBUG_NOISIER)\n"
-                    "     char tmp[128];\n"
+                    "%s     char tmp[128];\n"
                     "#endif\n"
-                    "     this_task->data._f_%s.data_out->version++;  /* %s */\n"
-                    "     PARSEC_DEBUG_VERBOSE(10, parsec_debug_output,\n"
-                    "                          \"Complete hook of %%s: change Data copy %%p to version %%d at %%s:%%d\",\n"
-                    "                          parsec_task_snprintf(tmp, 128, (parsec_task_t*)(this_task)),\n"
-                    "                          this_task->data._f_%s.data_out, this_task->data._f_%s.data_out->version, __FILE__, __LINE__);\n"
-                    "  }\n",
-                    fl->varname,
-                    fl->varname, fl->varname,
-                    fl->varname, fl->varname );
+                    "%s     this_task->data._f_%s%s.data_out->version++;  /* %s */\n"
+                    "%s     PARSEC_DEBUG_VERBOSE(10, parsec_debug_output,\n"
+                    "%s                          \"Complete hook of %%s: change Data copy %%p to version %%d at %%s:%%d\",\n"
+                    "%s                          parsec_task_snprintf(tmp, 128, (parsec_task_t*)(this_task)),\n"
+                    "%s                          this_task->data._f_%s%s.data_out, this_task->data._f_%s%s.data_out->version, __FILE__, __LINE__);\n"
+                    "%s  }\n",
+                    INDENTATION_IF_PARAMETRIZED(fl), fl->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, fl),
+                    INDENTATION_IF_PARAMETRIZED(fl),
+                    INDENTATION_IF_PARAMETRIZED(fl), fl->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, fl), fl->varname,
+                    INDENTATION_IF_PARAMETRIZED(fl), INDENTATION_IF_PARAMETRIZED(fl), INDENTATION_IF_PARAMETRIZED(fl), INDENTATION_IF_PARAMETRIZED(fl),
+                    fl->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, fl), fl->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, fl),
+                    INDENTATION_IF_PARAMETRIZED(fl));
+            
+            string_arena_init(osa);
+            dump_parametrized_flow_loop_end_if_parametrized(fl, "  ", osa);
+            coutput("%s", string_arena_get_string(osa));
+
+            string_arena_free(osa);
         }
     }
 
