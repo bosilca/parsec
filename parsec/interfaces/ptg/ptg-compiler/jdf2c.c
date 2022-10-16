@@ -1902,12 +1902,16 @@ static void jdf_generate_range_min_without_fn(const jdf_t *jdf, const jdf_expr_t
     for(ld = jdf_expr_lv_first(expr->local_variables); NULL != ld; ld = jdf_expr_lv_next(expr->local_variables, ld)) {
         assert(ld->ldef_index != -1);
         if( JDF_RANGE == ld->op )
-            coutput("  { /* New scope for local definition '%s' */ \n"
-                    "    int %s = %s;\n"
-                    "    %s->ldef[%d].value = %s;\n",
-                    ld->alias,
-                    ld->alias, dump_expr((void**)ld->jdf_ta1, &info),
-                    asname, ld->ldef_index, ld->alias);
+            // TODO: how should we handle this if the variable is at the flow scope?
+            //if(!VARIABLE_IS_FLOW_LEVEL(flow, ld))
+            {
+                coutput("  { /* New scope for local definition '%s' */ \n"
+                        "    int %s = %s;\n"
+                        "    %s->ldef[%d].value = %s;\n",
+                        ld->alias,
+                        ld->alias, dump_expr((void**)ld->jdf_ta1, &info),
+                        asname, ld->ldef_index, ld->alias);
+            }
         else
              coutput("  { /* New scope for local definition '%s' */ \n"
                      "    int %s = %s;\n"
@@ -4304,7 +4308,7 @@ static void jdf_generate_one_function( const jdf_t *jdf, jdf_function_entry_t *f
                             "static const parsec_task_class_t %s = {\n"
                             "  .name = \"%s\",\n"
                             "  .task_class_id = %d,\n"
-                            "  .nb_flows = %d,\n"
+                            "  .nb_flows = %d,\n" // TODO change nb_flows when parametrized
                             "  .nb_parameters = %d,\n"
                             "  .nb_locals = %d,\n"
                             "  .task_class_type = PARSEC_TASK_CLASS_TYPE_PTG,\n",
