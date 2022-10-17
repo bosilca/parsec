@@ -1795,14 +1795,16 @@ static void jdf_generate_structure(jdf_t *jdf)
 
     coutput("/* Release dependencies output macro */\n"
             "#if defined(PARSEC_DEBUG_NOISIER)\n"
-            "#define RELEASE_DEP_OUTPUT(ES, DEPO, TASKO, DEPI, TASKI, RSRC, RDST, DATA)\\\n"
+            "#define RELEASE_DEP_OUTPUT(ES, DEPO, OFFSETO, TASKO, DEPI, OFFSETI, TASKI, RSRC, RDST, DATA)\\\n"
             "  do { \\\n"
             "    char tmp1[128], tmp2[128]; (void)tmp1; (void)tmp2;\\\n"
-            "    PARSEC_DEBUG_VERBOSE(20, parsec_debug_output, \"thread %%d VP %%d explore deps from %%s:%%s to %%s:%%s (from rank %%d to %%d) base ptr %%p\",\\\n"
+            "    PARSEC_DEBUG_VERBOSE(20, parsec_debug_output, \"thread %d VP %d explore deps from %s:%s to %s:%s (from rank %d to %d) base ptr %p\",\\\n"
             "           (NULL != (ES) ? (ES)->th_id : -1), (NULL != (ES) ? (ES)->virtual_process->vp_id : -1),\\\n"
-            "           DEPO, parsec_task_snprintf(tmp1, 128, (parsec_task_t*)(TASKO)),\\\n"
-            "           DEPI, parsec_task_snprintf(tmp2, 128, (parsec_task_t*)(TASKI)), (RSRC), (RDST), (DATA));\\\n"
-            "  } while(0)\n"
+            "           DEPO, OFFSETO, parsec_task_snprintf(tmp1, 128, (parsec_task_t*)(TASKO)),\\\n"
+            "           DEPI, OFFSETI, parsec_task_snprintf(tmp2, 128, (parsec_task_t*)(TASKI)), (RSRC), (RDST), (DATA));\\\n"
+            "  } while(0)\\\n"
+            "#define RELEASE_DEP_OUTPUT(ES, DEPO, TASKO, DEPI, TASKI, RSRC, RDST, DATA)\\\n"
+            "   RELEASE_DEP_OUTPUT(ES, DEPO, \"\", TASKO, DEPI, \"\", TASKI, RSRC, RDST, DATA)\\\n"
             "#define ACQUIRE_FLOW(TASKI, DEPI, FUNO, DEPO, LOCALS, PTR)\\\n"
             "  do { \\\n"
             "    char tmp1[128], tmp2[128]; (void)tmp1; (void)tmp2;\\\n"
@@ -1814,6 +1816,7 @@ static void jdf_generate_structure(jdf_t *jdf)
             "#define RELEASE_DEP_OUTPUT(ES, DEPO, TASKO, DEPI, TASKI, RSRC, RDST, DATA)\n"
             "#define ACQUIRE_FLOW(TASKI, DEPI, TASKO, DEPO, LOCALS, PTR)\n"
             "#endif\n");
+
     string_arena_free(sa1);
     string_arena_free(sa2);
 }
@@ -3317,34 +3320,16 @@ static void jdf_generate_startup_tasks(const jdf_t *jdf, const jdf_function_entr
     {
         struct jdf_dataflow *dataflow = f->dataflow;
         for(idx = 0; NULL != dataflow; idx++, dataflow = dataflow->next ) {
-
-                // If the flow is parametrized, the data is an "array" of data
-                if(FLOW_IS_PARAMETRIZED(dataflow))
-                {
-                    expr_info_t expr_info = EMPTY_EXPR_INFO;
-                    expr_info.sa = string_arena_new(32);
-                    expr_info.prefix = "";
-                    expr_info.suffix = "";
-                    expr_info.assignments = "max parametrized dataflow";
-
-                    jdf_expr_t *variable = jdf_expr_lv_first(dataflow->local_variables);
-                    assert(variable->op == JDF_RANGE);
-                    jdf_expr_t *max_parametrized_flow = variable->jdf_ta2;
-
-                    coutput("%s  new_task->data._f_%s = alloca(sizeof(parsec_data_pair_t)*((%s)+1));\n",
-                            indent(nesting), dataflow->varname, dump_expr((void**)max_parametrized_flow, &expr_info));
-                    coutput("%s  assert( NULL != new_task->data._f_%s );\n", indent(nesting), dataflow->varname);
-                    coutput("%s  memset(new_task->data._f_%s, 0, sizeof(parsec_data_pair_t)*((%s)+1));\n",
-                    indent(nesting), dataflow->varname, dump_expr((void**)max_parametrized_flow, &expr_info));
-
-                    nesting++;
-                }
-
                 string_arena_t *osa = string_arena_new(16);
 
                 string_arena_t *sa = string_arena_new(256);
                 dump_parametrized_flow_loop_if_parametrized(dataflow, indent(nesting), sa);
                 coutput("%s", string_arena_get_string(sa));
+
+                // increase nesting if parametrized
+                if( FLOW_IS_PARAMETRIZED(dataflow) ) {
+                    nesting++;
+                }
                 
                 coutput("%s  new_task->data._f_%s%s.source_repo_entry = NULL;\n"
                         "%s  new_task->data._f_%s%s.source_repo       = NULL;\n"
@@ -3968,6 +3953,35 @@ static void jdf_generate_internal_init(const jdf_t *jdf, const jdf_function_entr
         coutput("  this_task->status = PARSEC_TASK_STATUS_COMPLETE;\n");
     }
 
+    // If the flow is parametrized, the data is an "array" of data
+    jdf_dataflow_t *dataflow = f->dataflow;
+    if(dataflow && FLOW_IS_PARAMETRIZED(dataflow))
+    {
+        string_arena_t *osa = string_arena_new(16);
+        string_arena_t *sa = string_arena_new(256);
+        
+        expr_info_t expr_info = EMPTY_EXPR_INFO;
+        expr_info.sa = string_arena_new(32);
+        expr_info.prefix = "";
+        expr_info.suffix = "";
+        expr_info.assignments = "max parametrized dataflow";
+
+        jdf_expr_t *variable = jdf_expr_lv_first(dataflow->local_variables);
+        assert(variable->op == JDF_RANGE);
+        jdf_expr_t *max_parametrized_flow = variable->jdf_ta2;
+
+        coutput("\n%s  this_task->data._f_%s = alloca(sizeof(parsec_data_pair_t)*((%s)+1));\n",
+                indent(nesting), dataflow->varname, dump_expr((void**)max_parametrized_flow, &expr_info));
+        coutput("%s  assert( NULL != this_task->data._f_%s );\n", indent(nesting), dataflow->varname);
+        coutput("%s  memset(this_task->data._f_%s, 0, sizeof(parsec_data_pair_t)*((%s)+1));\n",
+        indent(nesting), dataflow->varname, dump_expr((void**)max_parametrized_flow, &expr_info));
+        
+        string_arena_free(sa);
+        string_arena_free(osa);
+
+        nesting--;
+    }
+
     string_arena_free(sa1);
     string_arena_free(sa2);
     coutput("\n  PARSEC_AYU_REGISTER_TASK(&%s_%s);\n", jdf_basename, f->fname);
@@ -3976,6 +3990,7 @@ static void jdf_generate_internal_init(const jdf_t *jdf, const jdf_function_entr
     if( f->user_defines & JDF_FUNCTION_HAS_UD_DEPENDENCIES_FUNS ) {
         coutput("  PARSEC_DEBUG_VERBOSE(20, parsec_debug_output, \"Allocating dependencies array for %s (user-defined allocator)\\n\");\n",
                 fname);
+                // TODO: if the flow is parametrized: need to be smarter
         coutput("  __parsec_tp->super.super.dependencies_array[%d] = %s(__parsec_tp);\n",
                 f->task_class_id, jdf_property_get_function(f->properties, JDF_PROP_UD_ALLOC_DEPS_FN_NAME, NULL));
     } else {
