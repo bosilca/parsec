@@ -954,30 +954,6 @@ dataflow:       optional_flow_flags VAR flow_specifier dependencies { named_expr
                         }
                     }
 
-/*
-jdf_dep_t *d = new(jdf_dep_t);
-    jdf_expr_t *expr;
-    jdf_expr_t *expr_remote;
-    jdf_expr_t *expr_data;
-    jdf_def_list_t* property = $4;
-    jdf_def_list_t* property_remote = $4;
-    jdf_def_list_t* property_data = $4;
-
-    d->local_defs = $2;
-*/
-
-/*
-property:     VAR ASSIGNMENT expr_simple
-              {
-                  jdf_def_list_t* assign = new(jdf_def_list_t);
-                  assign->next              = NULL;
-                  assign->name              = strdup($1);
-                  assign->expr              = $3;
-                  JDF_OBJECT_LINENO(assign) = JDF_OBJECT_LINENO($3);
-                  $$ = assign;
-              }
-*/
-
                     jdf_flow_specifier_t *flow_specifier = $3;
 
                     jdf_dataflow_t *flow  = new(jdf_dataflow_t);
@@ -986,26 +962,6 @@ property:     VAR ASSIGNMENT expr_simple
                     flow->local_variables = flow_specifier->variables;
                     flow->array_offset    = flow_specifier->array_offset;
                     flow->deps            = $4;
-
-/*
-                    // add the dataflow bound variables to each part of each dependency
-                    for(jdf_dep_t *dep = flow->deps; dep != NULL; dep = dep->next) {
-                        jdf_def_list_t *def = dep->local_defs;
-
-                        // variables defined in the whole dataflow
-                        jdf_expr_t *dataflow_defs = flow_specifier->expr;
-
-                        // add them to the current dependency
-                        add_locals_to_dep(dep, dataflow_defs);
-                    }
-*/
-
-/*
-                    // add the dataflow bound variables to each dependency
-                    for(jdf_dep_t *dep = flow->deps; dep != NULL; dep = dep->next) {
-                        add_defs_to_flow(flow, flow_specifier->expr);
-                    }
-*/
 
                     $$ = flow;
                     if( NULL == $4) {
@@ -1048,6 +1004,11 @@ array_offset_or_nothing: array_offset
 
 array_offset: PROPERTIES_ON expr_simple PROPERTIES_OFF
                {
+#ifndef PARSEC_ALLOW_PARAMETRIZED_FLOWS
+                    jdf_fatal(current_lineno, "Flow cannot be parametrized. Set the PARSEC_ALLOW_PARAMETRIZED_FLOWS flag to enable them.\n");
+                    YYERROR;
+#endif // PARSEC_ALLOW_PARAMETRIZED_FLOWS
+
                    $$ = $2;
                }
         /*|

@@ -4868,7 +4868,7 @@ static void jdf_generate_constructor( const jdf_t* jdf )
             string_arena_get_string(jdf->termdet_init_line),
             jdf_basename, jdf_basename,
             string_arena_get_string(sa1));
-
+// TODO use uintX_t instead of uint8 if MAX_DEP_IN_COUNT or MAX_DEP_OUT > 8 ? (in the task structure)
     /* Prepare the functions */
     coutput("  for( i = 0; i < __parsec_tp->super.super.nb_task_classes; i++ ) {\n"
             "    __parsec_tp->super.super.task_classes_array[i] = tc = malloc(sizeof(parsec_task_class_t));\n"
