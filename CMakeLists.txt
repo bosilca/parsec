@@ -158,7 +158,7 @@ option(PARSEC_DIST_PRIORITIES
 option(PARSEC_DIST_COLLECTIVES
   "Use optimized asynchronous operations where collective communication pattern is detected" ON)
 option(PARSEC_ALLOW_PARAMETRIZED_FLOWS
-  "Enables parametrized flows" OFF)
+  "Enable parametrized flows" OFF)
 set   (PARSEC_DIST_SHORT_LIMIT 1 CACHE STRING
   "Use the short protocol (no flow control) for messages smaller than the limit in KB. Performs better if smaller than the MTU")
 

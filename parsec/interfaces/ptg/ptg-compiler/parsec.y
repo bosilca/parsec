@@ -794,11 +794,11 @@ array_offset_or_nothing: array_offset
 
 array_offset: PROPERTIES_ON expr_simple PROPERTIES_OFF
                {
-#ifndef PARSEC_ALLOW_PARAMETRIZED_FLOWS
+#if !defined(PARSEC_ALLOW_PARAMETRIZED_FLOWS)
                     jdf_fatal(current_lineno, "Flow cannot be parametrized (line %d). Set the PARSEC_ALLOW_PARAMETRIZED_FLOWS flag to enable them.\n",
                               JDF_OBJECT_LINENO($2));
                     YYERROR;
-#endif // PARSEC_ALLOW_PARAMETRIZED_FLOWS
+#endif
 
                    $$ = $2;
                }
