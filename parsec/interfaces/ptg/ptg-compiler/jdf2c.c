@@ -1635,7 +1635,12 @@ static void jdf_generate_predeclarations( const jdf_t *jdf )
         for(fl = f->dataflow; fl != NULL; fl = fl->next) {
             rc = asprintf(&JDF_OBJECT_ONAME( fl ), "flow_of_%s_%s_for_%s", jdf_basename, f->fname, fl->varname);
             assert(rc != -1);
-            coutput("static const parsec_flow_t %s;\n",
+            coutput("static%s parsec_flow_t %s;\n",
+#if defined(PARSEC_ALLOW_PARAMETRIZED_FLOWS)
+                            "",
+#else
+                            " const",
+#endif
                     JDF_OBJECT_ONAME( fl ));
         }
     }
@@ -1969,12 +1974,17 @@ static void jdf_generate_range_min(const jdf_t *jdf, const jdf_function_entry_t 
             "  return __parsec_ret;\n"
             "}\n");
 
-    coutput("static const parsec_expr_t %s = {\n"
+    coutput("static%s parsec_expr_t %s = {\n"
             "  .op = PARSEC_EXPR_OP_INLINE,\n"
             "  .u_expr.v_func = { .type = %s, /* PARSEC_RETURN_TYPE_INT32 */\n"
             "                     .func = { .inline_func_int32 = (parsec_expr_op_int32_inline_func_t)%s_fct }\n"
             "                   }\n"
             "};\n",
+#if defined(PARSEC_ALLOW_PARAMETRIZED_FLOWS)
+                            "",
+#else
+                            " const",
+#endif
             fn_name, enum_type_name(0), fn_name);
 }
 
@@ -2032,12 +2042,17 @@ static void jdf_generate_range_max(const jdf_t *jdf, const jdf_function_entry_t 
             "  return __parsec_ret;\n"
             "}\n");
 
-    coutput("static const parsec_expr_t %s = {\n"
+    coutput("static%s parsec_expr_t %s = {\n"
             "  .op = PARSEC_EXPR_OP_INLINE,\n"
             "  .u_expr.v_func = { .type = %s, /* PARSEC_RETURN_TYPE_INT32 */\n"
             "                     .func = { .inline_func_int32 = (parsec_expr_op_int32_inline_func_t)%s_fct }\n"
             "                   }\n"
             "};\n",
+#if defined(PARSEC_ALLOW_PARAMETRIZED_FLOWS)
+                            "",
+#else
+                            " const",
+#endif
             fn_name, enum_type_name(0), fn_name);
 
     string_arena_free(sa);
@@ -2090,12 +2105,17 @@ static void jdf_generate_range_increment(const jdf_t *jdf, const jdf_function_en
             "  return __parsec_ret;\n"
             "}\n");
 
-    coutput("static const parsec_expr_t %s = {\n"
+    coutput("static%s parsec_expr_t %s = {\n"
             "  .op = PARSEC_EXPR_OP_INLINE,\n"
             "  .u_expr.v_func = { .type = %s, /* PARSEC_RETURN_TYPE_INT32 */\n"
             "                     .func = { .inline_func_int32 = (parsec_expr_op_int32_inline_func_t)%s_fct }\n"
             "                   }\n"
             "};\n",
+#if defined(PARSEC_ALLOW_PARAMETRIZED_FLOWS)
+                            "",
+#else
+                            " const",
+#endif
             fn_name, enum_type_name(0), fn_name);
 
     string_arena_free(sa);
@@ -2704,9 +2724,14 @@ static int jdf_generate_dependency( const jdf_t *jdf, jdf_dataflow_t *flow, jdf_
         dump_expr((void**)dep->guard->guard, &info);
     }
     string_arena_add_string(sa,
-                            "static const parsec_dep_t %s = {\n"
+                            "static%s parsec_dep_t %s = {\n"
                             "  .cond = %s,  /* %s%s */\n"
                             "  .ctl_gather_nb = %s,\n",
+#if defined(PARSEC_ALLOW_PARAMETRIZED_FLOWS)
+                            "",
+#else
+                            " const",
+#endif
                             JDF_OBJECT_ONAME(call),
                             condname, (call == dep->guard->calltrue ? "" : "!"), string_arena_get_string(sa3),
                             string_arena_get_string(sa2));
@@ -2893,7 +2918,7 @@ static int jdf_generate_dataflow( const jdf_t *jdf, const jdf_function_entry_t* 
                                 deps_out, MAX_DEP_OUT_COUNT, deps_out);
     }
     string_arena_add_string(sa,
-                            "\nstatic const parsec_flow_t %s = {\n"
+                            "\nstatic%s parsec_flow_t %s = {\n"
                             "  .name               = \"%s\",\n"
                             "  .sym_type           = %s,\n"
                             "  .flow_flags         = %s,\n"
@@ -2902,6 +2927,11 @@ static int jdf_generate_dataflow( const jdf_t *jdf, const jdf_function_entry_t* 
                             "  .dep_in     = { %s },\n"
                             "  .dep_out    = { %s }\n"
                             "};\n\n",
+#if defined(PARSEC_ALLOW_PARAMETRIZED_FLOWS)
+                            "",
+#else
+                            " const",
+#endif
                             JDF_OBJECT_ONAME(flow),
                             flow->varname,
                             sym_type,
