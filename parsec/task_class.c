@@ -126,7 +126,13 @@ void parsec_debug_dump_task_class_at_exec(parsec_task_class_t *tc)
                 {
                     continue;
                 }
-                if(dep->flow)
+
+                if( PARSEC_LOCAL_DATA_TASK_CLASS_ID == dep->task_class_id ) {
+                    parsec_debug_verbose(1, parsec_debug_output, "    Input dep %d of flow %s comes directly from the data collection",
+                                        j, flow->name);
+
+                }
+                else if(dep->flow)
                 {
                     parsec_debug_verbose(1, parsec_debug_output, "    Input dep %d of flow %s is an input dep that receives data from dep %d of flow %s (id=%d) of task class %d",
                                         j, flow->name, dep->dep_index, dep->flow->name, dep->flow->flow_index,
@@ -134,8 +140,10 @@ void parsec_debug_dump_task_class_at_exec(parsec_task_class_t *tc)
                 }
                 else
                 {
-                    parsec_debug_verbose(1, parsec_debug_output, "    Input dep %d of flow %s is an input dep that receives data from no one",
-                                        j, flow->name);
+                    //assert(0); // If flow is NULL, should be handled in if(PARSEC_LOCAL_DATA_TASK_CLASS_ID == dep->task_class_id)
+                    parsec_debug_verbose(1, parsec_debug_output, "    ## WARNING ## , parsec_debug_dump_task_class_at_exec does not know this type of dependency");
+                    //parsec_debug_verbose(1, parsec_debug_output, "    Input dep %d of flow %s is an input dep that receives data from no one",
+                    //                    j, flow->name);
                 }
                 parsec_debug_verbose(1, parsec_debug_output, "      datatype=%d, direct_data=%p",
                                     dep->dep_datatype_index, (void*)dep->direct_data);
@@ -154,7 +162,13 @@ void parsec_debug_dump_task_class_at_exec(parsec_task_class_t *tc)
                 {
                     continue;
                 }
-                if(dep->flow)
+
+                if( PARSEC_LOCAL_DATA_TASK_CLASS_ID == dep->task_class_id ) {
+                    parsec_debug_verbose(1, parsec_debug_output, "    Output dep %d of flow %s goes directly to the data collection",
+                                        j, flow->name);
+
+                }
+                else if(dep->flow)
                 {
                     parsec_debug_verbose(1, parsec_debug_output, "    Output dep %d of flow %s is an output dep that sends data to dep %d of flow %s (id=%d) of task class %d",
                                         j, flow->name, dep->dep_index, dep->flow->name, dep->flow->flow_index,
@@ -162,8 +176,10 @@ void parsec_debug_dump_task_class_at_exec(parsec_task_class_t *tc)
                 }
                 else
                 {
-                    parsec_debug_verbose(1, parsec_debug_output, "    Output dep %d of flow %s is an output dep that sends data to no one",
-                                        j, flow->name);
+                    //assert(0); // If flow is NULL, should be handled in if(PARSEC_LOCAL_DATA_TASK_CLASS_ID == dep->task_class_id)
+                    parsec_debug_verbose(1, parsec_debug_output, "    ## WARNING ## , parsec_debug_dump_task_class_at_exec does not know this type of dependency");
+                    //parsec_debug_verbose(1, parsec_debug_output, "    Output dep %d of flow %s is an output dep that sends data to no one",
+                    //                    j, flow->name);
                 }
                 parsec_debug_verbose(1, parsec_debug_output, "      datatype=%d, direct_data=%p",
                                     dep->dep_datatype_index, (void*)dep->direct_data);
