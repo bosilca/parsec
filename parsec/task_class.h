@@ -10,6 +10,6 @@
 #include "parsec/parsec_config.h"
 #include "parsec_internal.h"
 
-void parsec_debug_dump_task_class_exec(parsec_task_class_t *tc);
+void parsec_debug_dump_task_class_at_exec(parsec_task_class_t *tc);
 
 #endif  /* PARSEC_TASK_CLASS_H_HAS_BEEN_INCLUDED */
