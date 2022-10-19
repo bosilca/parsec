@@ -126,10 +126,19 @@ void parsec_debug_dump_task_class_at_exec(parsec_task_class_t *tc)
                 {
                     continue;
                 }
-                parsec_debug_verbose(1, parsec_debug_output, "    Dep %p is an input dep that takes data from dep %d of flow %s (id=%d) of task class %d"
-                                    " with datatype %d",
-                                    (void*)dep, dep->dep_index, dep->flow ? dep->flow->name : "[NULL flow]", dep->flow ? dep->flow->flow_index : -1,
-                                    dep->task_class_id, dep->dep_datatype_index);
+                if(dep->flow)
+                {
+                    parsec_debug_verbose(1, parsec_debug_output, "    Dep %d is an input dep that receives data from dep %d of flow %s (id=%d) of task class %d",
+                                        j, dep->dep_index, dep->flow->name, dep->flow->flow_index,
+                                        dep->task_class_id);
+                }
+                else
+                {
+                    parsec_debug_verbose(1, parsec_debug_output, "    Dep %d is an input dep that receives data from no one",
+                                        j);
+                }
+                parsec_debug_verbose(1, parsec_debug_output, "      datatype=%d, direct_data=%p",
+                                    dep->dep_datatype_index, (void*)dep->direct_data);
             }
         }
         flow = (parsec_flow_t*)tc->out[i];
@@ -143,10 +152,11 @@ void parsec_debug_dump_task_class_at_exec(parsec_task_class_t *tc)
                 {
                     continue;
                 }
-                parsec_debug_verbose(1, parsec_debug_output, "    Dep %p is an input dep that sends data to dep %d of flow %s (id=%d) of task class %d"
-                                    " with datatype %d",
-                                    (void*)dep, dep->dep_index, dep->flow ? dep->flow->name : "[NULL flow]", dep->flow ? dep->flow->flow_index : -1,
-                                    dep->task_class_id, dep->dep_datatype_index);
+                parsec_debug_verbose(1, parsec_debug_output, "    Dep %d is an output dep that sends data to dep %d of flow %s (id=%d) of task class %d",
+                                    j, dep->dep_index, dep->flow ? dep->flow->name : "[NULL flow]", dep->flow ? dep->flow->flow_index : -1,
+                                    dep->task_class_id);
+                parsec_debug_verbose(1, parsec_debug_output, "      datatype=%d, direct_data=%p",
+                                    dep->dep_datatype_index, (void*)dep->direct_data);
             }
         }
     }
