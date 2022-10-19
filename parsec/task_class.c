@@ -118,7 +118,7 @@ void parsec_debug_dump_task_class_at_exec(parsec_task_class_t *tc)
         flow = (parsec_flow_t*)tc->in[i];
         if(flow)
         {
-            parsec_debug_verbose(1, parsec_debug_output, "  Flow %s (%p) is an input flow",
+            parsec_debug_verbose(1, parsec_debug_output, "  Input of flow %s (%p)",
                                 flow->name, (void*)flow);
             for(j = 0; j < MAX_DEP_IN_COUNT && flow->dep_in[j]; j++) {
                 dep = (parsec_dep_t*)flow->dep_in[j];
@@ -128,23 +128,25 @@ void parsec_debug_dump_task_class_at_exec(parsec_task_class_t *tc)
                 }
                 if(dep->flow)
                 {
-                    parsec_debug_verbose(1, parsec_debug_output, "    Dep %d is an input dep that receives data from dep %d of flow %s (id=%d) of task class %d",
-                                        j, dep->dep_index, dep->flow->name, dep->flow->flow_index,
+                    parsec_debug_verbose(1, parsec_debug_output, "    Input dep %d of flow %s is an input dep that receives data from dep %d of flow %s (id=%d) of task class %d",
+                                        j, flow->name, dep->dep_index, dep->flow->name, dep->flow->flow_index,
                                         dep->task_class_id);
                 }
                 else
                 {
-                    parsec_debug_verbose(1, parsec_debug_output, "    Dep %d is an input dep that receives data from no one",
-                                        j);
+                    parsec_debug_verbose(1, parsec_debug_output, "    Input dep %d of flow %s is an input dep that receives data from no one",
+                                        j, flow->name);
                 }
                 parsec_debug_verbose(1, parsec_debug_output, "      datatype=%d, direct_data=%p",
                                     dep->dep_datatype_index, (void*)dep->direct_data);
             }
         }
+    }
+    for(i = 0; i < tc->nb_flows; i++) {
         flow = (parsec_flow_t*)tc->out[i];
         if(flow)
         {
-            parsec_debug_verbose(1, parsec_debug_output, "  Flow %s (%p) is an output flow",
+            parsec_debug_verbose(1, parsec_debug_output, "  Output of flow %s (%p)",
                                 flow->name, (void*)flow);
             for(j = 0; j < MAX_DEP_OUT_COUNT && flow->dep_out[j]; j++) {
                 dep = (parsec_dep_t*)flow->dep_out[j];
@@ -152,9 +154,22 @@ void parsec_debug_dump_task_class_at_exec(parsec_task_class_t *tc)
                 {
                     continue;
                 }
-                parsec_debug_verbose(1, parsec_debug_output, "    Dep %d is an output dep that sends data to dep %d of flow %s (id=%d) of task class %d",
-                                    j, dep->dep_index, dep->flow ? dep->flow->name : "[NULL flow]", dep->flow ? dep->flow->flow_index : -1,
-                                    dep->task_class_id);
+                // parsec_debug_verbose(1, parsec_debug_output, "    Dep %d is an output dep that sends data to dep %d of flow %s (id=%d) of task class %d",
+                //                     j, dep->dep_index, dep->flow ? dep->flow->name : "[NULL flow]", dep->flow ? dep->flow->flow_index : -1,
+                //                     dep->task_class_id);
+                // parsec_debug_verbose(1, parsec_debug_output, "      datatype=%d, direct_data=%p",
+                //                     dep->dep_datatype_index, (void*)dep->direct_data);
+                if(dep->flow)
+                {
+                    parsec_debug_verbose(1, parsec_debug_output, "    Output dep %d of flow %s is an output dep that sends data to dep %d of flow %s (id=%d) of task class %d",
+                                        j, flow->name, dep->dep_index, dep->flow->name, dep->flow->flow_index,
+                                        dep->task_class_id);
+                }
+                else
+                {
+                    parsec_debug_verbose(1, parsec_debug_output, "    Output dep %d of flow %s is an output dep that sends data to no one",
+                                        j, flow->name);
+                }
                 parsec_debug_verbose(1, parsec_debug_output, "      datatype=%d, direct_data=%p",
                                     dep->dep_datatype_index, (void*)dep->direct_data);
             }
