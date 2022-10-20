@@ -1386,10 +1386,15 @@ parsec_check_IN_dependencies_with_mask(const parsec_taskpool_t *tp,
                             continue;  /* doesn't match */
                         /* the condition triggered let's check if it's for a data */
                     }  /* otherwise we have an input flow without a condition, it MUST be final */
+                    /*
+                    TODO: George, Thomas, please review the new code that replaces this:
                     if( PARSEC_LOCAL_DATA_TASK_CLASS_ID == dep->task_class_id ) {
                         active = (1 << flow->flow_index);
                     }
                     break;
+                    */
+                   active = (1 << flow->flow_index);
+                   assert( PARSEC_LOCAL_DATA_TASK_CLASS_ID == dep->task_class_id );
                 }
             }
         }

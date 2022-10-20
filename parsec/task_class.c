@@ -98,7 +98,14 @@
 
 
 
-
+bool parsec_helper_flow_is_in_flow_array(parsec_flow_t const *flow, parsec_flow_t const *flow_array[], int flow_array_size) {
+    for (int i = 0; i < flow_array_size; i++) {
+        if (flow == flow_array[i]) {
+            return true;
+        }
+    }
+    return false;
+}
 
 /* Prints the task class information (for debugging purposes)
  * It will print the basic task information, its flows and their deps
@@ -106,14 +113,72 @@
 void parsec_debug_dump_task_class_at_exec(parsec_task_class_t *tc)
 {
     int i, j, k;
+    int flow_in_out, dep_in_out;
     parsec_flow_t *flow;
     parsec_dep_t *dep;
+
+    // flows can appear twice in a task class (if both in and out)
+    parsec_flow_t *treated_flows[MAX_PARAM_COUNT];
+    int treated_flows_size = 0;;
 
     parsec_debug_verbose(1, parsec_debug_output, "###### PRINTING TASK CLASS %s ######", tc->name);
 
     parsec_debug_verbose(1, parsec_debug_output, "Task Class %s (%p) has %d flows, %d parameters, %d locals",
                          tc->name, (void*)tc, tc->nb_flows, tc->nb_parameters, tc->nb_locals);
 
+    for(i = 0; i < tc->nb_flows; i++) {
+        for(flow_in_out=0;flow_in_out<2;++flow_in_out)
+        {
+            flow = (parsec_flow_t*)(flow_in_out?tc->out[i]:tc->in[i]);
+
+            if(parsec_helper_flow_is_in_flow_array(flow, treated_flows, treated_flows_size)) {
+                continue;
+            }
+
+            if(flow)
+            {
+                parsec_debug_verbose(1, parsec_debug_output, "  flow %s (%p)",
+                                    flow->name, (void*)flow);
+                for(dep_in_out=0;dep_in_out<2;++dep_in_out)
+                {
+                    for(j = 0; j < (dep_in_out?MAX_DEP_OUT_COUNT:MAX_DEP_IN_COUNT); j++) {
+                        dep = (parsec_dep_t*)(dep_in_out?flow->dep_out[j]:flow->dep_in[j]);
+                        if(!dep)
+                        {
+                            continue;
+                        }
+
+                        if( PARSEC_LOCAL_DATA_TASK_CLASS_ID == dep->task_class_id ) {
+                            parsec_debug_verbose(1, parsec_debug_output, "    %s dep %d of flow %s linked with data collection",
+                                                dep_in_out?"output":"input", j, flow->name);
+
+                        }
+                        else if(dep->flow)
+                        {
+                            parsec_debug_verbose(1, parsec_debug_output, "    %s dep %d of flow %s is a dep that is linked to dep %d of flow %s (id=%d) of task class %d",
+                                                dep_in_out?"output":"input", j, flow->name, dep->dep_index, dep->flow->name,
+                                                dep->flow->flow_index, dep->task_class_id);
+                        }
+                        else
+                        {
+                            parsec_debug_verbose(1, parsec_debug_output, "    ## WARNING ## , parsec_debug_dump_task_class_at_exec does not know this type of dependency");
+                            continue;
+                        }
+                        parsec_debug_verbose(1, parsec_debug_output, "      datatype=%d, direct_data=%p",
+                                            dep->dep_datatype_index, (void*)dep->direct_data);
+                    }
+                }
+
+                treated_flows[treated_flows_size] = flow;
+                ++treated_flows_size;
+            }
+        }
+    }
+
+    assert(tc->nb_flows == treated_flows_size);
+
+
+/*
     for(i = 0; i < tc->nb_flows; i++) {
         flow = (parsec_flow_t*)tc->in[i];
         if(flow)
@@ -185,5 +250,5 @@ void parsec_debug_dump_task_class_at_exec(parsec_task_class_t *tc)
                                     dep->dep_datatype_index, (void*)dep->direct_data);
             }
         }
-    }
+    }*/
 }
