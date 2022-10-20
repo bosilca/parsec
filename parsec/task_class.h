@@ -12,5 +12,6 @@
 #include "parsec_internal.h"
 
 void parsec_debug_dump_task_class_at_exec(parsec_task_class_t *tc);
+void parsec_check_sanity_of_task_class(parsec_task_class_t *tc);
 
 #endif  /* PARSEC_TASK_CLASS_H_HAS_BEEN_INCLUDED */

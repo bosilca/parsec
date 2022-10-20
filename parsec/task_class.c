@@ -174,81 +174,37 @@ void parsec_debug_dump_task_class_at_exec(parsec_task_class_t *tc)
             }
         }
     }
+}
 
-    assert(tc->nb_flows == treated_flows_size);
+/* Checks if the task class is valid (for debugging purposes)
+ */
+void parsec_check_sanity_of_task_class(parsec_task_class_t *tc)
+{
+    int i, j, k;
+    int flow_in_out, dep_in_out;
+    parsec_flow_t *flow;
+    parsec_dep_t *dep;
 
+    // flows can appear twice in a task class (if both in and out)
+    parsec_flow_t *treated_flows[MAX_PARAM_COUNT];
+    int treated_flows_size = 0;;
 
-/*
     for(i = 0; i < tc->nb_flows; i++) {
-        flow = (parsec_flow_t*)tc->in[i];
-        if(flow)
+        for(flow_in_out=0;flow_in_out<2;++flow_in_out)
         {
-            parsec_debug_verbose(1, parsec_debug_output, "  Input of flow %s (%p)",
-                                flow->name, (void*)flow);
-            for(j = 0; j < MAX_DEP_IN_COUNT && flow->dep_in[j]; j++) {
-                dep = (parsec_dep_t*)flow->dep_in[j];
-                if(!dep)
-                {
-                    continue;
-                }
+            flow = (parsec_flow_t*)(flow_in_out?tc->out[i]:tc->in[i]);
 
-                if( PARSEC_LOCAL_DATA_TASK_CLASS_ID == dep->task_class_id ) {
-                    parsec_debug_verbose(1, parsec_debug_output, "    Input dep %d of flow %s comes directly from the data collection",
-                                        j, flow->name);
+            if(parsec_helper_flow_is_in_flow_array(flow, treated_flows, treated_flows_size)) {
+                continue;
+            }
 
-                }
-                else if(dep->flow)
-                {
-                    parsec_debug_verbose(1, parsec_debug_output, "    Input dep %d of flow %s is an input dep that receives data from dep %d of flow %s (id=%d) of task class %d",
-                                        j, flow->name, dep->dep_index, dep->flow->name, dep->flow->flow_index,
-                                        dep->task_class_id);
-                }
-                else
-                {
-                    //assert(0); // If flow is NULL, should be handled in if(PARSEC_LOCAL_DATA_TASK_CLASS_ID == dep->task_class_id)
-                    parsec_debug_verbose(1, parsec_debug_output, "    ## WARNING ## , parsec_debug_dump_task_class_at_exec does not know this type of dependency");
-                    //parsec_debug_verbose(1, parsec_debug_output, "    Input dep %d of flow %s is an input dep that receives data from no one",
-                    //                    j, flow->name);
-                }
-                parsec_debug_verbose(1, parsec_debug_output, "      datatype=%d, direct_data=%p",
-                                    dep->dep_datatype_index, (void*)dep->direct_data);
+            if(flow)
+            {
+                treated_flows[treated_flows_size] = flow;
+                ++treated_flows_size;
             }
         }
     }
-    for(i = 0; i < tc->nb_flows; i++) {
-        flow = (parsec_flow_t*)tc->out[i];
-        if(flow)
-        {
-            parsec_debug_verbose(1, parsec_debug_output, "  Output of flow %s (%p)",
-                                flow->name, (void*)flow);
-            for(j = 0; j < MAX_DEP_OUT_COUNT && flow->dep_out[j]; j++) {
-                dep = (parsec_dep_t*)flow->dep_out[j];
-                if(!dep)
-                {
-                    continue;
-                }
 
-                if( PARSEC_LOCAL_DATA_TASK_CLASS_ID == dep->task_class_id ) {
-                    parsec_debug_verbose(1, parsec_debug_output, "    Output dep %d of flow %s goes directly to the data collection",
-                                        j, flow->name);
-
-                }
-                else if(dep->flow)
-                {
-                    parsec_debug_verbose(1, parsec_debug_output, "    Output dep %d of flow %s is an output dep that sends data to dep %d of flow %s (id=%d) of task class %d",
-                                        j, flow->name, dep->dep_index, dep->flow->name, dep->flow->flow_index,
-                                        dep->task_class_id);
-                }
-                else
-                {
-                    //assert(0); // If flow is NULL, should be handled in if(PARSEC_LOCAL_DATA_TASK_CLASS_ID == dep->task_class_id)
-                    parsec_debug_verbose(1, parsec_debug_output, "    ## WARNING ## , parsec_debug_dump_task_class_at_exec does not know this type of dependency");
-                    //parsec_debug_verbose(1, parsec_debug_output, "    Output dep %d of flow %s is an output dep that sends data to no one",
-                    //                    j, flow->name);
-                }
-                parsec_debug_verbose(1, parsec_debug_output, "      datatype=%d, direct_data=%p",
-                                    dep->dep_datatype_index, (void*)dep->direct_data);
-            }
-        }
-    }*/
+    assert(tc->nb_flows == treated_flows_size);
 }
