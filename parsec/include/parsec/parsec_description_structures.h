@@ -15,6 +15,9 @@ BEGIN_C_DECLS
 typedef struct parsec_assignment_s parsec_assignment_t;
 typedef struct parsec_expr_s parsec_expr_t;
 typedef struct parsec_flow_s parsec_flow_t;
+#if defined(PARSEC_ALLOW_PARAMETRIZED_FLOWS)
+typedef struct parsec_parametrized_flow_s parsec_parametrized_flow_t; // to store information about parametrized flows
+#endif
 typedef struct parsec_dep_s parsec_dep_t;
 typedef struct parsec_symbol_s parsec_symbol_t;
 
@@ -106,6 +109,12 @@ struct parsec_flow_s {
     parsec_dep_t const *dep_out[MAX_DEP_OUT_COUNT];
 #endif
 };
+
+#if defined(PARSEC_ALLOW_PARAMETRIZED_FLOWS)
+struct parsec_parametrized_flow_s {
+    int test;
+};
+#endif
 
 /**
  * Dependencies

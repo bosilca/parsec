@@ -98,7 +98,7 @@
 
 
 
-bool parsec_helper_flow_is_in_flow_array(parsec_flow_t const *flow, parsec_flow_t const *flow_array[], int flow_array_size) {
+bool parsec_helper_flow_is_in_flow_array(const parsec_flow_t *flow, parsec_flow_t *flow_array[], int flow_array_size) {
     for (int i = 0; i < flow_array_size; i++) {
         if (flow == flow_array[i]) {
             return true;
@@ -119,26 +119,22 @@ void parsec_debug_dump_task_class_at_exec(parsec_task_class_t *tc)
 
     // flows can appear twice in a task class (if both in and out)
     parsec_flow_t *treated_flows[MAX_PARAM_COUNT];
-    int treated_flows_size = 0;;
+    int treated_flows_size = 0;
 
     parsec_debug_verbose(1, parsec_debug_output, "###### PRINTING TASK CLASS %s ######", tc->name);
 
     parsec_debug_verbose(1, parsec_debug_output, "Task Class %s (%p) has %d flows, %d parameters, %d locals",
                          tc->name, (void*)tc, tc->nb_flows, tc->nb_parameters, tc->nb_locals);
 
-    for(i = 0; i < tc->nb_flows; i++) {
+    for(i = 0; i < MAX_PARAM_COUNT; i++) {
         for(flow_in_out=0;flow_in_out<2;++flow_in_out)
         {
             flow = (parsec_flow_t*)(flow_in_out?tc->out[i]:tc->in[i]);
 
-            if(parsec_helper_flow_is_in_flow_array(flow, treated_flows, treated_flows_size)) {
-                continue;
-            }
-
-            if(flow)
+            if(flow && !parsec_helper_flow_is_in_flow_array(flow, treated_flows, treated_flows_size))
             {
-                parsec_debug_verbose(1, parsec_debug_output, "  flow %s (%p)",
-                                    flow->name, (void*)flow);
+                parsec_debug_verbose(1, parsec_debug_output, "  flow %s (addr=%p, id=%d, flow_datatype_mask=%p, flow_flags=%p)",
+                                        flow->name, (void*)flow, flow->flow_index, (void*)flow->flow_datatype_mask, (void*)flow->flow_flags);
                 for(dep_in_out=0;dep_in_out<2;++dep_in_out)
                 {
                     for(j = 0; j < (dep_in_out?MAX_DEP_OUT_COUNT:MAX_DEP_IN_COUNT); j++) {
@@ -164,8 +160,8 @@ void parsec_debug_dump_task_class_at_exec(parsec_task_class_t *tc)
                             parsec_debug_verbose(1, parsec_debug_output, "    ## WARNING ## , parsec_debug_dump_task_class_at_exec does not know this type of dependency");
                             continue;
                         }
-                        parsec_debug_verbose(1, parsec_debug_output, "      datatype=%d, direct_data=%p",
-                                            dep->dep_datatype_index, (void*)dep->direct_data);
+                        parsec_debug_verbose(1, parsec_debug_output, "      datatype=%d, direct_data=%p, dep_datatype_index=%d, dep_index=%d, task_class_id=%d",
+                                            dep->dep_datatype_index, (void*)dep->direct_data, dep->dep_datatype_index, dep->dep_index, dep->task_class_id);
                     }
                 }
 
@@ -189,20 +185,40 @@ void parsec_check_sanity_of_task_class(parsec_task_class_t *tc)
     parsec_flow_t *treated_flows[MAX_PARAM_COUNT];
     int treated_flows_size = 0;;
 
-    for(i = 0; i < tc->nb_flows; i++) {
+    for(i = 0; i < MAX_PARAM_COUNT; i++) {
         for(flow_in_out=0;flow_in_out<2;++flow_in_out)
         {
             flow = (parsec_flow_t*)(flow_in_out?tc->out[i]:tc->in[i]);
 
-            if(parsec_helper_flow_is_in_flow_array(flow, treated_flows, treated_flows_size)) {
-                continue;
-            }
-
-            if(flow)
+            if(flow && !parsec_helper_flow_is_in_flow_array(flow, treated_flows, treated_flows_size))
             {
+                // TODO ? Is there anything to assert?
+
                 treated_flows[treated_flows_size] = flow;
                 ++treated_flows_size;
             }
+        }
+    }
+
+    // Check the coherency of the flow flags
+    for(i = 0; i < MAX_PARAM_COUNT; i++) {
+        flow = tc->out[i];
+
+        if(!flow)
+        {
+            break;
+        }
+
+        // For each output dep of the flow ...
+        for(j = 0; j < (dep_in_out?MAX_DEP_OUT_COUNT:MAX_DEP_IN_COUNT); j++) {
+            dep = flow->dep_out[j];
+            if(!dep)
+            {
+                break;
+            }
+
+            // All out dependencies should be in the flow datatype mask
+            assert((1<<dep->dep_index) & flow->flow_datatype_mask);
         }
     }
 
