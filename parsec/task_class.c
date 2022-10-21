@@ -112,7 +112,7 @@ bool parsec_helper_flow_is_in_flow_array(const parsec_flow_t *flow, parsec_flow_
  */
 void parsec_debug_dump_task_class_at_exec(parsec_task_class_t *tc)
 {
-    int i, j, k;
+    int i, j;
     int flow_in_out, dep_in_out;
     parsec_flow_t *flow;
     parsec_dep_t *dep;
@@ -134,7 +134,7 @@ void parsec_debug_dump_task_class_at_exec(parsec_task_class_t *tc)
             if(flow && !parsec_helper_flow_is_in_flow_array(flow, treated_flows, treated_flows_size))
             {
                 parsec_debug_verbose(1, parsec_debug_output, "  flow %s (addr=%p, id=%d, flow_datatype_mask=%p, flow_flags=%p)",
-                                        flow->name, (void*)flow, flow->flow_index, (void*)flow->flow_datatype_mask, (void*)flow->flow_flags);
+                                        flow->name, (void*)flow, flow->flow_index, flow->flow_datatype_mask, flow->flow_flags);
                 for(dep_in_out=0;dep_in_out<2;++dep_in_out)
                 {
                     for(j = 0; j < (dep_in_out?MAX_DEP_OUT_COUNT:MAX_DEP_IN_COUNT); j++) {
@@ -145,13 +145,13 @@ void parsec_debug_dump_task_class_at_exec(parsec_task_class_t *tc)
                         }
 
                         if( PARSEC_LOCAL_DATA_TASK_CLASS_ID == dep->task_class_id ) {
-                            parsec_debug_verbose(1, parsec_debug_output, "    %s dep %d of flow %s linked with data collection",
+                            parsec_debug_verbose(1, parsec_debug_output, "    %s dep [%d] of flow %s linked with data collection",
                                                 dep_in_out?"output":"input", j, flow->name);
 
                         }
                         else if(dep->flow)
                         {
-                            parsec_debug_verbose(1, parsec_debug_output, "    %s dep %d of flow %s is a dep that is linked to dep %d of flow %s (id=%d) of task class %d",
+                            parsec_debug_verbose(1, parsec_debug_output, "    %s dep [%d] of flow %s is a dep that is linked to dep %d of flow %s (id=%d) of task class %d",
                                                 dep_in_out?"output":"input", j, flow->name, dep->dep_index, dep->flow->name,
                                                 dep->flow->flow_index, dep->task_class_id);
                         }
@@ -176,7 +176,7 @@ void parsec_debug_dump_task_class_at_exec(parsec_task_class_t *tc)
  */
 void parsec_check_sanity_of_task_class(parsec_task_class_t *tc)
 {
-    int i, j, k;
+    int i, j;
     int flow_in_out, dep_in_out;
     parsec_flow_t *flow;
     parsec_dep_t *dep;
@@ -223,4 +223,33 @@ void parsec_check_sanity_of_task_class(parsec_task_class_t *tc)
     }
 
     assert(tc->nb_flows == treated_flows_size);
+}
+
+parsec_flow_t *parsec_helper_copy_flow(parsec_flow_t * flow)
+{
+    int flow_in_out;
+
+    parsec_flow_t *new_flow = (parsec_flow_t*)malloc(sizeof(parsec_flow_t));
+    assert(new_flow);
+    memcpy(new_flow, flow, sizeof(parsec_flow_t));
+
+    // Copy the dependencies
+    int i;
+    for(flow_in_out=0;flow_in_out<2;++flow_in_out) {
+        for(i = 0; i < MAX_DEP_IN_COUNT; i++) {
+            parsec_dep_t *dep = (parsec_dep_t*)(flow_in_out?new_flow->dep_out[i]:new_flow->dep_in[i]);
+
+            if(!dep)
+            {
+                break;
+            }
+
+            parsec_dep_t *new_dep = (parsec_dep_t*)malloc(sizeof(parsec_dep_t));
+            assert(new_dep);
+            memcpy(new_dep, dep, sizeof(parsec_dep_t));
+            (flow_in_out?new_flow->dep_out:new_flow->dep_in)[i] = new_dep;
+        }
+    }
+
+    return new_flow;
 }

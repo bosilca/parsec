@@ -17,4 +17,7 @@ bool parsec_helper_flow_is_in_flow_array(const parsec_flow_t *flow, parsec_flow_
 void parsec_debug_dump_task_class_at_exec(parsec_task_class_t *tc);
 void parsec_check_sanity_of_task_class(parsec_task_class_t *tc);
 
+// Copy a flow (including its deps) and returns a pointer to the new flow
+parsec_flow_t *parsec_helper_copy_flow(parsec_flow_t * flow);
+
 #endif  /* PARSEC_TASK_CLASS_H_HAS_BEEN_INCLUDED */
