@@ -322,12 +322,12 @@ void parsec_debug_dump_task_class_at_exec(parsec_task_class_t *tc)
 
                         if (PARSEC_LOCAL_DATA_TASK_CLASS_ID == dep->task_class_id)
                         {
-                            parsec_debug_verbose(1, parsec_debug_output, "   %s dep [%d] of flow %s linked with data collection",
+                            parsec_debug_verbose(1, parsec_debug_output, "    %s dep [%d] of flow %s linked with data collection",
                                                  dep_in_out ? "->" : "<-", j, flow->name);
                         }
                         else if (dep->flow)
                         {
-                            parsec_debug_verbose(1, parsec_debug_output, "     %s dep [%d] of flow %s is a dep that is linked to dep %d of flow %s (id=%d) of task class %d",
+                            parsec_debug_verbose(1, parsec_debug_output, "    %s dep [%d] of flow %s is a dep that is linked to dep %d of flow %s (id=%d) of task class %d",
                                                  dep_in_out ? "->" : "<-", j, flow->name, dep->dep_index, dep->flow->name,
                                                  dep->flow->flow_index, dep->task_class_id);
                         }
