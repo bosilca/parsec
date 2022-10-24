@@ -297,7 +297,7 @@ void parsec_debug_dump_task_class_at_exec(parsec_task_class_t *tc)
 
     parsec_debug_verbose(1, parsec_debug_output, "###### PRINTING TASK CLASS %s ######", tc->name);
 
-    parsec_debug_verbose(1, parsec_debug_output, "Task Class %s (%p) has %d flows, %d parameters, %d locals",
+    parsec_debug_verbose(1, parsec_debug_output, "## Task Class %s (%p) has %d flows, %d parameters, %d locals",
                          tc->name, (void *)tc, tc->nb_flows, tc->nb_parameters, tc->nb_locals);
 
     for (i = 0; i < MAX_PARAM_COUNT; i++)
@@ -308,7 +308,7 @@ void parsec_debug_dump_task_class_at_exec(parsec_task_class_t *tc)
 
             if (flow && !parsec_helper_flow_is_in_flow_array(flow, treated_flows, treated_flows_size))
             {
-                parsec_debug_verbose(1, parsec_debug_output, "  flow %s (addr=%p, id=%d, flow_datatype_mask=%p, flow_flags=%p)",
+                parsec_debug_verbose(1, parsec_debug_output, "  RW flow %s (addr=%p, id=%d, flow_datatype_mask=%p, flow_flags=%p)",
                                      flow->name, (void *)flow, flow->flow_index, flow->flow_datatype_mask, flow->flow_flags);
                 for (dep_in_out = 0; dep_in_out < 2; ++dep_in_out)
                 {
@@ -322,21 +322,21 @@ void parsec_debug_dump_task_class_at_exec(parsec_task_class_t *tc)
 
                         if (PARSEC_LOCAL_DATA_TASK_CLASS_ID == dep->task_class_id)
                         {
-                            parsec_debug_verbose(1, parsec_debug_output, "    %s dep [%d] of flow %s linked with data collection",
-                                                 dep_in_out ? "output" : "input", j, flow->name);
+                            parsec_debug_verbose(1, parsec_debug_output, "   %s dep [%d] of flow %s linked with data collection",
+                                                 dep_in_out ? "->" : "<-", j, flow->name);
                         }
                         else if (dep->flow)
                         {
-                            parsec_debug_verbose(1, parsec_debug_output, "    %s dep [%d] of flow %s is a dep that is linked to dep %d of flow %s (id=%d) of task class %d",
-                                                 dep_in_out ? "output" : "input", j, flow->name, dep->dep_index, dep->flow->name,
+                            parsec_debug_verbose(1, parsec_debug_output, "     %s dep [%d] of flow %s is a dep that is linked to dep %d of flow %s (id=%d) of task class %d",
+                                                 dep_in_out ? "->" : "<-", j, flow->name, dep->dep_index, dep->flow->name,
                                                  dep->flow->flow_index, dep->task_class_id);
                         }
                         else
                         {
-                            parsec_debug_verbose(1, parsec_debug_output, "    ## WARNING ## , parsec_debug_dump_task_class_at_exec does not know this type of dependency");
+                            parsec_debug_verbose(1, parsec_debug_output, "## WARNING ## , parsec_debug_dump_task_class_at_exec does not know this type of dependency");
                             continue;
                         }
-                        parsec_debug_verbose(1, parsec_debug_output, "      datatype=%d, direct_data=%p, dep_datatype_index=%d, dep_index=%d, task_class_id=%d",
+                        parsec_debug_verbose(1, parsec_debug_output, "\t\tdatatype=%d\tdirect_data=%p\tdep_datatype_index=%d\tdep_index=%d\ttask_class_id=%d",
                                              dep->dep_datatype_index, (void *)dep->direct_data, dep->dep_datatype_index, dep->dep_index, dep->task_class_id);
                     }
                 }
