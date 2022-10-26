@@ -100,14 +100,8 @@ struct parsec_flow_s {
                                      *   while computing the mask. */
     parsec_dependency_t flow_datatype_mask;  /**< The bitmask of dep_datatype_index of all deps */
 
-// if parametrized flows, we need to be able to modify dep indices
-#if defined(PARSEC_ALLOW_PARAMETRIZED_FLOWS)
     parsec_dep_t *dep_in[MAX_DEP_IN_COUNT];
     parsec_dep_t *dep_out[MAX_DEP_OUT_COUNT];
-#else
-    parsec_dep_t const *dep_in[MAX_DEP_IN_COUNT];
-    parsec_dep_t const *dep_out[MAX_DEP_OUT_COUNT];
-#endif
 };
 
 #if defined(PARSEC_ALLOW_PARAMETRIZED_FLOWS)

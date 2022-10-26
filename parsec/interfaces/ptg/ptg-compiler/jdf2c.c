@@ -4008,7 +4008,7 @@ static void jdf_generate_internal_init(const jdf_t *jdf, const jdf_function_entr
         assert(variable->op == JDF_RANGE);
         jdf_expr_t *max_parametrized_flow = variable->jdf_ta2;
 
-        coutput("\n%s  this_task->data._f_%s = alloca(sizeof(parsec_data_pair_t)*((%s)+1));\n",
+        coutput("\n%s  this_task->data._f_%s = malloc(sizeof(parsec_data_pair_t)*((%s)+1));\n",
                 indent(nesting), dataflow->varname, dump_expr((void**)max_parametrized_flow, &expr_info));
         coutput("%s  assert( NULL != this_task->data._f_%s );\n", indent(nesting), dataflow->varname);
         coutput("%s  memset(this_task->data._f_%s, 0, sizeof(parsec_data_pair_t)*((%s)+1));\n",
@@ -8135,6 +8135,14 @@ jdf_generate_code_iterate_successors_or_predecessors(const jdf_t *jdf,
             parsec_get_name(jdf, f, "parsec_assignment_t"), parsec_get_name(jdf, f, "parsec_assignment_t"),
             UTIL_DUMP_LIST(sa1, f->locals, next,
                            dump_local_assignments, &ai, "", "  ", "\n", "\n"));
+    
+    // If parametrized flows, this won't work on iterate_predecessors
+#if defined(PARSEC_ALLOW_PARAMETRIZED_FLOWS)
+    if(FLOW_IS_PARAMETRIZED(f->dataflow))
+    {
+        coutput("  assert(0); // %s is parametrized, parsec does not handle iterate_predecessors of parametrized flows yet\n", name);
+    }
+#endif  /* defined(PARSEC_ALLOW_PARAMETRIZED_FLOWS) */
 
     coutput("   data_repo_t *successor_repo; parsec_key_t successor_repo_key;");
 
