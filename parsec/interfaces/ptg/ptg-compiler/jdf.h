@@ -270,7 +270,6 @@ typedef struct jdf_def_list {
 
 typedef struct jdf_flow_specifier {
     struct jdf_object_t       super;
-    struct jdf_expr          *array_offset;
     struct jdf_expr          *variables;
 } jdf_flow_specifier_t;
 
@@ -291,7 +290,6 @@ struct jdf_dataflow {
     jdf_dataflow_t           *next;
     struct jdf_expr          *local_variables;         /**< flows can specify a range */
     char                     *varname;
-    struct jdf_expr          *array_offset;
     struct jdf_dep           *deps;
     uint8_t                   flow_index;
     uint32_t                  flow_dep_mask_out;

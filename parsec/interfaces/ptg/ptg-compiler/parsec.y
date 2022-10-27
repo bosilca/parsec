@@ -715,7 +715,6 @@ PROPERTIES_ON { named_expr_push_scope(); } named_expr_list PROPERTIES_OFF expr_s
 flow_specifier: { named_expr_push_scope(); } array_offset
                 {
                     jdf_flow_specifier_t *f = new(jdf_flow_specifier_t);
-                    f->array_offset = $2;
                     f->variables = $2;
                     $$ = f;
 
@@ -724,7 +723,6 @@ flow_specifier: { named_expr_push_scope(); } array_offset
         |
                 {
                     jdf_flow_specifier_t *f = new(jdf_flow_specifier_t);
-                    f->array_offset = NULL;
                     f->variables = NULL;
                     $$ = f;
 
@@ -751,7 +749,6 @@ dataflow:       optional_flow_flags VAR flow_specifier dependencies { named_expr
                     flow->flow_flags      = $1;
                     flow->varname         = $2;
                     flow->local_variables = flow_specifier->variables;
-                    flow->array_offset    = flow_specifier->array_offset;
                     flow->deps            = $4;
 
                     $$ = flow;
