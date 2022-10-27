@@ -4913,6 +4913,10 @@ static void jdf_generate_constructor( const jdf_t* jdf )
             "    tc->incarnations = (__parsec_chore_t*)malloc(2 * sizeof(__parsec_chore_t));\n"
             "    memcpy((__parsec_chore_t*)tc->incarnations, (void*)__parsec_generic_startup.incarnations, 2 * sizeof(__parsec_chore_t));\n"
             "    tc->release_task = parsec_release_task_to_mempool_and_count_as_runtime_tasks;\n"
+            "\n"
+            "#if defined(PARSEC_DEBUG_PARANOID)\n"
+            "    parsec_check_sanity_of_task_class(tc);\n"
+            "#endif\n"
             "  }\n",
             jdf_basename,
             jdf_basename);
@@ -5004,6 +5008,16 @@ static void jdf_generate_constructor( const jdf_t* jdf )
 
     coutput("  __parsec_tp->super.super.startup_hook = (parsec_startup_fn_t)%s_startup;\n"
             "  (void)parsec_taskpool_reserve_id((parsec_taskpool_t*)__parsec_tp);\n"
+            "\n\n"
+            "#if defined(PARSEC_DEBUG_PARANOID)\n"
+            "  // use parsec_debug_dump_task_class_at_exec(tc); on each task class\n"
+            "  parsec_debug_verbose(1, parsec_debug_output, \"############ Task classes before update ############\\n\");\n"
+            "  for( int i = 0; i < __parsec_tp->super.super.nb_task_classes; i++ ) {\n"
+            "    parsec_task_class_t *tc = __parsec_tp->super.super.task_classes_array[i];\n"
+            "    parsec_debug_dump_task_class_at_exec(tc);\n"
+            "    parsec_check_sanity_of_task_class(tc);\n"
+            "  }\n"
+            "#endif\n"
             "}\n\n",
             jdf_basename);
 
