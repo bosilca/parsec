@@ -650,18 +650,18 @@ simulation_cost:
              |  {   $$ = NULL; }
              ;
 
-partitioning:   COLON VAR array_offset_or_nothing OPEN_PAR expr_list CLOSE_PAR
+partitioning:   COLON VAR { named_expr_push_scope(); } array_offset_or_nothing OPEN_PAR expr_list CLOSE_PAR
               {
                   jdf_data_entry_t* data;
                   jdf_call_t *c = new(jdf_call_t);
                   int nbparams;
 
                   c->var = NULL;
-                  c->array_offset = $3;
+                  c->array_offset = $4;
                   c->func_or_mem = $2;
                   data = jdf_find_or_create_data(&current_jdf, $2);
-                  c->parameters = $5;
-                  JDF_COUNT_LIST_ENTRIES($5, jdf_expr_t, next, nbparams);
+                  c->parameters = $6;
+                  JDF_COUNT_LIST_ENTRIES($6, jdf_expr_t, next, nbparams);
                   if( data->nbparams != -1 ) {
                       if( data->nbparams != nbparams ) {
                           jdf_fatal(current_lineno, "Data %s used with %d parameters at line %d while used with %d parameters line %d\n",
@@ -672,7 +672,8 @@ partitioning:   COLON VAR array_offset_or_nothing OPEN_PAR expr_list CLOSE_PAR
                       data->nbparams          = nbparams;
                   }
                   $$ = c;
-                  JDF_OBJECT_LINENO($$) = JDF_OBJECT_LINENO($5);
+                  JDF_OBJECT_LINENO($$) = JDF_OBJECT_LINENO($6);
+                  named_expr_pop_scope();
               }
              /*
              | COLON VAR PROPERTIES_ON expr_simple PROPERTIES_OFF OPEN_PAR expr_list_range CLOSE_PAR
@@ -711,11 +712,11 @@ PROPERTIES_ON { named_expr_push_scope(); } named_expr_list PROPERTIES_OFF expr_s
             }
 */
 
-flow_specifier: array_offset PROPERTIES_ON { named_expr_push_scope(); } named_expr_list PROPERTIES_OFF
+flow_specifier: { named_expr_push_scope(); } array_offset
                 {
                     jdf_flow_specifier_t *f = new(jdf_flow_specifier_t);
-                    f->array_offset = $1;
-                    f->variables = $4;
+                    f->array_offset = $2;
+                    f->variables = $2;
                     $$ = f;
 
                    //named_expr_pop_scope();
@@ -789,10 +790,12 @@ array_offset_or_nothing: array_offset
                         {
                             $$ = $1;
                         }
-                |       { $$ = NULL; }
+                |       {
+                            $$ = NULL;
+                        }
                 ;
 
-array_offset: PROPERTIES_ON expr_simple PROPERTIES_OFF
+array_offset: PROPERTIES_ON named_expr_list PROPERTIES_OFF
                {
 #if !defined(PARSEC_ALLOW_PARAMETRIZED_FLOWS)
                     jdf_fatal(current_lineno, "Flow cannot be parametrized (line %d). Set the PARSEC_ALLOW_PARAMETRIZED_FLOWS flag to enable them.\n",
@@ -830,6 +833,8 @@ dependency:   ARROW named_expr guarded_call properties
                   jdf_def_list_t* property_data = $4;
 
                   d->local_defs = $2;
+                  // Add the local definitions of the previous scope (the iterator of the parametrized flow if any)
+
 
                   expr = jdf_find_property($4, "type", &property);
                   expr_remote = jdf_find_property($4, "type_remote", &property_remote);
@@ -977,6 +982,16 @@ call:         named_expr VAR array_offset_or_nothing VAR OPEN_PAR expr_list_rang
                   c->var = $2;
                   c->array_offset = $3;
                   c->local_defs = $1;
+                  if(c->local_defs) {
+                    // concatenate c->array_offset and ->local_defs
+                    jdf_expr_t *e;
+                    for(e = c->local_defs; e->next; e = e->next);
+                    e->next = c->array_offset;
+                  }
+                  else
+                  {
+                    c->local_defs = c->array_offset;
+                  }
                   c->func_or_mem = $4;
                   c->parameters = $6;
                   $$ = c;
@@ -984,22 +999,22 @@ call:         named_expr VAR array_offset_or_nothing VAR OPEN_PAR expr_list_rang
                   assert( 0 != JDF_OBJECT_LINENO($$) );
                   named_expr_pop_scope();
               }
-       |      VAR OPEN_PAR expr_list_range CLOSE_PAR
+       |      VAR { named_expr_push_scope(); } array_offset_or_nothing OPEN_PAR expr_list_range CLOSE_PAR
               {
                   jdf_data_entry_t* data;
                   jdf_call_t *c = new(jdf_call_t);
                   int nbparams;
 
                   c->var = NULL;
-                  c->array_offset = NULL;
+                  c->array_offset = $3;
                   c->func_or_mem = $1;
-                  c->parameters = $3;
-                  c->local_defs = NULL;
-                  JDF_OBJECT_LINENO(c) = JDF_OBJECT_LINENO($3);
+                  c->parameters = $5;
+                  c->local_defs = c->array_offset;
+                  JDF_OBJECT_LINENO(c) = JDF_OBJECT_LINENO($5);
                   $$ = c;
                   assert( 0 != JDF_OBJECT_LINENO($$) );
                   data = jdf_find_or_create_data(&current_jdf, $1);
-                  JDF_COUNT_LIST_ENTRIES($3, jdf_expr_t, next, nbparams);
+                  JDF_COUNT_LIST_ENTRIES($5, jdf_expr_t, next, nbparams);
                   if( data->nbparams != -1 ) {
                       if( data->nbparams != nbparams ) {
                           jdf_fatal(current_lineno, "Data %s used with %d parameters at line %d while used with %d parameters line %d\n",
@@ -1009,7 +1024,8 @@ call:         named_expr VAR array_offset_or_nothing VAR OPEN_PAR expr_list_rang
                   } else {
                       data->nbparams          = nbparams;
                   }
-                  JDF_OBJECT_LINENO(data) = JDF_OBJECT_LINENO($3);
+                  JDF_OBJECT_LINENO(data) = JDF_OBJECT_LINENO($5);
+                  named_expr_pop_scope();
               }
        |      DATA_NEW
               {

@@ -1745,6 +1745,7 @@ int jdf_assign_ldef_index(jdf_function_entry_t *f)
      *  If they appear in the locals, they need to have a unique position
      *  If they appear in the dataflow, each dep can re-use the locals of another dep
      *                                  each call can re-use the locals of another call
+     * With parametrized flows, they can also appear in the dataflow.
      */
 
     DO_DEBUG_VERBOSE(2, ({fprintf(stderr, "Indexing task class %s\n", f->fname);}) );
@@ -1770,7 +1771,7 @@ int jdf_assign_ldef_index(jdf_function_entry_t *f)
             if( ld->ldef_index == -1 ) {
                 ld->ldef_index = nb_ldef_for_flows;
                 nb_ldef_for_flows++;
-                DO_DEBUG_VERBOSE(2, ({ fprintf(stderr, "  Flow for %s, flow %p: ldef %s is at %d\n", fl->varname, fl, ld->alias, ld->ldef_index); }) ); // TODO check
+                DO_DEBUG_VERBOSE(2, ({ fprintf(stderr, "  Flow for %s, flow %p: ldef %s is at %d\n", fl->varname, fl, ld->alias, ld->ldef_index); }) );
             }
         }
 
@@ -1786,10 +1787,10 @@ int jdf_assign_ldef_index(jdf_function_entry_t *f)
                 }
             }
 
+            nb_ldef_for_calls = nb_ldef_for_deps;
             switch( dep->guard->guard_type ) {
             case JDF_GUARD_UNCONDITIONAL:
             case JDF_GUARD_BINARY:
-                nb_ldef_for_calls = nb_ldef_for_deps;
                 for(ld = dep->guard->calltrue->local_defs; NULL != ld; ld = ld->next) {
                     assert(NULL != ld->alias);
                     if( ld->ldef_index == -1 ) {
@@ -1800,7 +1801,6 @@ int jdf_assign_ldef_index(jdf_function_entry_t *f)
                 }
                 break;
             case JDF_GUARD_TERNARY:
-                nb_ldef_for_calls = nb_ldef_for_deps;
                 for(ld = dep->guard->calltrue->local_defs; NULL != ld; ld = ld->next) {
                     assert(NULL != ld->alias);
                     if( ld->ldef_index == -1 ) {
@@ -1809,7 +1809,6 @@ int jdf_assign_ldef_index(jdf_function_entry_t *f)
                         DO_DEBUG_VERBOSE(2, ({ fprintf(stderr, "  Flow for %s, dep %d, calltrue: ldef %s is at %d\n", fl->varname, depi, ld->alias, ld->ldef_index); }) );
                     }
                 }
-                nb_ldef_for_calls = nb_ldef_for_deps;
                 for(ld = dep->guard->callfalse->local_defs; NULL != ld; ld = ld->next) {
                     assert(NULL != ld->alias);
                     if( ld->ldef_index == -1 ) {
@@ -1825,6 +1824,8 @@ int jdf_assign_ldef_index(jdf_function_entry_t *f)
             if( nb_ldef_for_calls > f->nb_max_local_def )
                 f->nb_max_local_def = nb_ldef_for_calls;
         }
+        if( nb_ldef_for_flows > f->nb_max_local_def )
+            f->nb_max_local_def = nb_ldef_for_flows;
     }
     return 0;
 }

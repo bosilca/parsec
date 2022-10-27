@@ -8137,6 +8137,7 @@ jdf_generate_code_iterate_successors_or_predecessors(const jdf_t *jdf,
                            dump_local_assignments, &ai, "", "  ", "\n", "\n"));
     
     // If parametrized flows, this won't work on iterate_predecessors
+    // TODO: probably not f->dataflow but some other flow should be checked
 #if defined(PARSEC_ALLOW_PARAMETRIZED_FLOWS)
     if(FLOW_IS_PARAMETRIZED(f->dataflow))
     {
@@ -8324,6 +8325,28 @@ jdf_generate_code_iterate_successors_or_predecessors(const jdf_t *jdf,
                                     " successor_repo, successor_repo_key, ontask_arg) )\n"
                                     "  return;\n",
                                     JDF_OBJECT_ONAME(dl->guard->calltrue));
+
+/*
+            if(dl->guard->guard_type == JDF_GUARD_TERNARY && NULL != dl->guard->callfalse) {
+                dump_parametrized_flow_loop_if_parametrized(dl->guard->callfalse, indent(nb_open_ldef), sa_coutput);
+                if(FLOW_IS_PARAMETRIZED(dl->guard->callfalse)) {
+                    nb_open_ldef++;
+                }
+            }
+            if(NULL != dl->guard->calltrue)
+            {
+                dump_parametrized_flow_loop_if_parametrized(dl->guard->calltrue, indent(nb_open_ldef), sa_coutput);
+                if(FLOW_IS_PARAMETRIZED(dl->guard->calltrue)) {
+                    nb_open_ldef++;
+                }
+            }
+*/
+/*
+                dump_parametrized_flow_loop_if_parametrized(f->dataflow, indent(nb_open_ldef), sa_coutput);
+                if(FLOW_IS_PARAMETRIZED(f->dataflow)) {
+                    nb_open_ldef++;
+                }
+*/
 
             if( NULL != dl->local_defs ) {
                 jdf_expr_t *ld;
