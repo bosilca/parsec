@@ -594,7 +594,7 @@ void dump_parametrized_flow_loop(const jdf_dataflow_t *flow, const char *iterato
     // Generate the ranges
     jdf_expr_t *variable=f->local_variables;
     if(NULL != variable) {
-        if(variable->op == JDF_RANGE) {
+        if(variable->op == JDF_PARAMETRIZED_FLOW_RANGE) {
             expr_info_t expr_info = EMPTY_EXPR_INFO;
             expr_info.sa = string_arena_new(64);
             expr_info.prefix = "";
@@ -4005,7 +4005,7 @@ static void jdf_generate_internal_init(const jdf_t *jdf, const jdf_function_entr
         expr_info.assignments = "max parametrized dataflow";
 
         jdf_expr_t *variable = jdf_expr_lv_first(dataflow->local_variables);
-        assert(variable->op == JDF_RANGE);
+        assert(variable->op == JDF_PARAMETRIZED_FLOW_RANGE);
         jdf_expr_t *max_parametrized_flow = variable->jdf_ta2;
 
         coutput("\n%s  this_task->data._f_%s = malloc(sizeof(parsec_data_pair_t)*((%s)+1));\n",

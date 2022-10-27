@@ -716,6 +716,17 @@ flow_specifier: { named_expr_push_scope(); } array_offset
                 {
                     jdf_flow_specifier_t *f = new(jdf_flow_specifier_t);
                     f->variables = $2;
+                    if( NULL != f->variables->next ) {
+                        // We can only handle parametrized flow with one variable
+                        jdf_fatal(current_lineno, "Flow %s cannot have more than one variable\n", f->variables->alias);
+                        YYERROR;
+                    }
+                    if( JDF_RANGE != f->variables->op ) {
+                        // Parametrized flows must have a range
+                        jdf_fatal(current_lineno, "Flow %s must be a range\n", f->variables->alias);
+                        YYERROR;
+                    }
+                    f->variables->op = JDF_PARAMETRIZED_FLOW_RANGE; // Ranges in parametrized flows are treated differently
                     $$ = f;
 
                    //named_expr_pop_scope();
