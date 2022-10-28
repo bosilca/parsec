@@ -5024,13 +5024,14 @@ static void jdf_generate_constructor( const jdf_t* jdf )
     coutput("  __parsec_tp->super.super.repo_array = %s;\n",
             (NULL != jdf->functions) ? "__parsec_tp->repositories" : "NULL");
 
+// TODO use uintX_t instead of uint8 if MAX_DEP_IN_COUNT or MAX_DEP_OUT > 8 ? (in the task structure)
     coutput("  __parsec_tp->super.super.startup_hook = (parsec_startup_fn_t)%s_startup;\n"
             "  (void)parsec_taskpool_reserve_id((parsec_taskpool_t*)__parsec_tp);\n"
             "\n\n"
             "#if defined(PARSEC_DEBUG_PARANOID)\n"
             "  // use parsec_debug_dump_task_class_at_exec(tc); on each task class\n"
             "  parsec_debug_verbose(1, parsec_debug_output, \"############ Task classes before update ############\\n\");\n"
-            "  for( int i = 0; i < __parsec_tp->super.super.nb_task_classes; i++ ) {\n"
+            "  for( uint32_t i = 0; i < __parsec_tp->super.super.nb_task_classes; i++ ) {\n"
             "    parsec_task_class_t *tc = __parsec_tp->super.super.task_classes_array[i];\n"
             "    parsec_debug_dump_task_class_at_exec(tc);\n"
             "    parsec_check_sanity_of_task_class(tc);\n"
@@ -5079,32 +5080,34 @@ static void jdf_generate_new_function( const jdf_t* jdf )
             "%s", UTIL_DUMP_LIST(sa1, jdf->globals, next,
                                  dump_globals_init, sa2, "", "  ", "\n", "\n"));
 
-    coutput(
-        "\n"
-        "  // Rework the structure to handle parametrized flows\n"
-        "\n"
-        "  int i, j;\n"
-        "  /* update the dependency IDs in case of parametrized flows */\n"
-        "  /* The general idea is: */\n"
-        "  /* (A) If a dependency refers to a parametrized flow, it should be divided into N dependencies,     */\n"
-        "  /*     With each dependency referring to the corresponding flow and having the corresponding cond   */\n"
-        "  /*     E.g. the jdf: DATA_FROM -> DATA_TO[i+j*SIZE] MyFunc(...)     */\n"
-        "  /*        should translate into : */\n"
-        "  /*                   -> ((i+j*SIZE)==0) ? DATA_TO[0] SuccFunc(...)  */\n"
-        "  /*                   -> ((i+j*SIZE)==1) ? DATA_TO[1] SuccFunc(...)  */\n"
-        "  /**/\n"
-        "  /* (B) On the other side, if a flow is parametrized:                */\n"
-        "  /*     It should be divided into N flows, the deps of which should be correctly linked with the corresponding generated dep in (A) */\n"
-        "  /*     E.g. the jdf: DATA_TO[it=0...N-1] <- DATA_FROM PredFunc(it%%SIZE, it/size, ...) */\n"
-        "  /*        should translate into : */\n"
-        "  /*                   DATA_TO[0] <- DATA_FROM PredFunc(0, 0, ...)     */\n"
-        "  /*                   DATA_TO[1] <- DATA_FROM PredFunc(1, 0, ...)     */\n"
-        "  /*                                                 ...               */\n"
-        "  /*                   DATA_TO[SIZE] <- DATA_FROM PredFunc(0, 1, ...)  */\n"
-        "  /*                   DATA_TO[SIZE+1]                   ...           */\n"
-        "  /**/\n"
-        "  /* We refer to (A) as referrer and to (B) as parametrized flow. */\n\n"
-        );
+    if(JDF_ANY_FLOW_IS_PARAMETRIZED(jdf))
+    {
+        coutput(
+            "\n"
+            "  // Rework the structure to handle parametrized flows\n"
+            "\n"
+            "  int i, j;\n"
+            "  /* update the dependency IDs in case of parametrized flows */\n"
+            "  /* The general idea is: */\n"
+            "  /* (A) If a dependency refers to a parametrized flow, it should be divided into N dependencies,     */\n"
+            "  /*     With each dependency referring to the corresponding flow and having the corresponding cond   */\n"
+            "  /*     E.g. the jdf: DATA_FROM -> DATA_TO[i+j*SIZE] MyFunc(...)     */\n"
+            "  /*        should translate into : */\n"
+            "  /*                   -> ((i+j*SIZE)==0) ? DATA_TO[0] SuccFunc(...)  */\n"
+            "  /*                   -> ((i+j*SIZE)==1) ? DATA_TO[1] SuccFunc(...)  */\n"
+            "  /**/\n"
+            "  /* (B) On the other side, if a flow is parametrized:                */\n"
+            "  /*     It should be divided into N flows, the deps of which should be correctly linked with the corresponding generated dep in (A) */\n"
+            "  /*     E.g. the jdf: DATA_TO[it=0...N-1] <- DATA_FROM PredFunc(it%%SIZE, it/size, ...) */\n"
+            "  /*        should translate into : */\n"
+            "  /*                   DATA_TO[0] <- DATA_FROM PredFunc(0, 0, ...)     */\n"
+            "  /*                   DATA_TO[1] <- DATA_FROM PredFunc(1, 0, ...)     */\n"
+            "  /*                                                 ...               */\n"
+            "  /*                   DATA_TO[SIZE] <- DATA_FROM PredFunc(0, 1, ...)  */\n"
+            "  /*                   DATA_TO[SIZE+1]                   ...           */\n"
+            "  /**/\n"
+            "  /* We refer to (A) as referrer and to (B) as parametrized flow. */\n\n"
+            );
 
     // TODO: delete the following lines when the code is ready
 /*
@@ -5133,9 +5136,6 @@ static void jdf_generate_new_function( const jdf_t* jdf )
 
     coutput("\n");
 */
-
-    if(JDF_ANY_FLOW_IS_PARAMETRIZED(jdf))
-    {
 
         coutput("  // Allocate parametrized flows\n");
         // Set the parametrized flows upper bounds
@@ -5177,6 +5177,7 @@ static void jdf_generate_new_function( const jdf_t* jdf )
         }
         coutput("\n");
 
+        // TODO delete parametrized_flows when not needed anymore!
         coutput("  // Store parametrized flows in a table for convenience\n");
         coutput("  parsec_flow_t const *parametrized_flows[MAX_DATAFLOWS_PER_TASK] = {\n");
         int nb_parametrized_flows = 0;
@@ -5192,7 +5193,7 @@ static void jdf_generate_new_function( const jdf_t* jdf )
         coutput("  const int nb_parametrized_flows = %d;\n", nb_parametrized_flows);
 
         coutput("\n");
-        
+
         coutput("  // Unroll all the parametrized flows\n");
 
         for( jdf_function_entry_t* f = jdf->functions; NULL != f; f = f->next ) {
@@ -5284,6 +5285,104 @@ static void jdf_generate_new_function( const jdf_t* jdf )
         coutput("\n");
 
         coutput("  // Then unroll all the relevant referrer's deps\n");
+        int depid;
+        for( jdf_function_entry_t* f = jdf->functions; NULL != f; f = f->next ) {
+            for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
+                depid=1;
+                for( jdf_dep_t *dep = df->deps; NULL != dep; dep = dep->next, depid++ ) {
+                    for( int target_call=0; target_call<2; ++target_call ) {
+                        assert(dep->guard->guard_type==JDF_GUARD_UNCONDITIONAL || dep->guard->guard_type==JDF_GUARD_BINARY || dep->guard->guard_type==JDF_GUARD_TERNARY);
+                        if(dep->guard->guard_type!=JDF_GUARD_TERNARY && target_call==1)
+                        { // callfalse is only relevant for JDF_GUARD_UNCONDITIONAL and JDF_GUARD_BINARY
+                            continue;
+                        }
+                        jdf_call_t *call = target_call?dep->guard->callfalse:dep->guard->calltrue;
+                        assert(call);
+
+                        if( NULL !=call->parametrized_offset )
+                        {
+                            // Then the dep refers to a parametrized flow
+
+                            coutput("  {\n");
+                            coutput("    // %s of %s dep %d of flow %s of task class %s refers to a parametrized flow\n",
+                                    target_call?"callfalse":"calltrue",
+                                    (dep->dep_flags & JDF_DEP_FLOW_IN)?"input":"output",
+                                    dep->dep_index, df->varname, f->fname);
+                            coutput("\n");
+
+                            coutput("    parsec_flow_t *flow = &flow_of_%s_%s_for_%s;\n",
+                                    jdf_basename, f->fname, df->varname);
+                            coutput("    parsec_dep_t *dep = &%s_dep%d_atline_%d%s;\n",
+                                JDF_OBJECT_ONAME(df), depid, JDF_OBJECT_LINENO(dep),
+                                // If ternary, add _iftrue or _iffalse
+                                (dep->guard->guard_type==JDF_GUARD_TERNARY) ? ((target_call)?"_iffalse":"_iftrue") : "");
+                            coutput("    int flow_in_out = %d;\n", (dep->dep_flags & JDF_DEP_FLOW_IN)?0:1);
+
+                            coutput("\n");
+
+                            coutput(
+                                "    // Shift the deps that are after dep (which references the parametrized flow)\n"
+                                "    parsec_shift_all_deps_after(flow, flow_in_out, dep, nb_specializations_flow_of_%s_%s_for_parametrized_%s-1);\n",
+                                jdf_basename, call->func_or_mem, call->var
+                            );
+
+                            coutput("  }\n");
+                        }
+/*
+        // In the following generated code, dep refers to a parametrized flow
+        coutput(
+            "            // Shift the deps that are after dep (which references the parametrized flow)\n"
+            "            parsec_shift_all_deps_after(flow, flow_in_out, dep, nb_parametrized_flow_GRID_CD-1);\n"
+            "            // Now that we have space for the new deps, create them making sure they respect the pattern given in (A)\n"
+            "            for(int cd=0;cd<=((conservatives_number * directions_number) - 1);cd+=1) {\n"
+            "              parsec_dep_t *new_dep = parsec_helper_copy_dep(dep);\n"
+            "              assert(NULL != new_dep);\n"
+            "              // Compute the pointer to the target parametrized flow specialization and the target expr_cond\n"
+            "              parsec_expr_t *target_expr_cond = NULL;\n"
+            "              parsec_flow_t *target_parametrized_flow = NULL;\n"
+            "              switch(dep->task_class_id)\n"
+            "              {\n"
+            "                case 1: // task class 0 (LBM_STEP)\n"
+            "                  switch(dep->flow->flow_index)\n"
+            "                  {\n"
+            "                    case 0: // parametrized flow 0 (GRID_CD) of task class 1 (LBM_STEP)\n"
+            "                      target_parametrized_flow = new_flow_for_task_1_parametrized_flow_GRID_CD_in[cd];\n"
+            "                      break;\n"
+            "                    default:\n"
+            "                      parsec_debug_verbose(10, parsec_debug_output, \"Warning: dep %%d of flow %%s of task %%d references flow %%s of task %%d which is not parametrized\",\n"
+            "                            depid, dep->flow->name, flid, dep->flow->name, dep->task_class_id);\n"
+            "                      break;\n"
+            "                  }\n"
+            "                  break;\n"
+            "                default:\n"
+            "                  parsec_debug_verbose(10, parsec_debug_output, \"Warning: dep %%d of flow %%s of task %%d references task class %%d, which has no parametrized flow.\",\n"
+            "                        depid, dep->flow->name, flid, dep->task_class_id);\n"
+            "                  break;\n"
+            "              }\n"
+            "              assert(target_parametrized_flow);\n"
+            "              assert(target_expr_cond);\n"
+            "              new_dep->flow = target_parametrized_flow;\n"
+            "              new_dep->cond = target_expr_cond; // TODO !\n"
+            "              // new_dep->ctl_gather_nb = ; // TODO\n"
+            "              new_dep->dep_index += cd;\n"
+            "              new_dep->dep_datatype_index += cd; // TODO maybe modify?\n"
+            "              //assert(new_dep->direct_data != NULL);\n"
+            "              // Insert the new dep\n"
+            "              (flow_in_out?flow->dep_out:flow->dep_in)[depid+cd] = new_dep;\n"
+            "            }\n"
+        );
+*/
+
+
+
+
+
+                    }
+                }
+            }
+        }
+
+
         // The deps that refer to a parametrized flow are too hard to find at compile time
         /*for( jdf_function_entry_t* f = jdf->functions; NULL != f; f = f->next ) {
             for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
@@ -5291,71 +5390,78 @@ static void jdf_generate_new_function( const jdf_t* jdf )
                     if( FLOW_IS_PARAMETRIZED(dep->) ) {
                         if( NULL != dep->referrer->parametrized ) {*/
 
-
 /*
-  int tcid, flid, depid;
-  for( tcid = 0; tcid < __parsec_tp->super.super.nb_task_classes; tcid++ ) {
-    parsec_task_class_t *tc = __parsec_tp->super.super.task_classes_array[tcid];
-    
-    for(int flow_in_out=0;flow_in_out<2;++flow_in_out) {
-      for( flid=0; flid < MAX_DATAFLOWS_PER_TASK; flid++ ) {
-        parsec_flow_t *flow = (parsec_flow_t*)(flow_in_out?tc->out[flid]:tc->in[flid]);
-        if(!flow) {
-          break;
-        }
-        for( depid = 0; depid < flow_in_out?MAX_DEP_OUT_COUNT:MAX_DEP_IN_COUNT; ++depid ) {
-          parsec_dep_t *dep = (parsec_dep_t*)(flow_in_out?flow->dep_out[depid]:flow->dep_in[depid]);
-          if(!dep) {
-            break;
-          }
-          // If the target flow is a parametrized flow
-          if(parsec_helper_flow_is_in_flow_array(dep->flow, parametrized_flows, nb_parametrized_flows)) {
-            // Shift the deps that are after dep (which references the parametrized flow)
-            parsec_shift_all_deps_after(flow, flow_in_out, dep, nb_parametrized_flow_GRID_CD-1);
-            // Now that we have space for the new deps, create them making sure they respect the pattern given in (A) 
-            for(int cd=0;cd<=((conservatives_number * directions_number) - 1);cd+=1) {
-              parsec_dep_t *new_dep = parsec_helper_copy_dep(dep);
-              assert(NULL != new_dep);
-              // Compute the pointer to the target parametrized flow specialization and the target expr_cond
-              parsec_flow_t *target_parametrized_flow = NULL;
-              parsec_expr_t *target_expr_cond = NULL;
-              switch(dep->task_class_id)
-              {
-                case 1: // task class 0 (LBM_STEP)
-                  switch(dep->flow->flow_index)
-                  {
-                    case 0: // parametrized flow 0 (GRID_CD) of task class 1 (LBM_STEP)
-                      target_parametrized_flow = new_flow_for_task_1_parametrized_flow_GRID_CD_in[cd];
-                      target_expr_cond = expr_of_parametrized_cond_for_flow_of_LBM_FillGrid_for_INITIAL_GRID_dep1_atline_298_iftrue[cd];
-                      break;
-                    default:
-                      parsec_debug_verbose(10, parsec_debug_output, "Warning: dep %d of flow %s of task %d references flow %s of task %d which is not parametrized",
-                            depid, dep->flow->name, flid, dep->flow->name, dep->task_class_id);
-                      break;
-                  }
-                  break;
-                default:
-                  parsec_debug_verbose(10, parsec_debug_output, "Warning: dep %d of flow %s of task %d references task class %d, which has no parametrized flow.",
-                        depid, dep->flow->name, flid, dep->task_class_id);
-                  break;
-              }
-              assert(target_parametrized_flow);
-              assert(target_expr_cond);
-              new_dep->flow = target_parametrized_flow;
-              new_dep->cond = target_expr_cond; // TODO !
-              // new_dep->ctl_gather_nb = ; // TODO
-              new_dep->dep_index += cd;
-              new_dep->dep_datatype_index += cd; // TODO maybe modify?
-              //assert(new_dep->direct_data != NULL);
-              // Insert the new dep
-              (flow_in_out?flow->dep_out:flow->dep_in)[depid+cd] = new_dep;
-            }
-          }
-        }
-      }
-    }
-  }
+        coutput(
+            "  int tcid, flid, depid;\n"
+            "  for( tcid = 0; tcid < __parsec_tp->super.super.nb_task_classes; tcid++ ) {\n"
+            "    parsec_task_class_t *tc = __parsec_tp->super.super.task_classes_array[tcid];\n"
+            "\n"
+            "    for(int flow_in_out=0;flow_in_out<2;++flow_in_out) {\n"
+            "      for( flid=0; flid < MAX_DATAFLOWS_PER_TASK; flid++ ) {\n"
+            "        parsec_flow_t *flow = (parsec_flow_t*)(flow_in_out?tc->out[flid]:tc->in[flid]);\n"
+            "        if(!flow) {\n"
+            "          break;\n"
+            "        }\n"
+            "        for( depid = 0; depid < flow_in_out?MAX_DEP_OUT_COUNT:MAX_DEP_IN_COUNT; ++depid ) {\n"
+            "          parsec_dep_t *dep = (parsec_dep_t*)(flow_in_out?flow->dep_out[depid]:flow->dep_in[depid]);\n"
+            "          if(!dep) {\n"
+            "            break;\n"
+            "          }\n"
+            "          // If the target flow is a parametrized flow\n"
+            "          if(parsec_helper_flow_is_in_flow_array(dep->flow, parametrized_flows, nb_parametrized_flows)) {\n"
+        );
 
+        // In the following generated code, dep refers to a parametrized flow
+        coutput(
+            "            // Shift the deps that are after dep (which references the parametrized flow)\n"
+            "            parsec_shift_all_deps_after(flow, flow_in_out, dep, nb_parametrized_flow_GRID_CD-1);\n"
+            "            // Now that we have space for the new deps, create them making sure they respect the pattern given in (A)\n"
+            "            for(int cd=0;cd<=((conservatives_number * directions_number) - 1);cd+=1) {\n"
+            "              parsec_dep_t *new_dep = parsec_helper_copy_dep(dep);\n"
+            "              assert(NULL != new_dep);\n"
+            "              // Compute the pointer to the target parametrized flow specialization and the target expr_cond\n"
+            "              parsec_expr_t *target_expr_cond = NULL;\n"
+            "              parsec_flow_t *target_parametrized_flow = NULL;\n"
+            "              switch(dep->task_class_id)\n"
+            "              {\n"
+            "                case 1: // task class 0 (LBM_STEP)\n"
+            "                  switch(dep->flow->flow_index)\n"
+            "                  {\n"
+            "                    case 0: // parametrized flow 0 (GRID_CD) of task class 1 (LBM_STEP)\n"
+            "                      target_parametrized_flow = new_flow_for_task_1_parametrized_flow_GRID_CD_in[cd];\n"
+            "                      break;\n"
+            "                    default:\n"
+            "                      parsec_debug_verbose(10, parsec_debug_output, \"Warning: dep %%d of flow %%s of task %%d references flow %%s of task %%d which is not parametrized\",\n"
+            "                            depid, dep->flow->name, flid, dep->flow->name, dep->task_class_id);\n"
+            "                      break;\n"
+            "                  }\n"
+            "                  break;\n"
+            "                default:\n"
+            "                  parsec_debug_verbose(10, parsec_debug_output, \"Warning: dep %%d of flow %%s of task %%d references task class %%d, which has no parametrized flow.\",\n"
+            "                        depid, dep->flow->name, flid, dep->task_class_id);\n"
+            "                  break;\n"
+            "              }\n"
+            "              assert(target_parametrized_flow);\n"
+            "              assert(target_expr_cond);\n"
+            "              new_dep->flow = target_parametrized_flow;\n"
+            "              new_dep->cond = target_expr_cond; // TODO !\n"
+            "              // new_dep->ctl_gather_nb = ; // TODO\n"
+            "              new_dep->dep_index += cd;\n"
+            "              new_dep->dep_datatype_index += cd; // TODO maybe modify?\n"
+            "              //assert(new_dep->direct_data != NULL);\n"
+            "              // Insert the new dep\n"
+            "              (flow_in_out?flow->dep_out:flow->dep_in)[depid+cd] = new_dep;\n"
+            "            }\n"
+        );
+
+        // Close the brackets
+        coutput(
+            "          }\n"
+            "        }\n"
+            "      }\n"
+            "    }\n"
+            "  }\n"
+        );
 */
 
 

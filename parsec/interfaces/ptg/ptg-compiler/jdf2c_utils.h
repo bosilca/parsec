@@ -25,7 +25,7 @@ typedef char *(*dumper_function_t)(void **elt, void *arg);
 #define GET_PARAMETRIZED_FLOW_ITERATOR_NAME(flow) \
     get_parametrized_flow_iterator_name(flow)
 
-static inline char *get_parametrized_flow_iterator_name(jdf_dataflow_t *flow)
+static inline char *get_parametrized_flow_iterator_name(jdf_dataflow_t const *flow)
 {
     assert(FLOW_IS_PARAMETRIZED(flow));
     assert(flow->local_variables->next == NULL); // only one iterator for parametrized flows

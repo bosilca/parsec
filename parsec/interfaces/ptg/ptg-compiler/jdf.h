@@ -344,7 +344,7 @@ typedef struct jdf_call {
     struct jdf_object_t       super;
     struct jdf_expr          *local_defs;     /**< Each call can have some local indicies, allowing to define sets of deps */
     char                     *var;             /**< If func_or_mem is a function, var is the name of the flow on that function */
-    struct jdf_expr          *array_offset;    /**< Offset required if var is an array */
+    struct jdf_expr          *parametrized_offset;    /**< Offset required if var is an array */
     char                     *func_or_mem;     /**< string of the function (task class) or data collection referred to in this call */
     struct jdf_expr          *parameters;      /**< list of parameters for that task class / data collection */
 } jdf_call_t;

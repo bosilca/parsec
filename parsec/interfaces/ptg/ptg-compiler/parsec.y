@@ -657,7 +657,7 @@ partitioning:   COLON VAR { named_expr_push_scope(); } array_offset_or_nothing O
                   int nbparams;
 
                   c->var = NULL;
-                  c->array_offset = $4;
+                  c->parametrized_offset = $4;
                   c->func_or_mem = $2;
                   data = jdf_find_or_create_data(&current_jdf, $2);
                   c->parameters = $6;
@@ -988,17 +988,17 @@ call:         named_expr VAR array_offset_or_nothing VAR OPEN_PAR expr_list_rang
               {
                   jdf_call_t *c = new(jdf_call_t);
                   c->var = $2;
-                  c->array_offset = $3;
+                  c->parametrized_offset = $3;
                   c->local_defs = $1;
                   if(c->local_defs) {
                     // concatenate c->array_offset and ->local_defs
                     jdf_expr_t *e;
                     for(e = c->local_defs; e->next; e = e->next);
-                    e->next = c->array_offset;
+                    e->next = c->parametrized_offset;
                   }
                   else
                   {
-                    c->local_defs = c->array_offset;
+                    c->local_defs = c->parametrized_offset;
                   }
                   c->func_or_mem = $4;
                   c->parameters = $6;
@@ -1014,10 +1014,10 @@ call:         named_expr VAR array_offset_or_nothing VAR OPEN_PAR expr_list_rang
                   int nbparams;
 
                   c->var = NULL;
-                  c->array_offset = $3;
+                  c->parametrized_offset = $3;
                   c->func_or_mem = $1;
                   c->parameters = $5;
-                  c->local_defs = c->array_offset;
+                  c->local_defs = c->parametrized_offset;
                   JDF_OBJECT_LINENO(c) = JDF_OBJECT_LINENO($5);
                   $$ = c;
                   assert( 0 != JDF_OBJECT_LINENO($$) );
@@ -1039,7 +1039,7 @@ call:         named_expr VAR array_offset_or_nothing VAR OPEN_PAR expr_list_rang
               {
                   jdf_call_t *c = new(jdf_call_t);
                   c->var = NULL;
-                  c->array_offset = NULL;
+                  c->parametrized_offset = NULL;
                   c->local_defs = NULL;
                   c->func_or_mem = strdup(PARSEC_WRITE_MAGIC_NAME);
                   c->parameters = NULL;
@@ -1050,7 +1050,7 @@ call:         named_expr VAR array_offset_or_nothing VAR OPEN_PAR expr_list_rang
              {
                   jdf_call_t *c = new(jdf_call_t);
                   c->var = NULL;
-                  c->array_offset = NULL;
+                  c->parametrized_offset = NULL;
                   c->local_defs = NULL;
                   c->func_or_mem = strdup(PARSEC_NULL_MAGIC_NAME);
                   c->parameters = NULL;
