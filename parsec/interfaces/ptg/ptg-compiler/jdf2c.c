@@ -1649,6 +1649,7 @@ static void jdf_generate_predeclarations( const jdf_t *jdf )
         }
     }
     if(JDF_ANY_FLOW_IS_PARAMETRIZED(jdf)) {
+        int depid;
         coutput("// Declaration of parametrized flow specializations:\n");
         for( jdf_function_entry_t* f = jdf->functions; NULL != f; f = f->next ) {
             for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
@@ -1656,6 +1657,35 @@ static void jdf_generate_predeclarations( const jdf_t *jdf )
 
                     coutput("parsec_flow_t *flow_of_%s_%s_for_parametrized_%s;\n",
                             jdf_basename, f->fname, df->varname);
+                }
+            }
+        }
+
+        coutput("// Declaration of the parametrized flows referrers\n");
+        for( jdf_function_entry_t* f = jdf->functions; NULL != f; f = f->next ) {
+            for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
+                depid=1;
+                for( jdf_dep_t *dep = df->deps; NULL != dep; dep = dep->next, depid++ ) {
+                    for( int target_call=0; target_call<2; ++target_call ) {
+                        assert(dep->guard->guard_type==JDF_GUARD_UNCONDITIONAL || dep->guard->guard_type==JDF_GUARD_BINARY || dep->guard->guard_type==JDF_GUARD_TERNARY);
+                        if(dep->guard->guard_type!=JDF_GUARD_TERNARY && target_call==1)
+                        { // callfalse is only relevant for JDF_GUARD_UNCONDITIONAL and JDF_GUARD_BINARY
+                            continue;
+                        }
+                        jdf_call_t *call = target_call?dep->guard->callfalse:dep->guard->calltrue;
+                        assert(call);
+
+                        if( NULL !=call->parametrized_offset )
+                        {
+                            // Then the dep refers to a parametrized flow
+
+                            coutput("parsec_dep_t *%s_referrer_dep%d_atline_%d%s;\n",
+                            JDF_OBJECT_ONAME(df), depid, JDF_OBJECT_LINENO(dep),
+                                // If ternary, add _iftrue or _iffalse
+                                (dep->guard->guard_type==JDF_GUARD_TERNARY) ? ((target_call)?"_iffalse":"_iftrue") : "",
+                                jdf_basename, call->func_or_mem, call->var);
+                        }
+                    }
                 }
             }
         }
@@ -5082,6 +5112,8 @@ static void jdf_generate_new_function( const jdf_t* jdf )
 
     if(JDF_ANY_FLOW_IS_PARAMETRIZED(jdf))
     {
+        int depid;
+
         coutput(
             "\n"
             "  // Rework the structure to handle parametrized flows\n"
@@ -5139,6 +5171,7 @@ static void jdf_generate_new_function( const jdf_t* jdf )
 
         coutput("  // Allocate parametrized flows\n");
         // Set the parametrized flows upper bounds
+        coutput("  // Upper bounds\n");
         for( jdf_function_entry_t* f = jdf->functions; NULL != f; f = f->next ) {
             for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
                 if( FLOW_IS_PARAMETRIZED(df) ) {
@@ -5157,6 +5190,7 @@ static void jdf_generate_new_function( const jdf_t* jdf )
                 }
             }
         }
+        coutput("  // Parametrized flows\n");
         for( jdf_function_entry_t* f = jdf->functions; NULL != f; f = f->next ) {
             for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
                 if( FLOW_IS_PARAMETRIZED(df) ) {
@@ -5170,8 +5204,36 @@ static void jdf_generate_new_function( const jdf_t* jdf )
                     jdf_expr_t *to = df->local_variables->jdf_ta2;
                     //jdf_expr_t *step = variable->jdf_ta3;
 
-                    coutput("  flow_of_%s_%s_for_parametrized_%s = alloca(sizeof(parsec_flow_t) * nb_specializations_flow_of_%s_%s_for_parametrized_%s);\n",
+                    coutput("  flow_of_%s_%s_for_parametrized_%s = malloc(sizeof(parsec_flow_t) * nb_specializations_flow_of_%s_%s_for_parametrized_%s);\n",
                             jdf_basename, f->fname, df->varname, jdf_basename, f->fname, df->varname);
+                }
+            }
+        }
+        coutput("  // Referrers\n");
+        for( jdf_function_entry_t* f = jdf->functions; NULL != f; f = f->next ) {
+            for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
+                depid=1;
+                for( jdf_dep_t *dep = df->deps; NULL != dep; dep = dep->next, depid++ ) {
+                    for( int target_call=0; target_call<2; ++target_call ) {
+                        assert(dep->guard->guard_type==JDF_GUARD_UNCONDITIONAL || dep->guard->guard_type==JDF_GUARD_BINARY || dep->guard->guard_type==JDF_GUARD_TERNARY);
+                        if(dep->guard->guard_type!=JDF_GUARD_TERNARY && target_call==1)
+                        { // callfalse is only relevant for JDF_GUARD_UNCONDITIONAL and JDF_GUARD_BINARY
+                            continue;
+                        }
+                        jdf_call_t *call = target_call?dep->guard->callfalse:dep->guard->calltrue;
+                        assert(call);
+
+                        if( NULL !=call->parametrized_offset )
+                        {
+                            // Then the dep refers to a parametrized flow
+
+                            coutput("  %s_referrer_dep%d_atline_%d%s = malloc(sizeof(parsec_dep_t) * nb_specializations_flow_of_%s_%s_for_parametrized_%s);\n",
+                            JDF_OBJECT_ONAME(df), depid, JDF_OBJECT_LINENO(dep),
+                                // If ternary, add _iftrue or _iffalse
+                                (dep->guard->guard_type==JDF_GUARD_TERNARY) ? ((target_call)?"_iffalse":"_iftrue") : "",
+                                jdf_basename, call->func_or_mem, call->var);
+                        }
+                    }
                 }
             }
         }
@@ -5285,7 +5347,6 @@ static void jdf_generate_new_function( const jdf_t* jdf )
         coutput("\n");
 
         coutput("  // Then unroll all the relevant referrer's deps\n");
-        int depid;
         for( jdf_function_entry_t* f = jdf->functions; NULL != f; f = f->next ) {
             for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
                 depid=1;
