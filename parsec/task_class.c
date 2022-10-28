@@ -404,13 +404,12 @@ void parsec_check_sanity_of_task_class(parsec_task_class_t *tc)
     assert(tc->nb_flows == treated_flows_size);
 }
 
-parsec_flow_t *parsec_helper_copy_flow(parsec_flow_t *flow)
+parsec_flow_t *parsec_helper_copy_flow(parsec_flow_t *flow_to, parsec_flow_t *flow_from)
 {
     int flow_in_out;
 
-    parsec_flow_t *new_flow = (parsec_flow_t *)malloc(sizeof(parsec_flow_t));
-    assert(new_flow);
-    memcpy(new_flow, flow, sizeof(parsec_flow_t));
+    assert(flow_to);
+    memcpy(flow_to, flow_from, sizeof(parsec_flow_t));
 
     // Copy the dependencies
     int i;
@@ -418,7 +417,7 @@ parsec_flow_t *parsec_helper_copy_flow(parsec_flow_t *flow)
     {
         for (i = 0; i < flow_in_out ? MAX_DEP_OUT_COUNT : MAX_DEP_IN_COUNT; i++)
         {
-            parsec_dep_t *dep = (parsec_dep_t *)(flow_in_out ? new_flow->dep_out[i] : new_flow->dep_in[i]);
+            parsec_dep_t *dep = (parsec_dep_t *)(flow_in_out ? flow_to->dep_out[i] : flow_to->dep_in[i]);
 
             if (!dep)
             {
@@ -428,11 +427,11 @@ parsec_flow_t *parsec_helper_copy_flow(parsec_flow_t *flow)
             parsec_dep_t *new_dep = (parsec_dep_t *)malloc(sizeof(parsec_dep_t));
             assert(new_dep);
             memcpy(new_dep, dep, sizeof(parsec_dep_t));
-            (flow_in_out ? new_flow->dep_out : new_flow->dep_in)[i] = new_dep;
+            (flow_in_out ? flow_to->dep_out : flow_to->dep_in)[i] = new_dep;
         }
     }
 
-    return new_flow;
+    return flow_to;
 }
 
 parsec_dep_t *parsec_helper_copy_dep(parsec_dep_t * dep)

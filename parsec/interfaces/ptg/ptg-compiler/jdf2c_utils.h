@@ -5,6 +5,7 @@
 
 typedef char *(*dumper_function_t)(void **elt, void *arg);
 
+
 /**
  * FLOW_IS_PARAMETRIZED:
  *    Tells whether a flow is parametrized or not.
@@ -14,6 +15,23 @@ typedef char *(*dumper_function_t)(void **elt, void *arg);
  */
 #define FLOW_IS_PARAMETRIZED(flow) \
     ((flow)->local_variables != NULL)
+
+/**
+ * GET_PARAMETRIZED_FLOW_ITERATOR_NAME
+ * @param flow: the flow from which to get the iterator
+ * 
+ * Returns a string, the name of the iterator
+ */
+#define GET_PARAMETRIZED_FLOW_ITERATOR_NAME(flow) \
+    get_parametrized_flow_iterator_name(flow)
+
+static inline char *get_parametrized_flow_iterator_name(jdf_dataflow_t *flow)
+{
+    assert(FLOW_IS_PARAMETRIZED(flow));
+    assert(flow->local_variables->next == NULL); // only one iterator for parametrized flows
+
+    return flow->local_variables->alias;
+}
 
 /**
  * INDENTATION_IF_PARAMETRIZED:
@@ -47,7 +65,7 @@ util_dump_array_offset_if_parametrized(string_arena_t *sa, const jdf_dataflow_t 
     string_arena_init(sa);
 
     if (FLOW_IS_PARAMETRIZED(flow)) {
-        string_arena_add_string(sa, "[%s]", flow->local_variables->alias);
+        string_arena_add_string(sa, "[%s]", get_parametrized_flow_iterator_name(flow));
     }
 
     return string_arena_get_string(sa);
@@ -74,6 +92,54 @@ static inline int variable_is_flow_level_util(const jdf_dataflow_t *flow, const 
 
     return 0;
 }
+
+/**
+ * JDF_ANY_FLOW_IS_PARAMETRIZED:
+ *   Tells whether any flow is parametrized or not.
+ *   Used to avoid code overloading if no paramtrized flow is present.
+ * @param [IN] jdf:           the jdf to test.
+ * 
+ * @return a boolean value.
+ */
+#define JDF_ANY_FLOW_IS_PARAMETRIZED(jdf) \
+    jdf_any_flow_is_parametrized_util(jdf)
+
+static inline int jdf_any_flow_is_parametrized_util(const jdf_t *jdf)
+{
+    for( jdf_function_entry_t* f = jdf->functions; NULL != f; f = f->next ) {
+        for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
+            if( FLOW_IS_PARAMETRIZED(df) ) {
+                return 1;
+            }
+        }
+    }
+
+    return 0;
+}
+
+/**
+ * TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED:
+ *  Tells whether any flow is parametrized or not.
+ * 
+ * @param [IN] tc:            the task class to test.
+ * 
+ * @return a boolean value.
+ */
+#define TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(tc) \
+    task_class_any_flow_is_parametrized_util(tc)
+
+static inline int task_class_any_flow_is_parametrized_util(const jdf_function_entry_t *tc)
+{
+    for( jdf_dataflow_t* df = tc->dataflow; NULL != df; df = df->next ) {
+        if( FLOW_IS_PARAMETRIZED(df) ) {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+
 
 /**
  * UTIL_DUMP_LIST_FIELD:
