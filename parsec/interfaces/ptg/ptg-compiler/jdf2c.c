@@ -1635,15 +1635,29 @@ static void jdf_generate_predeclarations( const jdf_t *jdf )
         for(fl = f->dataflow; fl != NULL; fl = fl->next) {
             rc = asprintf(&JDF_OBJECT_ONAME( fl ), "flow_of_%s_%s_for_%s", jdf_basename, f->fname, fl->varname);
             assert(rc != -1);
-            coutput("static%s parsec_flow_t %s;\n",
+            coutput("static%s parsec_flow_t %s;%s\n",
 #if defined(PARSEC_ALLOW_PARAMETRIZED_FLOWS)
                             "",
 #else
                             " const",
 #endif
-                    JDF_OBJECT_ONAME( fl ));
+                    JDF_OBJECT_ONAME( fl ),
+                    // Add a comment to make it clear that the flow is parametrized
+                    FLOW_IS_PARAMETRIZED(fl) ? " /* Parametrized flow, will not be used in the execution, but at init time to set up the parametrized specializations */" : "");
         }
     }
+    coutput("// Declaration of parametrized flow specializations (if any):\n");
+    for( jdf_function_entry_t* f = jdf->functions; NULL != f; f = f->next ) {
+        for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
+            if( FLOW_IS_PARAMETRIZED(df) ) {
+
+                coutput("parsec_flow_t *flow_of_%s_%s_for_parametrized_%s;\n",
+                        jdf_basename, f->fname, df->varname);
+            }
+        }
+    }
+
+    coutput("\n\n");
     (void)rc;
 }
 
@@ -5058,6 +5072,89 @@ static void jdf_generate_new_function( const jdf_t* jdf )
     coutput("  /* Now the Parameter-dependent structures: */\n"
             "%s", UTIL_DUMP_LIST(sa1, jdf->globals, next,
                                  dump_globals_init, sa2, "", "  ", "\n", "\n"));
+
+    coutput(
+        "\n"
+        "  // Rework the structure to handle parametrized flows\n"
+        "\n"
+        "  int i, j;\n"
+        "  /* update the dependency IDs in case of parametrized flows */\n"
+        "  /* The general idea is: */\n"
+        "  /* (A) If a dependency refers to a parametrized flow, it should be divided into N dependencies,     */\n"
+        "  /*     With each dependency referring to the corresponding flow and having the corresponding cond   */\n"
+        "  /*     E.g. the jdf: DATA_FROM -> DATA_TO[i+j*SIZE] MyFunc(...)     */\n"
+        "  /*        should translate into : */\n"
+        "  /*                   -> ((i+j*SIZE)==0) ? DATA_TO[0] SuccFunc(...)  */\n"
+        "  /*                   -> ((i+j*SIZE)==1) ? DATA_TO[1] SuccFunc(...)  */\n"
+        "  /**/\n"
+        "  /* (B) On the other side, if a flow is parametrized:                */\n"
+        "  /*     It should be divided into N flows, the deps of which should be correctly linked with the corresponding generated dep in (A) */\n"
+        "  /*     E.g. the jdf: DATA_TO[it=0...N-1] <- DATA_FROM PredFunc(it%%SIZE, it/size, ...) */\n"
+        "  /*        should translate into : */\n"
+        "  /*                   DATA_TO[0] <- DATA_FROM PredFunc(0, 0, ...)     */\n"
+        "  /*                   DATA_TO[1] <- DATA_FROM PredFunc(1, 0, ...)     */\n"
+        "  /*                                                 ...               */\n"
+        "  /*                   DATA_TO[SIZE] <- DATA_FROM PredFunc(0, 1, ...)  */\n"
+        "  /*                   DATA_TO[SIZE+1]                   ...           */\n"
+        "  /**/\n"
+        "  /* We refer to (A) as referrer and to (B) as parametrized flow. */\n\n"
+        );
+
+    // TODO: delete the following lines when the code is ready
+/*
+    coutput(
+        "  // list of parametrized flows\n"
+            );
+    
+    for( jdf_function_entry_t* f = jdf->functions; NULL != f; f = f->next ) {
+        for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
+            if( FLOW_IS_PARAMETRIZED(df) ) {
+                expr_info_t expr_info = EMPTY_EXPR_INFO;
+                expr_info.sa = string_arena_new(64);
+                expr_info.prefix = "";
+                expr_info.suffix = "";
+                expr_info.assignments = "parametrized flow range";
+
+                //jdf_expr_t *from = variable->jdf_ta1;
+                jdf_expr_t *to = df->local_variables->jdf_ta2;
+                //jdf_expr_t *step = variable->jdf_ta3;
+
+                coutput("  parsec_flow_t *new_flow_for_task_%s_parametrized_flow_%s[(%s)+1];\n",
+                        f->fname, df->varname, dump_expr((void**)to, &expr_info));
+            }
+        }
+    }
+
+    coutput("\n");
+*/
+
+    coutput("  // Allocate parametrized flows\n");
+    
+    for( jdf_function_entry_t* f = jdf->functions; NULL != f; f = f->next ) {
+        for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
+            if( FLOW_IS_PARAMETRIZED(df) ) {
+                expr_info_t expr_info = EMPTY_EXPR_INFO;
+                expr_info.sa = string_arena_new(64);
+                expr_info.prefix = "";
+                expr_info.suffix = "";
+                expr_info.assignments = "parametrized flow range";
+
+                //jdf_expr_t *from = variable->jdf_ta1;
+                jdf_expr_t *to = df->local_variables->jdf_ta2;
+                //jdf_expr_t *step = variable->jdf_ta3;
+
+                coutput("  flow_of_%s_%s_for_parametrized_%s = alloca(sizeof(parsec_flow_t) * ((%s)+1));\n",
+                        jdf_basename, f->fname, df->varname, dump_expr((void**)to, &expr_info));
+            }
+        }
+    }
+
+    coutput("\n");
+
+  /*parsec_flow_t *new_flow_for_task_1_parametrized_flow_GRID_CD_in[((conservatives_number * directions_number) - 1)+1];
+  // list of referrers
+  parsec_dep_t *new_dep_task_0_parametrized_flow_INITIAL_GRID_dep_1_out[((conservatives_number * directions_number) - 1)+1];*/
+
 
     for(jdf_function_entry_t *f = jdf->functions; f != NULL; f = f->next) {
         coutput("  PARSEC_AYU_REGISTER_TASK(&%s_%s);\n",
