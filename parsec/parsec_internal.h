@@ -405,8 +405,8 @@ struct parsec_task_class_s {
     parsec_dependency_t          dependencies_goal;
     const parsec_symbol_t       *params[MAX_LOCAL_COUNT];
     const parsec_symbol_t       *locals[MAX_LOCAL_COUNT];
-    const parsec_flow_t         *in[MAX_PARAM_COUNT];
-    const parsec_flow_t         *out[MAX_PARAM_COUNT];
+    const parsec_flow_t         *in[MAX_DATAFLOWS_PER_TASK];
+    const parsec_flow_t         *out[MAX_DATAFLOWS_PER_TASK];
     const parsec_expr_t         *priority;
     const parsec_property_t     *properties;     /**< {NULL, NULL} terminated array of properties holding all function-specific properties expressions */
 

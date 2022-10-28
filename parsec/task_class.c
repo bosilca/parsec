@@ -31,8 +31,8 @@
 //     parsec_dependency_t          dependencies_goal;
 //     const parsec_symbol_t       *params[MAX_LOCAL_COUNT];
 //     const parsec_symbol_t       *locals[MAX_LOCAL_COUNT];
-//     const parsec_flow_t         *in[MAX_PARAM_COUNT];
-//     const parsec_flow_t         *out[MAX_PARAM_COUNT];
+//     const parsec_flow_t         *in[MAX_DATAFLOWS_PER_TASK];
+//     const parsec_flow_t         *out[MAX_DATAFLOWS_PER_TASK];
 //     const parsec_expr_t         *priority;
 //     const parsec_property_t     *properties;     /**< {NULL, NULL} terminated array of properties holding all function-specific properties expressions */
 
@@ -119,13 +119,13 @@ void parsec_shift_all_flows_after(parsec_task_class_t *tc, parsec_flow_t *pivot_
     parsec_dep_t *dep;
 
     // use an array to keep track of the flows we already treated
-    parsec_flow_t *treated_flows[MAX_PARAM_COUNT];
+    parsec_flow_t *treated_flows[MAX_DATAFLOWS_PER_TASK];
     int treated_flows_size = 0;
 
     // Increase the IDs of every flow that is greater than the ID of pivot_flow
     for (flow_in_out = 0; flow_in_out < 2; ++flow_in_out)
     {
-        for (i = 0; i < MAX_PARAM_COUNT; i++)
+        for (i = 0; i < MAX_DATAFLOWS_PER_TASK; i++)
         {
             flow = (parsec_flow_t *)(flow_in_out ? tc->out[i] : tc->in[i]);
             if (parsec_helper_flow_is_in_flow_array(flow, treated_flows, treated_flows_size))
@@ -161,7 +161,7 @@ void parsec_shift_all_flows_after(parsec_task_class_t *tc, parsec_flow_t *pivot_
 
         // Look for the pivot flow
         pivot_index = -1;
-        for (i = 0; i < MAX_PARAM_COUNT; i++)
+        for (i = 0; i < MAX_DATAFLOWS_PER_TASK; i++)
         {
             flow = (parsec_flow_t *)(flow_in_out ? tc->out[i] : tc->in[i]);
 
@@ -184,7 +184,7 @@ void parsec_shift_all_flows_after(parsec_task_class_t *tc, parsec_flow_t *pivot_
         }
 
         // Find the last non-null flow
-        for (i = pivot_index; i < MAX_PARAM_COUNT; i++)
+        for (i = pivot_index; i < MAX_DATAFLOWS_PER_TASK; i++)
         {
             flow = (parsec_flow_t *)(flow_in_out ? tc->out[i] : tc->in[i]);
 
@@ -202,7 +202,7 @@ void parsec_shift_all_flows_after(parsec_task_class_t *tc, parsec_flow_t *pivot_
 
             assert(flow); // We should not have a NULL flow here
             // assert(flow->flow_index == i); // The flow index can acutally be anything
-            assert(i + shift < MAX_PARAM_COUNT); // We should not overflow the array
+            assert(i + shift < MAX_DATAFLOWS_PER_TASK); // We should not overflow the array
 
             // Shift the flow
             (flow_in_out ? tc->out : tc->in)[i + shift] = flow;
@@ -292,7 +292,7 @@ void parsec_debug_dump_task_class_at_exec(parsec_task_class_t *tc)
     parsec_dep_t *dep;
 
     // flows can appear twice in a task class (if both in and out)
-    parsec_flow_t *treated_flows[MAX_PARAM_COUNT];
+    parsec_flow_t *treated_flows[MAX_DATAFLOWS_PER_TASK];
     int treated_flows_size = 0;
 
     parsec_debug_verbose(1, parsec_debug_output, "###### PRINTING TASK CLASS %s ######", tc->name);
@@ -300,7 +300,7 @@ void parsec_debug_dump_task_class_at_exec(parsec_task_class_t *tc)
     parsec_debug_verbose(1, parsec_debug_output, "## Task Class %s (%p) has %d flows, %d parameters, %d locals",
                          tc->name, (void *)tc, tc->nb_flows, tc->nb_parameters, tc->nb_locals);
 
-    for (i = 0; i < MAX_PARAM_COUNT; i++)
+    for (i = 0; i < MAX_DATAFLOWS_PER_TASK; i++)
     {
         for (flow_in_out = 0; flow_in_out < 2; ++flow_in_out)
         {
@@ -358,10 +358,10 @@ void parsec_check_sanity_of_task_class(parsec_task_class_t *tc)
     parsec_dep_t *dep;
 
     // flows can appear twice in a task class (if both in and out)
-    parsec_flow_t *treated_flows[MAX_PARAM_COUNT];
+    parsec_flow_t *treated_flows[MAX_DATAFLOWS_PER_TASK];
     int treated_flows_size = 0;
 
-    for (i = 0; i < MAX_PARAM_COUNT; i++)
+    for (i = 0; i < MAX_DATAFLOWS_PER_TASK; i++)
     {
         for (flow_in_out = 0; flow_in_out < 2; ++flow_in_out)
         {
@@ -378,7 +378,7 @@ void parsec_check_sanity_of_task_class(parsec_task_class_t *tc)
     }
 
     // Check the coherency of the flow flags
-    for (i = 0; i < MAX_PARAM_COUNT; i++)
+    for (i = 0; i < MAX_DATAFLOWS_PER_TASK; i++)
     {
         flow = tc->out[i];
 

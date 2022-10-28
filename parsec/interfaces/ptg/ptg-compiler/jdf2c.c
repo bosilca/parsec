@@ -1508,9 +1508,9 @@ static inline char* jdf_generate_task_typedef(void **elt, void* arg)
                             nb_locals,
                             parsec_get_name(NULL, f, "parsec_assignment_t"));
     string_arena_add_string(sa,
-                            "#if MAX_PARAM_COUNT < %d  /* total number of flows for task %s */\n"
-                            "  #error Too many flows (%d out of MAX_PARAM_COUNT) for task %s\n"
-                            "#endif  /* MAX_PARAM_COUNT */\n",
+                            "#if MAX_DATAFLOWS_PER_TASK < %d  /* total number of flows for task %s */\n"
+                            "  #error Too many flows (%d out of MAX_DATAFLOWS_PER_TASK) for task %s\n"
+                            "#endif  /* MAX_DATAFLOWS_PER_TASK */\n",
                             nb_flows, f->fname, nb_flows, f->fname);
     string_arena_add_string(sa, "typedef struct %s {\n"
                             "%s"
@@ -4455,12 +4455,12 @@ static void jdf_generate_one_function( const jdf_t *jdf, jdf_function_entry_t *f
             out_flows += !!(fl->flow_flags & JDF_FLOW_TYPE_WRITE);
         }
         string_arena_add_string(sa,
-                                "#if MAX_PARAM_COUNT < %d  /* number of read flows of %s */\n"
+                                "#if MAX_DATAFLOWS_PER_TASK < %d  /* number of read flows of %s */\n"
                                 "  #error Too many read flows for task %s\n"
-                                "#endif  /* MAX_PARAM_COUNT */\n"
-                                "#if MAX_PARAM_COUNT < %d  /* number of write flows of %s */\n"
+                                "#endif  /* MAX_DATAFLOWS_PER_TASK */\n"
+                                "#if MAX_DATAFLOWS_PER_TASK < %d  /* number of write flows of %s */\n"
                                 "  #error Too many write flows for task %s\n"
-                                "#endif  /* MAX_PARAM_COUNT */\n",
+                                "#endif  /* MAX_DATAFLOWS_PER_TASK */\n",
                                 in_flows, f->fname, f->fname,
                                 out_flows, f->fname, f->fname);
     }
@@ -5176,6 +5176,23 @@ static void jdf_generate_new_function( const jdf_t* jdf )
             }
         }
         coutput("\n");
+
+        coutput("  // Store parametrized flows in a table for convenience\n");
+        coutput("  parsec_flow_t const *parametrized_flows[MAX_DATAFLOWS_PER_TASK] = {\n");
+        int nb_parametrized_flows = 0;
+        for( jdf_function_entry_t* f = jdf->functions; NULL != f; f = f->next ) {
+            for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
+                if( FLOW_IS_PARAMETRIZED(df) ) {
+                    coutput("    &flow_of_%s_%s_for_%s,\n", jdf_basename, f->fname, df->varname);
+                    ++ nb_parametrized_flows;
+                }
+            }
+        }
+        coutput("    NULL\n  };\n");
+        coutput("  const int nb_parametrized_flows = %d;\n", nb_parametrized_flows);
+
+        coutput("\n");
+        
         coutput("  // Unroll all the parametrized flows\n");
 
         for( jdf_function_entry_t* f = jdf->functions; NULL != f; f = f->next ) {
@@ -5221,14 +5238,14 @@ static void jdf_generate_new_function( const jdf_t* jdf )
                         "    for(int flow_in_out=0;flow_in_out<2;++flow_in_out) {\n"
                         "      bool pivot_reached = false;\n"
                         "      int %s = 0;\n"
-                        "      for(i = 0; i < MAX_PARAM_COUNT && %s < nb_specializations_flow_of_%s_%s_for_parametrized_%s; i++) {\n"
+                        "      for(i = 0; i < MAX_DATAFLOWS_PER_TASK && %s < nb_specializations_flow_of_%s_%s_for_parametrized_%s; i++) {\n"
                         "        parsec_flow_t *flow = (parsec_flow_t*)(flow_in_out?tc->out[i]:tc->in[i]);\n"
                         "        if(!flow && !pivot_reached) {\n"
                         "          break;\n"
                         "        }\n"
                         "        if(flow == &flow_of_%s_%s_for_%s) {\n"
                         "          pivot_reached = true;\n"
-                        "          assert(i+nb_specializations_flow_of_%s_%s_for_parametrized_%s < MAX_PARAM_COUNT);\n"
+                        "          assert(i+nb_specializations_flow_of_%s_%s_for_parametrized_%s < MAX_DATAFLOWS_PER_TASK);\n"
                         "        }\n"
                         "        if(pivot_reached)\n"
                         "        {\n"
@@ -5247,7 +5264,7 @@ static void jdf_generate_new_function( const jdf_t* jdf )
                     );
                     coutput(
                         "    // Update the mask of each flow\n"
-                        "    /*for(i = 0; i < MAX_PARAM_COUNT; i++) {\n"
+                        "    /*for(i = 0; i < MAX_DATAFLOWS_PER_TASK; i++) {\n"
                         "      parsec_flow_t *flow = tc->out[i];\n"
                         "      if(!flow) {\n"
                         "        break;\n"
@@ -5266,6 +5283,84 @@ static void jdf_generate_new_function( const jdf_t* jdf )
 
         coutput("\n");
 
+        coutput("  // Then unroll all the relevant referrer's deps\n");
+        // The deps that refer to a parametrized flow are too hard to find at compile time
+        /*for( jdf_function_entry_t* f = jdf->functions; NULL != f; f = f->next ) {
+            for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
+                for( jdf_dep_t *dep = df->deps; NULL != dep; dep = dep->next ) {
+                    if( FLOW_IS_PARAMETRIZED(dep->) ) {
+                        if( NULL != dep->referrer->parametrized ) {*/
+
+
+/*
+  int tcid, flid, depid;
+  for( tcid = 0; tcid < __parsec_tp->super.super.nb_task_classes; tcid++ ) {
+    parsec_task_class_t *tc = __parsec_tp->super.super.task_classes_array[tcid];
+    
+    for(int flow_in_out=0;flow_in_out<2;++flow_in_out) {
+      for( flid=0; flid < MAX_DATAFLOWS_PER_TASK; flid++ ) {
+        parsec_flow_t *flow = (parsec_flow_t*)(flow_in_out?tc->out[flid]:tc->in[flid]);
+        if(!flow) {
+          break;
+        }
+        for( depid = 0; depid < flow_in_out?MAX_DEP_OUT_COUNT:MAX_DEP_IN_COUNT; ++depid ) {
+          parsec_dep_t *dep = (parsec_dep_t*)(flow_in_out?flow->dep_out[depid]:flow->dep_in[depid]);
+          if(!dep) {
+            break;
+          }
+          // If the target flow is a parametrized flow
+          if(parsec_helper_flow_is_in_flow_array(dep->flow, parametrized_flows, nb_parametrized_flows)) {
+            // Shift the deps that are after dep (which references the parametrized flow)
+            parsec_shift_all_deps_after(flow, flow_in_out, dep, nb_parametrized_flow_GRID_CD-1);
+            // Now that we have space for the new deps, create them making sure they respect the pattern given in (A) 
+            for(int cd=0;cd<=((conservatives_number * directions_number) - 1);cd+=1) {
+              parsec_dep_t *new_dep = parsec_helper_copy_dep(dep);
+              assert(NULL != new_dep);
+              // Compute the pointer to the target parametrized flow specialization and the target expr_cond
+              parsec_flow_t *target_parametrized_flow = NULL;
+              parsec_expr_t *target_expr_cond = NULL;
+              switch(dep->task_class_id)
+              {
+                case 1: // task class 0 (LBM_STEP)
+                  switch(dep->flow->flow_index)
+                  {
+                    case 0: // parametrized flow 0 (GRID_CD) of task class 1 (LBM_STEP)
+                      target_parametrized_flow = new_flow_for_task_1_parametrized_flow_GRID_CD_in[cd];
+                      target_expr_cond = expr_of_parametrized_cond_for_flow_of_LBM_FillGrid_for_INITIAL_GRID_dep1_atline_298_iftrue[cd];
+                      break;
+                    default:
+                      parsec_debug_verbose(10, parsec_debug_output, "Warning: dep %d of flow %s of task %d references flow %s of task %d which is not parametrized",
+                            depid, dep->flow->name, flid, dep->flow->name, dep->task_class_id);
+                      break;
+                  }
+                  break;
+                default:
+                  parsec_debug_verbose(10, parsec_debug_output, "Warning: dep %d of flow %s of task %d references task class %d, which has no parametrized flow.",
+                        depid, dep->flow->name, flid, dep->task_class_id);
+                  break;
+              }
+              assert(target_parametrized_flow);
+              assert(target_expr_cond);
+              new_dep->flow = target_parametrized_flow;
+              new_dep->cond = target_expr_cond; // TODO !
+              // new_dep->ctl_gather_nb = ; // TODO
+              new_dep->dep_index += cd;
+              new_dep->dep_datatype_index += cd; // TODO maybe modify?
+              //assert(new_dep->direct_data != NULL);
+              // Insert the new dep
+              (flow_in_out?flow->dep_out:flow->dep_in)[depid+cd] = new_dep;
+            }
+          }
+        }
+      }
+    }
+  }
+
+*/
+
+
+        coutput("\n");
+
         coutput(
             "#if defined(PARSEC_DEBUG_PARANOID)\n"
             "  // use parsec_debug_dump_task_class_at_exec(tc); on each task class\n"
@@ -5280,7 +5375,8 @@ static void jdf_generate_new_function( const jdf_t* jdf )
             "  }\n"
             "#endif\n"
         );
-
+            
+        coutput("\n");
     }
     coutput("\n");
 
