@@ -21,6 +21,6 @@ void parsec_check_sanity_of_task_class(parsec_task_class_t *tc);
 
 // Copy a flow (including its deps) and returns a pointer to the new flow
 parsec_flow_t *parsec_helper_copy_flow(parsec_flow_t *flow_to, parsec_flow_t *flow_from);
-parsec_dep_t *parsec_helper_copy_dep(parsec_dep_t * dep);
+parsec_dep_t *parsec_helper_copy_dep(parsec_dep_t * dep_to, parsec_dep_t * dep_from);
 
 #endif  /* PARSEC_TASK_CLASS_H_HAS_BEEN_INCLUDED */

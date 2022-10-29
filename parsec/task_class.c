@@ -268,6 +268,7 @@ void parsec_shift_all_deps_after(parsec_flow_t *flow, int dep_in_out, parsec_dep
         (dep_in_out ? flow->dep_out : flow->dep_in)[i + shift] = dep;
     }
 
+    /* // The datatype_mask should stay the same, as we do not add any datatype
     // Also shift the flow's flow_datatype_mask
     if(dep_in_out)
     {
@@ -279,6 +280,7 @@ void parsec_shift_all_deps_after(parsec_flow_t *flow, int dep_in_out, parsec_dep
         parsec_dependency_t in_between = ((1<<(shift+1))-1) << pivot_dep_index;
         flow->flow_datatype_mask = unshifted_values | shifted_values | in_between;
     }
+    */
 }
 
 /* Prints the task class information (for debugging purposes)
@@ -397,7 +399,7 @@ void parsec_check_sanity_of_task_class(parsec_task_class_t *tc)
             }
 
             // All out dependencies should be in the flow datatype mask
-            assert((1 << dep->dep_index) & flow->flow_datatype_mask);
+            assert((1 << dep->dep_datatype_index) & flow->flow_datatype_mask);
         }
     }
 
@@ -434,10 +436,10 @@ parsec_flow_t *parsec_helper_copy_flow(parsec_flow_t *flow_to, parsec_flow_t *fl
     return flow_to;
 }
 
-parsec_dep_t *parsec_helper_copy_dep(parsec_dep_t * dep)
+parsec_dep_t *parsec_helper_copy_dep(parsec_dep_t * dep_to, parsec_dep_t * dep_from)
 {
-    parsec_dep_t *new_dep = (parsec_dep_t *)malloc(sizeof(parsec_dep_t));
-    assert(new_dep);
-    memcpy(new_dep, dep, sizeof(parsec_dep_t));
-    return new_dep;
+    //parsec_dep_t *new_dep = (parsec_dep_t *)malloc(sizeof(parsec_dep_t));
+    assert(dep_to);
+    memcpy(dep_to, dep_from, sizeof(parsec_dep_t));
+    return dep_to;
 }
