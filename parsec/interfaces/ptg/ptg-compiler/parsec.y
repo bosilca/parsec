@@ -954,6 +954,7 @@ guarded_call: call
                   jdf_guarded_call_t *g = new(jdf_guarded_call_t);
                   g->guard_type = JDF_GUARD_UNCONDITIONAL;
                   g->guard = NULL;
+                  //g->guard = ($1->calltrue->parametrized_offset); // NULL if not a referrer of a parametrized flow
                   g->calltrue = $1;
                   g->callfalse = NULL;
                   $$ = g;
@@ -967,6 +968,26 @@ guarded_call: call
                   g->guard = $1;
                   g->calltrue = $3;
                   g->callfalse = NULL;
+                  /*if(g->calltrue->parametrized_offset) // wrong approach, we work in jdf2c to fix the parametrized conds
+                  {
+                    // goal: cond -> (iterator == expr) && cond
+
+                    jdf_expr_t *iterator = malloc(sizeof(jdf_expr));
+                    memcpy(iterator, g->calltrue->parametrized_offset, sizeof(jdf_expr));
+                    iterator->op = JDF_CST;
+
+                    jdf_expr_t *equal_expr = malloc(sizeof(jdf_expr));
+                    equal_expr->op = JDF_EQ;
+                    equal_expr->jdf_ba1 = iterator;
+                    equal_expr->jdf_ba2 = g->calltrue->parametrized_offset->jdf_ba1;
+
+                    jdf_expr_t *and_expr = malloc(sizeof(jdf_expr));
+                    and_expr->op = JDF_AND;
+                    and_expr->jdf_ba1 = equal_expr;
+                    and_expr->jdf_ba2 = $1;
+
+                    g->guard = and_expr;
+                  }*/
                   $$ = g;
                   assert( 0 != JDF_OBJECT_LINENO($1) );
                   JDF_OBJECT_LINENO($$) = JDF_OBJECT_LINENO($1);

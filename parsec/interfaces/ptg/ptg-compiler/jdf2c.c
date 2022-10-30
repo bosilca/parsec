@@ -1682,8 +1682,7 @@ static void jdf_generate_predeclarations( const jdf_t *jdf )
                             coutput("parsec_dep_t *%s_referrer_dep%d_atline_%d%s;\n",
                             JDF_OBJECT_ONAME(df), depid, JDF_OBJECT_LINENO(dep),
                                 // If ternary, add _iftrue or _iffalse
-                                (dep->guard->guard_type==JDF_GUARD_TERNARY) ? ((target_call)?"_iffalse":"_iftrue") : "",
-                                jdf_basename, call->func_or_mem, call->var);
+                                (dep->guard->guard_type==JDF_GUARD_TERNARY) ? ((target_call)?"_iffalse":"_iftrue") : "");
                         }
                     }
                 }
@@ -2843,6 +2842,39 @@ static int jdf_generate_dependency( const jdf_t *jdf, jdf_dataflow_t *flow, jdf_
     return ret;
 }
 
+static inline jdf_expr_t *jdf_create_parametrized_referrer_expr_cond(jdf_expr_t *cond, jdf_expr_t *iterator, jdf_expr_t *parametrized_expr)
+{
+    // goal: cond -> (iterator == expr) && cond
+
+    jdf_expr_t *iterator_new = malloc(sizeof(jdf_expr_t));
+    memcpy(iterator_new, iterator, sizeof(jdf_expr_t));
+    iterator_new->op = JDF_VAR;
+    iterator_new->jdf_var = strdup(iterator->alias);
+
+    jdf_expr_t *equal_expr = malloc(sizeof(jdf_expr_t));
+    memcpy(equal_expr, cond, sizeof(jdf_expr_t));
+    equal_expr->op = JDF_EQUAL;
+    equal_expr->jdf_ba1 = iterator_new;
+    equal_expr->jdf_ba2 = parametrized_expr;
+
+    jdf_expr_t *and_expr = malloc(sizeof(jdf_expr_t));
+    memcpy(and_expr, cond, sizeof(jdf_expr_t)); // copy to have the same jdf_obj parameters
+    and_expr->op = JDF_AND;
+    and_expr->jdf_ba1 = equal_expr;
+    and_expr->jdf_ba2 = cond;
+
+    return and_expr;
+}
+
+static inline jdf_expr_t *jdf_create_parametrized_referrer_expr_cond_if_parametrized(jdf_call_t *call, jdf_expr_t *cond)
+{
+    if (NULL == call->parametrized_offset) {
+        return cond;
+    }
+
+    return jdf_create_parametrized_referrer_expr_cond(cond, call->parametrized_offset, call->parametrized_offset);
+}
+
 static int jdf_generate_dataflow( const jdf_t *jdf, const jdf_function_entry_t* f,
                                   jdf_dataflow_t *flow, const char *prefix,
                                   int *has_control_gather )
@@ -2898,7 +2930,7 @@ static int jdf_generate_dataflow( const jdf_t *jdf, const jdf_function_entry_t* 
             sprintf(sep, ",\n ");
         } else if( dl->guard->guard_type == JDF_GUARD_BINARY ) {
             sprintf(condname, "expr_of_cond_for_%s", JDF_OBJECT_ONAME(dl));
-            jdf_generate_expression(jdf, f, dl->guard->guard, condname);
+            jdf_generate_expression(jdf, f, jdf_create_parametrized_referrer_expr_cond_if_parametrized(dl->guard->calltrue, dl->guard->guard), condname);
             sprintf(condname, "&expr_of_cond_for_%s", JDF_OBJECT_ONAME(dl));
             indepnorange = jdf_generate_dependency(jdf, flow, dl, dl->guard->calltrue,
                                                    JDF_OBJECT_ONAME(dl), condname, f) && indepnorange;
@@ -2909,7 +2941,7 @@ static int jdf_generate_dataflow( const jdf_t *jdf, const jdf_function_entry_t* 
 
             sprintf(depname, "%s_iftrue", JDF_OBJECT_ONAME(dl));
             sprintf(condname, "expr_of_cond_for_%s", depname);
-            jdf_generate_expression(jdf, f, dl->guard->guard, condname);
+            jdf_generate_expression(jdf, f, jdf_create_parametrized_referrer_expr_cond_if_parametrized(dl->guard->calltrue, dl->guard->guard), condname);
             sprintf(condname, "&expr_of_cond_for_%s", depname);
             indepnorange = jdf_generate_dependency(jdf, flow, dl, dl->guard->calltrue, depname, condname, f) && indepnorange;
             string_arena_add_string(psa, "%s&%s", sep, depname);
@@ -2919,7 +2951,7 @@ static int jdf_generate_dataflow( const jdf_t *jdf, const jdf_function_entry_t* 
             sprintf(condname, "expr_of_cond_for_%s", depname);
             not.op = JDF_NOT;
             not.jdf_ua = dl->guard->guard;
-            jdf_generate_expression(jdf, f, &not, condname);
+            jdf_generate_expression(jdf, f, jdf_create_parametrized_referrer_expr_cond_if_parametrized(dl->guard->callfalse, &not), condname);
             sprintf(condname, "&expr_of_cond_for_%s", depname);
             indepnorange = jdf_generate_dependency(jdf, flow, dl, dl->guard->callfalse, depname, condname, f) && indepnorange;
             string_arena_add_string(psa, "%s&%s", sep, depname);
