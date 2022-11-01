@@ -4514,6 +4514,11 @@ static void jdf_generate_one_function( const jdf_t *jdf, jdf_function_entry_t *f
     sprintf(prefix, "%s_%s", jdf_basename, f->fname);
     jdf_generate_function_incarnation_list(jdf, f, sa, prefix);
 
+    string_arena_add_string(sa, "typedef struct parsec_%s_task_class_s {\n", JDF_OBJECT_ONAME(f));
+    string_arena_add_string(sa, "  parsec_task_class_t super;\n");
+    string_arena_add_string(sa, "  int flow_GRID_CD_offset;\n");
+    string_arena_add_string(sa, "} parsec_%s_task_class_t;\n", JDF_OBJECT_ONAME(f));
+
     string_arena_add_string(sa,
                             "static const parsec_task_class_t %s = {\n"
                             "  .name = \"%s\",\n"
@@ -4753,6 +4758,12 @@ static void jdf_generate_one_function( const jdf_t *jdf, jdf_function_entry_t *f
     }
 
     string_arena_add_string(sa, "};\n");
+
+    string_arena_add_string(sa, "static const parsec_%s_task_class_t spec_%s = {\n", JDF_OBJECT_ONAME(f), JDF_OBJECT_ONAME(f));
+    string_arena_add_string(sa, "  .super = %s,\n", JDF_OBJECT_ONAME(f));
+    string_arena_add_string(sa, "  .flow_GRID_CD_offset = -1\n");
+    string_arena_add_string(sa, "};\n");
+
 
     coutput("%s\n\n", string_arena_get_string(sa));
 
