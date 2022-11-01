@@ -803,6 +803,17 @@ named_array_offset_or_nothing: array_offset
                         }
                 ;
 
+/*
+array_offset_or_nothing: array_offset
+                        {
+                            $$ = $1;
+                        }
+                |       {
+                            $$ = NULL;
+                        }
+                ;
+*/
+
 array_offset: PROPERTIES_ON named_expr_list PROPERTIES_OFF
                {
 #if !defined(PARSEC_ALLOW_PARAMETRIZED_FLOWS)

@@ -1977,7 +1977,7 @@ jdf_generate_function_without_expression(const jdf_t *jdf,
         string_arena_init(sa);
 
         // Iterate over every referrer dep
-        coutput("%s", dump_referrer_iterator(f, sa, e, name));
+        //coutput("%s", dump_referrer_iterator(f, sa, e, name));
         //coutput("//there\n");
         string_arena_init(sa);
 
@@ -2082,7 +2082,7 @@ static void jdf_generate_range_min(const jdf_t *jdf, const jdf_function_entry_t 
     string_arena_init(sa);
 
     // Iterate over every referrer dep
-    coutput("%s", dump_referrer_iterator(f, sa, expr, fn_name));
+    //coutput("%s", dump_referrer_iterator(f, sa, expr, fn_name));
     //coutput("//here\n");
     string_arena_init(sa);
 
@@ -2941,6 +2941,7 @@ static inline jdf_expr_t *jdf_create_parametrized_referrer_expr_cond(jdf_expr_t 
     return and_expr;
 }
 
+/*
 static inline jdf_expr_t *jdf_create_parametrized_referrer_expr_cond_if_parametrized(jdf_call_t *call, jdf_expr_t *cond)
 {
     if (NULL == call->parametrized_offset) {
@@ -2949,6 +2950,7 @@ static inline jdf_expr_t *jdf_create_parametrized_referrer_expr_cond_if_parametr
 
     return jdf_create_parametrized_referrer_expr_cond(cond, call->parametrized_offset, call->parametrized_offset);
 }
+*/
 
 static int jdf_generate_dataflow( const jdf_t *jdf, const jdf_function_entry_t* f,
                                   jdf_dataflow_t *flow, const char *prefix,
@@ -3005,7 +3007,7 @@ static int jdf_generate_dataflow( const jdf_t *jdf, const jdf_function_entry_t* 
             sprintf(sep, ",\n ");
         } else if( dl->guard->guard_type == JDF_GUARD_BINARY ) {
             sprintf(condname, "expr_of_cond_for_%s", JDF_OBJECT_ONAME(dl));
-            jdf_generate_expression(jdf, f, jdf_create_parametrized_referrer_expr_cond_if_parametrized(dl->guard->calltrue, dl->guard->guard), condname);
+            jdf_generate_expression(jdf, f, dl->guard->guard, condname);
             sprintf(condname, "&expr_of_cond_for_%s", JDF_OBJECT_ONAME(dl));
             indepnorange = jdf_generate_dependency(jdf, flow, dl, dl->guard->calltrue,
                                                    JDF_OBJECT_ONAME(dl), condname, f) && indepnorange;
@@ -3016,7 +3018,7 @@ static int jdf_generate_dataflow( const jdf_t *jdf, const jdf_function_entry_t* 
 
             sprintf(depname, "%s_iftrue", JDF_OBJECT_ONAME(dl));
             sprintf(condname, "expr_of_cond_for_%s", depname);
-            jdf_generate_expression(jdf, f, jdf_create_parametrized_referrer_expr_cond_if_parametrized(dl->guard->calltrue, dl->guard->guard), condname);
+            jdf_generate_expression(jdf, f, dl->guard->guard, condname);
             sprintf(condname, "&expr_of_cond_for_%s", depname);
             indepnorange = jdf_generate_dependency(jdf, flow, dl, dl->guard->calltrue, depname, condname, f) && indepnorange;
             string_arena_add_string(psa, "%s&%s", sep, depname);
@@ -3026,7 +3028,7 @@ static int jdf_generate_dataflow( const jdf_t *jdf, const jdf_function_entry_t* 
             sprintf(condname, "expr_of_cond_for_%s", depname);
             not.op = JDF_NOT;
             not.jdf_ua = dl->guard->guard;
-            jdf_generate_expression(jdf, f, jdf_create_parametrized_referrer_expr_cond_if_parametrized(dl->guard->callfalse, &not), condname);
+            jdf_generate_expression(jdf, f, &not, condname);
             sprintf(condname, "&expr_of_cond_for_%s", depname);
             indepnorange = jdf_generate_dependency(jdf, flow, dl, dl->guard->callfalse, depname, condname, f) && indepnorange;
             string_arena_add_string(psa, "%s&%s", sep, depname);
@@ -8807,7 +8809,7 @@ jdf_generate_code_iterate_successors_or_predecessors(const jdf_t *jdf,
 #if defined(PARSEC_ALLOW_PARAMETRIZED_FLOWS)
     if(FLOW_IS_PARAMETRIZED(f->dataflow) && flow_type == JDF_DEP_FLOW_IN)
     {
-        coutput("  assert(0); // %s is parametrized, parsec does not handle iterate_predecessors of parametrized flows yet\n", name);
+        coutput("  parsec_fatal(\"%s is parametrized, parsec does not handle iterate_predecessors of parametrized flows yes\");\n", name);
     }
 #endif  /* defined(PARSEC_ALLOW_PARAMETRIZED_FLOWS) */
 
