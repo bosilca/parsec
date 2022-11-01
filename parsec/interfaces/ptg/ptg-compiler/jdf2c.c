@@ -579,6 +579,45 @@ char * dump_expr(void **elem, void *arg)
     return string_arena_get_string(sa);
 }
 
+char *dump_referrer_iterator(const jdf_function_entry_t *f, void *arg, jdf_expr_t *e, const char *name)
+{
+    string_arena_t *sa = arg;
+
+    if(f == NULL )
+    {
+        assert(0);
+    }
+
+    jdf_call_t *call;
+    for(jdf_dataflow_t *flow = f->dataflow; NULL != flow; flow = flow->next) {
+        for(jdf_dep_t *dep = flow->deps; NULL != dep; dep = dep->next) {
+            jdf_guarded_call_t *guard = dep->guard;
+            switch(guard->guard_type) {
+                case JDF_GUARD_TERNARY:
+                    call = guard->callfalse;
+                    //assert( NULL != JDF_OBJECT_ONAME(call) );
+                    if(call->parametrized_offset) {
+                        string_arena_add_string(sa, "  int %s = locals->ldef[%d].value; (void) %s;\n",
+                            call->parametrized_offset->alias, call->parametrized_offset->ldef_index, call->parametrized_offset->alias);
+                    }
+                case JDF_GUARD_BINARY:
+                case JDF_GUARD_UNCONDITIONAL:
+                    call = guard->calltrue;
+                    //assert( NULL != JDF_OBJECT_ONAME(call) );
+                    if(call->parametrized_offset) {
+                        string_arena_add_string(sa, "  int %s = locals->ldef[%d].value; (void) %s;\n",
+                            call->parametrized_offset->alias, call->parametrized_offset->ldef_index, call->parametrized_offset->alias);
+                    }
+                    break;
+                default:
+                    assert(0);
+            }
+        }
+    }
+
+    return string_arena_get_string(sa);
+}
+
 /**
  * dump_parametrized_flow_loop:
  *   dumps the loop preceding a block that needs an iterator for the parametrized flow
@@ -1929,10 +1968,23 @@ jdf_generate_function_without_expression(const jdf_t *jdf,
         coutput("%s\n",
                 UTIL_DUMP_LIST(sa2, f->locals, next, dump_local_assignments, &ai,
                                "", "  ", "\n", "\n"));
+
         ai.holder = "";
         coutput("%s\n",
                 UTIL_DUMP_LIST(sa2, f->locals, next, dump_local_used_in_expr, &ai,
                                "", "  (void)", ";\n", ";"));
+
+        string_arena_init(sa);
+
+        // Iterate over every referrer dep
+        coutput("%s", dump_referrer_iterator(f, sa, e, name));
+        //coutput("//there\n");
+        string_arena_init(sa);
+
+        // print name, suffix and rettype
+        //printf("name: %s, suffix: %s, rettype: %s\n", name, suffix, rettype);
+
+        coutput("\n");
     }
 
     info.sa = sa;
@@ -2007,12 +2059,35 @@ static void jdf_generate_range_min(const jdf_t *jdf, const jdf_function_entry_t 
             "  int32_t __parsec_ret;\n",
             fn_name, jdf_basename, parsec_get_name(jdf, f, "parsec_assignment_t"));
 
+    // Declare the parametrized variables
+    /*for(jdf_dataflow_t *flow = f->dataflow; NULL != flow; flow = flow->next) {
+        for(jdf_expr_t *it=f->dataflow->local_variables; NULL != it; it = it->next) {
+            coutput("  int %s = locals->ldef[%d].value;\n", it->alias, it->ldef_index);
+        }
+    }
+    for(jdf_dataflow_t *flow = f->dataflow; NULL != flow; flow = flow->next) {
+        for(jdf_expr_t *it=f->dataflow->local_variables; NULL != it; it = it->next) {
+            coutput("  (void) %s;\n", it->alias);
+        }
+    }*/
+
+
     ai.sa = sa;
     ai.holder = "locals->";
     ai.expr = expr;
     coutput("%s\n",
             UTIL_DUMP_LIST(sa2, f->locals, next, dump_local_assignments, &ai,
                            "", "  ", "\n", "\n"));
+
+    string_arena_init(sa);
+
+    // Iterate over every referrer dep
+    coutput("%s", dump_referrer_iterator(f, sa, expr, fn_name));
+    //coutput("//here\n");
+    string_arena_init(sa);
+
+    coutput("\n");
+
     string_arena_free(sa);
     string_arena_free(sa2);
 
@@ -8407,6 +8482,12 @@ static char *jdf_dump_context_assignment(string_arena_t *sa_open,
         }
     }
     
+    // Iterate if the flow is parametrized
+    dump_parametrized_flow_loop_if_parametrized(flow, "    ", sa_open);
+    if(FLOW_IS_PARAMETRIZED(flow)) {
+        ++nbopen;
+    }
+
     for(vl = targetf->locals, i = 0; vl != NULL; vl = vl->next, i++) {
 
         for(el  = call->parameters, nl = targetf->parameters;
@@ -8724,7 +8805,7 @@ jdf_generate_code_iterate_successors_or_predecessors(const jdf_t *jdf,
     // If parametrized flows, this won't work on iterate_predecessors
     // TODO: probably not f->dataflow but some other flow should be checked
 #if defined(PARSEC_ALLOW_PARAMETRIZED_FLOWS)
-    if(FLOW_IS_PARAMETRIZED(f->dataflow))
+    if(FLOW_IS_PARAMETRIZED(f->dataflow) && flow_type == JDF_DEP_FLOW_IN)
     {
         coutput("  assert(0); // %s is parametrized, parsec does not handle iterate_predecessors of parametrized flows yet\n", name);
     }

@@ -305,7 +305,7 @@ process_datatype(jdf_datatransfer_type_t *datatype,
 %type <named_expr>named_expr
 %type <named_expr>named_expr_list
 %type <expr>array_offset
-%type <expr>array_offset_or_nothing
+%type <expr>named_array_offset_or_nothing
 %type <dep>dependencies
 %type <dep>dependency
 %type <guarded_call>guarded_call
@@ -650,7 +650,7 @@ simulation_cost:
              |  {   $$ = NULL; }
              ;
 
-partitioning:   COLON VAR { named_expr_push_scope(); } array_offset_or_nothing OPEN_PAR expr_list CLOSE_PAR
+partitioning:   COLON VAR { named_expr_push_scope(); } named_array_offset_or_nothing OPEN_PAR expr_list CLOSE_PAR
               {
                   jdf_data_entry_t* data;
                   jdf_call_t *c = new(jdf_call_t);
@@ -794,7 +794,7 @@ named_expr_list: VAR ASSIGNMENT expr_range
                }
        ;
 
-array_offset_or_nothing: array_offset
+named_array_offset_or_nothing: array_offset
                         {
                             $$ = $1;
                         }
@@ -1005,13 +1005,40 @@ guarded_call: call
               }
        ;
 
-call:         named_expr VAR array_offset_or_nothing VAR OPEN_PAR expr_list_range CLOSE_PAR
+call:         named_expr VAR named_array_offset_or_nothing VAR OPEN_PAR expr_list_range CLOSE_PAR
               {
                   jdf_call_t *c = new(jdf_call_t);
                   c->var = $2;
                   c->parametrized_offset = $3;
-                  c->local_defs = $1;
-                  if(c->local_defs) {
+                  c->local_defs = $3?$3:$1; // If we want local_defs to contain the parametrized_offset, we need to indicate $3 and not $1
+
+                  /*if($1 != NULL && $3 != NULL)
+                  { // create a new separated parametrized_offset
+                    jdf_expr_t *new_expr = malloc(sizeof(jdf_expr_t));
+                    memcpy(new_expr, c->parametrized_offset, sizeof(jdf_expr_t));
+                    new_expr->next = NULL;
+                    c->parametrized_offset = new_expr;
+                  }*/
+
+                  // print infos
+                  printf("call: %s\n", $2);
+                  printf("  parametrized_offset: %s\n", (c->parametrized_offset)?(c->parametrized_offset->alias):"");
+                  printf("  local_defs: ");
+                  for(jdf_expr_t *e = c->local_defs; e != NULL; e = e->next)
+                  {
+                    printf("%s, ", e->alias);
+                  }
+                  printf("\n");
+                  /*if(c->local_defs) // Normally, $3 should already contain the local_defs of $1 because we pushed them in the same scope
+                  {
+                    assert(c->local_defs->next == NULL); // Only one variable is allowed in the referrer's offset
+                    c->local_defs->next = $1;
+                  }
+                  else
+                  {
+                    c->local_defs = $1;
+                  }*/
+                  /*if(c->local_defs) {
                     // concatenate c->array_offset and ->local_defs
                     jdf_expr_t *e;
                     for(e = c->local_defs; e->next; e = e->next);
@@ -1020,7 +1047,7 @@ call:         named_expr VAR array_offset_or_nothing VAR OPEN_PAR expr_list_rang
                   else
                   {
                     c->local_defs = c->parametrized_offset;
-                  }
+                  }*/
                   c->func_or_mem = $4;
                   c->parameters = $6;
                   $$ = c;
@@ -1028,17 +1055,16 @@ call:         named_expr VAR array_offset_or_nothing VAR OPEN_PAR expr_list_rang
                   assert( 0 != JDF_OBJECT_LINENO($$) );
                   named_expr_pop_scope();
               }
-       |      VAR { named_expr_push_scope(); } array_offset_or_nothing OPEN_PAR expr_list_range CLOSE_PAR
+       |      VAR { named_expr_push_scope(); } named_array_offset_or_nothing OPEN_PAR expr_list_range CLOSE_PAR
               {
                   jdf_data_entry_t* data;
                   jdf_call_t *c = new(jdf_call_t);
                   int nbparams;
 
                   c->var = NULL;
-                  c->parametrized_offset = $3;
+                  c->parametrized_offset = c->local_defs = $3;
                   c->func_or_mem = $1;
                   c->parameters = $5;
-                  c->local_defs = c->parametrized_offset;
                   JDF_OBJECT_LINENO(c) = JDF_OBJECT_LINENO($5);
                   $$ = c;
                   assert( 0 != JDF_OBJECT_LINENO($$) );
