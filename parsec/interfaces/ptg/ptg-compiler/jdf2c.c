@@ -1687,47 +1687,6 @@ static void jdf_generate_predeclarations( const jdf_t *jdf )
                     FLOW_IS_PARAMETRIZED(fl) ? " /* Parametrized flow, will not be used in the execution, but at init time to set up the parametrized specializations */" : "");
         }
     }
-    if(JDF_ANY_FLOW_IS_PARAMETRIZED(jdf)) {
-        int depid;
-        coutput("// Declaration of parametrized flow specializations:\n");
-        for( jdf_function_entry_t* f = jdf->functions; NULL != f; f = f->next ) {
-            for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
-                if( FLOW_IS_PARAMETRIZED(df) ) {
-
-                    coutput("parsec_flow_t *flow_of_%s_%s_for_parametrized_%s;\n",
-                            jdf_basename, f->fname, df->varname);
-                }
-            }
-        }
-
-        coutput("// Declaration of the parametrized flows referrers\n");
-        for( jdf_function_entry_t* f = jdf->functions; NULL != f; f = f->next ) {
-            for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
-                depid=1;
-                for( jdf_dep_t *dep = df->deps; NULL != dep; dep = dep->next, depid++ ) {
-                    for( int target_call=0; target_call<2; ++target_call ) {
-                        assert(dep->guard->guard_type==JDF_GUARD_UNCONDITIONAL || dep->guard->guard_type==JDF_GUARD_BINARY || dep->guard->guard_type==JDF_GUARD_TERNARY);
-                        if(dep->guard->guard_type!=JDF_GUARD_TERNARY && target_call==1)
-                        { // callfalse is only relevant for JDF_GUARD_UNCONDITIONAL and JDF_GUARD_BINARY
-                            continue;
-                        }
-                        jdf_call_t *call = target_call?dep->guard->callfalse:dep->guard->calltrue;
-                        assert(call);
-
-                        if( NULL !=call->parametrized_offset )
-                        {
-                            // Then the dep refers to a parametrized flow
-
-                            coutput("parsec_dep_t *%s_referrer_dep%d_atline_%d%s;\n",
-                            JDF_OBJECT_ONAME(df), depid, JDF_OBJECT_LINENO(dep),
-                                // If ternary, add _iftrue or _iffalse
-                                (dep->guard->guard_type==JDF_GUARD_TERNARY) ? ((target_call)?"_iffalse":"_iftrue") : "");
-                        }
-                    }
-                }
-            }
-        }
-    }
 
     coutput("\n\n");
     (void)rc;
@@ -5314,7 +5273,47 @@ static void jdf_generate_new_function( const jdf_t* jdf )
     coutput("\n");
 */
 
-        coutput("  // Allocate parametrized flows\n");
+        coutput("  // Declarations\n\n");
+
+        coutput("  // Declaration of parametrized flow specializations:\n");
+        for( jdf_function_entry_t* f = jdf->functions; NULL != f; f = f->next ) {
+            for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
+                if( FLOW_IS_PARAMETRIZED(df) ) {
+
+                    coutput("  parsec_flow_t *flow_of_%s_%s_for_parametrized_%s;\n",
+                            jdf_basename, f->fname, df->varname);
+                }
+            }
+        }
+
+        coutput("  // Declaration of the parametrized flows referrers\n");
+        for( jdf_function_entry_t* f = jdf->functions; NULL != f; f = f->next ) {
+            for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
+                depid=1;
+                for( jdf_dep_t *dep = df->deps; NULL != dep; dep = dep->next, depid++ ) {
+                    for( int target_call=0; target_call<2; ++target_call ) {
+                        assert(dep->guard->guard_type==JDF_GUARD_UNCONDITIONAL || dep->guard->guard_type==JDF_GUARD_BINARY || dep->guard->guard_type==JDF_GUARD_TERNARY);
+                        if(dep->guard->guard_type!=JDF_GUARD_TERNARY && target_call==1)
+                        { // callfalse is only relevant for JDF_GUARD_UNCONDITIONAL and JDF_GUARD_BINARY
+                            continue;
+                        }
+                        jdf_call_t *call = target_call?dep->guard->callfalse:dep->guard->calltrue;
+                        assert(call);
+
+                        if( NULL !=call->parametrized_offset )
+                        {
+                            // Then the dep refers to a parametrized flow
+
+                            coutput("  parsec_dep_t *%s_referrer_dep%d_atline_%d%s;\n",
+                            JDF_OBJECT_ONAME(df), depid, JDF_OBJECT_LINENO(dep),
+                                // If ternary, add _iftrue or _iffalse
+                                (dep->guard->guard_type==JDF_GUARD_TERNARY) ? ((target_call)?"_iffalse":"_iftrue") : "");
+                        }
+                    }
+                }
+            }
+        }
+
         // Set the parametrized flows upper bounds
         coutput("  // Upper bounds\n");
         for( jdf_function_entry_t* f = jdf->functions; NULL != f; f = f->next ) {
