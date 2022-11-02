@@ -4713,41 +4713,45 @@ static void jdf_generate_one_function( const jdf_t *jdf, jdf_function_entry_t *f
 
     string_arena_add_string(sa, "};\n");
 
+    if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f))
+    {
+        string_arena_add_string(sa, "\ntypedef struct parsec_%s_task_class_s {\n", JDF_OBJECT_ONAME(f));
+        string_arena_add_string(sa, "  parsec_task_class_t super;\n");
 
-    string_arena_add_string(sa, "\ntypedef struct parsec_%s_task_class_s {\n", JDF_OBJECT_ONAME(f));
-    string_arena_add_string(sa, "  parsec_task_class_t super;\n");
-
-    string_arena_add_string(sa, "  // Debug field to ensure we do not access out of bounds flows\n#if defined(PARSEC_DEBUG_NOISIER)\n");
-    for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
-        if( FLOW_IS_PARAMETRIZED(df) ) {
-            string_arena_add_string(sa, "  int nb_specializations_flow_of_%s_%s_for_%s;\n", jdf_basename, f->fname, df->varname);
+        string_arena_add_string(sa, "  // Debug field to ensure we do not access out of bounds flows\n#if defined(PARSEC_DEBUG_NOISIER)\n");
+        for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
+            if( FLOW_IS_PARAMETRIZED(df) ) {
+                string_arena_add_string(sa, "  int nb_specializations_flow_of_%s_%s_for_%s;\n", jdf_basename, f->fname, df->varname);
+            }
         }
-    }
-    string_arena_add_string(sa, "#endif\n");
-    for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
-        if( FLOW_IS_PARAMETRIZED(df) ) {
-            string_arena_add_string(sa, "  int offset_flow_of_%s_%s_for_%s;\n", jdf_basename, f->fname, df->varname);
+        string_arena_add_string(sa, "#endif\n");
+        for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
+            if( FLOW_IS_PARAMETRIZED(df) ) {
+                string_arena_add_string(sa, "  int offset_flow_of_%s_%s_for_%s;\n", jdf_basename, f->fname, df->varname);
+            }
         }
-    }
-    string_arena_add_string(sa, "} parsec_%s_task_class_t;\n\n", JDF_OBJECT_ONAME(f));
+        string_arena_add_string(sa, "} parsec_%s_task_class_t;\n\n", JDF_OBJECT_ONAME(f));
 
 
-    string_arena_add_string(sa, "static const parsec_%s_task_class_t spec_%s = {\n", JDF_OBJECT_ONAME(f), JDF_OBJECT_ONAME(f));
-    string_arena_add_string(sa, "  .super = %s", JDF_OBJECT_ONAME(f));
-    string_arena_add_string(sa, "\n#if defined(PARSEC_DEBUG_NOISIER)\n");
-    for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
-        if( FLOW_IS_PARAMETRIZED(df) ) {
-            string_arena_add_string(sa, "  , .nb_specializations_flow_of_%s_%s_for_%s = -1\n", jdf_basename, f->fname, df->varname);
+        string_arena_add_string(sa, "static parsec_%s_task_class_t spec_%s = {\n", JDF_OBJECT_ONAME(f), JDF_OBJECT_ONAME(f));
+        string_arena_add_string(sa, "  .super = %s", JDF_OBJECT_ONAME(f));
+        string_arena_add_string(sa, "\n#if defined(PARSEC_DEBUG_NOISIER)\n");
+        for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
+            if( FLOW_IS_PARAMETRIZED(df) ) {
+                string_arena_add_string(sa, "  , .nb_specializations_flow_of_%s_%s_for_%s = -1\n", jdf_basename, f->fname, df->varname);
+            }
         }
-    }
-    string_arena_add_string(sa, "#endif\n");
-    for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
-        if( FLOW_IS_PARAMETRIZED(df) ) {
-            string_arena_add_string(sa, "  , .offset_flow_of_%s_%s_for_%s = -1\n", jdf_basename, f->fname, df->varname);
+        string_arena_add_string(sa, "#endif\n");
+        for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
+            if( FLOW_IS_PARAMETRIZED(df) ) {
+                string_arena_add_string(sa, "  , .offset_flow_of_%s_%s_for_%s = -1\n", jdf_basename, f->fname, df->varname);
+            }
         }
-    }
-    string_arena_add_string(sa, "\n};\n\n");
+        string_arena_add_string(sa, "\n};");
 
+    }
+
+    coutput("\n\n");
 
     coutput("%s\n\n", string_arena_get_string(sa));
 
@@ -5383,8 +5387,21 @@ static void jdf_generate_new_function( const jdf_t* jdf )
         }
         coutput("\n");
 
+        coutput("  // Set the number of specializations\n");
+        coutput("#if defined(PARSEC_DEBUG_NOISIER)\n");
+        for( jdf_function_entry_t* f = jdf->functions; NULL != f; f = f->next ) {
+            for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
+                if( FLOW_IS_PARAMETRIZED(df) ) {
+                    coutput("  spec_LBM_LBM_STEP.nb_specializations_flow_of_%s_%s_for_%s = nb_specializations_flow_of_%s_%s_for_parametrized_%s;\n",
+                        jdf_basename, f->fname, df->varname, jdf_basename, f->fname, df->varname);
+                }
+            }
+        }
+        coutput("#endif\n");
+        coutput("\n");
+
         // TODO delete parametrized_flows when not needed anymore!
-        coutput("  // Store parametrized flows in a table for convenience\n");
+        coutput("/*  // Store parametrized flows in a table for convenience\n");
         coutput("  parsec_flow_t const *parametrized_flows[MAX_DATAFLOWS_PER_TASK] = {\n");
         int nb_parametrized_flows = 0;
         for( jdf_function_entry_t* f = jdf->functions; NULL != f; f = f->next ) {
@@ -5395,7 +5412,7 @@ static void jdf_generate_new_function( const jdf_t* jdf )
                 }
             }
         }
-        coutput("    NULL\n  };\n");
+        coutput("    NULL\n  };*/\n");
         coutput("  const int nb_parametrized_flows = %d;\n", nb_parametrized_flows);
 
         coutput("\n");
