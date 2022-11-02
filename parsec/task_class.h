@@ -23,4 +23,8 @@ void parsec_check_sanity_of_task_class(parsec_task_class_t *tc);
 parsec_flow_t *parsec_helper_copy_flow(parsec_flow_t *flow_to, parsec_flow_t *flow_from);
 parsec_dep_t *parsec_helper_copy_dep(parsec_dep_t * dep_to, parsec_dep_t * dep_from);
 
+int parsec_helper_dep_is_in_flow(parsec_flow_t *flow, parsec_dep_t *dep);
+int parsec_helper_get_dep_index(parsec_task_class_t *tc, parsec_dep_t *dep, int in_out);
+int parsec_helper_get_flow_index_that_contains_dep(parsec_task_class_t *tc, parsec_dep_t *dep, int in_out);
+
 #endif  /* PARSEC_TASK_CLASS_H_HAS_BEEN_INCLUDED */

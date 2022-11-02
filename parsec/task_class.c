@@ -443,3 +443,88 @@ parsec_dep_t *parsec_helper_copy_dep(parsec_dep_t * dep_to, parsec_dep_t * dep_f
     memcpy(dep_to, dep_from, sizeof(parsec_dep_t));
     return dep_to;
 }
+
+int parsec_helper_dep_is_in_flow(parsec_flow_t *flow, parsec_dep_t *dep)
+{
+    int i;
+    for (i = 0; i < MAX_DEP_IN_COUNT; i++)
+    {
+        parsec_dep_t *_dep = flow->dep_in[i];
+        if(!dep)
+        {
+            break;
+        }
+        if (dep == _dep)
+        {
+            return 1;
+        }
+    }
+
+    for (i = 0; i < MAX_DEP_OUT_COUNT; i++)
+    {
+        parsec_dep_t *_dep = flow->dep_out[i];
+        if(!dep)
+        {
+            break;
+        }
+        if (dep == _dep)
+        {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+int parsec_helper_get_dep_index(parsec_task_class_t *tc, parsec_dep_t *dep, int in_out)
+{
+    int i;
+    for (i = 0; i < MAX_DATAFLOWS_PER_TASK; i++)
+    {
+        parsec_flow_t *flow = (parsec_flow_t *)(in_out ? tc->out[i] : tc->in[i]);
+        if (!flow)
+        {
+            break;
+        }
+
+        if (parsec_helper_dep_is_in_flow(flow, dep))
+        {
+            for(int j = 0; j < (in_out ? MAX_DEP_OUT_COUNT : MAX_DEP_IN_COUNT); j++)
+            {
+                parsec_dep_t *_dep = (parsec_dep_t *)(in_out ? flow->dep_out[j] : flow->dep_in[j]);
+                if(!_dep)
+                {
+                    break;
+                }
+                if(_dep == dep)
+                {
+                    return j;
+                }
+            }
+        }
+    }
+
+    return -1;
+}
+
+int parsec_helper_get_flow_index_that_contains_dep(parsec_task_class_t *tc, parsec_dep_t *dep, int in_out)
+{
+    int i;
+    for (i = 0; i < MAX_DATAFLOWS_PER_TASK; i++)
+    {
+        parsec_flow_t *flow = (in_out ? tc->out[i] : tc->in[i]);
+
+        if (!flow)
+        {
+            break;
+        }
+
+        if (parsec_helper_dep_is_in_flow(flow, dep))
+        {
+            return i;
+        }
+    }
+
+    assert(0);
+    return -1;
+}
