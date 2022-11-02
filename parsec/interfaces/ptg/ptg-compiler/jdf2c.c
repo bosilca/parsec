@@ -4727,7 +4727,8 @@ static void jdf_generate_one_function( const jdf_t *jdf, jdf_function_entry_t *f
         string_arena_add_string(sa, "#endif\n");
         for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
             if( FLOW_IS_PARAMETRIZED(df) ) {
-                string_arena_add_string(sa, "  int offset_flow_of_%s_%s_for_%s;\n", jdf_basename, f->fname, df->varname);
+                string_arena_add_string(sa, "  int out_offset_flow_of_%s_%s_for_%s;\n", jdf_basename, f->fname, df->varname);
+                //string_arena_add_string(sa, "  int in_offset_flow_of_%s_%s_for_%s;\n", jdf_basename, f->fname, df->varname);
             }
         }
         string_arena_add_string(sa, "} parsec_%s_task_class_t;\n\n", JDF_OBJECT_ONAME(f));
@@ -4744,7 +4745,8 @@ static void jdf_generate_one_function( const jdf_t *jdf, jdf_function_entry_t *f
         string_arena_add_string(sa, "#endif\n");
         for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
             if( FLOW_IS_PARAMETRIZED(df) ) {
-                string_arena_add_string(sa, "  , .offset_flow_of_%s_%s_for_%s = -1\n", jdf_basename, f->fname, df->varname);
+                string_arena_add_string(sa, "  , .out_offset_flow_of_%s_%s_for_%s = -1\n", jdf_basename, f->fname, df->varname);
+                //string_arena_add_string(sa, "  , .in_offset_flow_of_%s_%s_for_%s = -1\n", jdf_basename, f->fname, df->varname);
             }
         }
         string_arena_add_string(sa, "\n};");
@@ -5392,8 +5394,8 @@ static void jdf_generate_new_function( const jdf_t* jdf )
         for( jdf_function_entry_t* f = jdf->functions; NULL != f; f = f->next ) {
             for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
                 if( FLOW_IS_PARAMETRIZED(df) ) {
-                    coutput("  spec_LBM_LBM_STEP.nb_specializations_flow_of_%s_%s_for_%s = nb_specializations_flow_of_%s_%s_for_parametrized_%s;\n",
-                        jdf_basename, f->fname, df->varname, jdf_basename, f->fname, df->varname);
+                    coutput("  spec_%s.nb_specializations_flow_of_%s_%s_for_%s = nb_specializations_flow_of_%s_%s_for_parametrized_%s;\n",
+                        JDF_OBJECT_ONAME(f), jdf_basename, f->fname, df->varname, jdf_basename, f->fname, df->varname);
                 }
             }
         }
@@ -5469,6 +5471,9 @@ static void jdf_generate_new_function( const jdf_t* jdf )
                         "        }\n"
                         "        if(flow == &flow_of_%s_%s_for_%s) {\n"
                         "          pivot_reached = true;\n"
+                        "          if(flow_in_out) {\n"
+                        "            spec_%s.out_offset_flow_of_%s_%s_for_%s = i;\n"
+                        "          }\n"
                         "          assert(i+nb_specializations_flow_of_%s_%s_for_parametrized_%s < MAX_DATAFLOWS_PER_TASK);\n"
                         "        }\n"
                         "        if(pivot_reached)\n"
@@ -5483,6 +5488,7 @@ static void jdf_generate_new_function( const jdf_t* jdf )
                         GET_PARAMETRIZED_FLOW_ITERATOR_NAME(df),
                         GET_PARAMETRIZED_FLOW_ITERATOR_NAME(df), jdf_basename, f->fname, df->varname,
                         jdf_basename, f->fname, df->varname,
+                        JDF_OBJECT_ONAME(f), jdf_basename, f->fname, df->varname,
                         jdf_basename, f->fname, df->varname,
                         jdf_basename, f->fname, df->varname, jdf_basename, f->fname, df->varname, GET_PARAMETRIZED_FLOW_ITERATOR_NAME(df),
                         jdf_basename, f->fname, df->varname, GET_PARAMETRIZED_FLOW_ITERATOR_NAME(df),
