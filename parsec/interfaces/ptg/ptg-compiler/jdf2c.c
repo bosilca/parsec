@@ -8911,11 +8911,10 @@ jdf_generate_code_iterate_successors_or_predecessors(const jdf_t *jdf,
                            dump_local_assignments, &ai, "", "  ", "\n", "\n"));
     
     // If parametrized flows, this won't work on iterate_predecessors
-    // TODO: probably not f->dataflow but some other flow should be checked
 #if defined(PARSEC_ALLOW_PARAMETRIZED_FLOWS)
-    if(FLOW_IS_PARAMETRIZED(f->dataflow) && flow_type == JDF_DEP_FLOW_IN)
+    if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED_OR_REFERRER(f) && (flow_type & JDF_DEP_FLOW_IN))
     {
-        coutput("  parsec_fatal(\"%s is parametrized, parsec does not handle iterate_predecessors of parametrized flows yes\");\n", name);
+        coutput("  parsec_fatal(\"%s is parametrized, parsec does not handle iterate_predecessors of parametrized flows yet\");\n", name);
     }
 #endif  /* defined(PARSEC_ALLOW_PARAMETRIZED_FLOWS) */
 

@@ -118,6 +118,44 @@ static inline int jdf_any_flow_is_parametrized_util(const jdf_t *jdf)
 }
 
 /**
+ * FLOW_IS_PARAMETRIZED_OR_ANY_DEP_IS_REFERRER
+ * 
+ * Tells whether a flow is parametrized or not, or if any of its dependencies is a referrer.
+ * 
+ * @param [IN] flow:          the flow to test.
+ * 
+ * @return a boolean value.
+ */
+#define FLOW_IS_PARAMETRIZED_OR_ANY_DEP_IS_REFERRER(flow) \
+    flow_is_parametrized_or_any_dep_is_referrer_util(flow)
+
+static inline int flow_is_parametrized_or_any_dep_is_referrer_util(const jdf_dataflow_t *flow)
+{
+    if (FLOW_IS_PARAMETRIZED(flow)) {
+        return 1;
+    }
+
+    for( jdf_dep_t *dep = flow->deps; NULL != dep; dep = dep->next ) {
+        for( int target_call=0; target_call<2; ++target_call ) {
+            assert(dep->guard->guard_type==JDF_GUARD_UNCONDITIONAL || dep->guard->guard_type==JDF_GUARD_BINARY || dep->guard->guard_type==JDF_GUARD_TERNARY);
+            if(dep->guard->guard_type!=JDF_GUARD_TERNARY && target_call==1)
+            { // callfalse is only relevant for JDF_GUARD_UNCONDITIONAL and JDF_GUARD_BINARY
+                continue;
+            }
+            jdf_call_t *call = target_call?dep->guard->callfalse:dep->guard->calltrue;
+            assert(call);
+
+            if( NULL != call->parametrized_offset )
+            {
+                return 1;
+            }
+        }
+    }
+
+    return 0;
+}
+
+/**
  * TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED_OR_REFERRER:
  *  Tells whether any flow is parametrized or if one of the deps is a referrer.
  * 
@@ -131,25 +169,8 @@ static inline int jdf_any_flow_is_parametrized_util(const jdf_t *jdf)
 static inline int task_class_any_flow_is_parametrized_or_referrer_util(const jdf_function_entry_t *tc)
 {
     for( jdf_dataflow_t* df = tc->dataflow; NULL != df; df = df->next ) {
-        if( FLOW_IS_PARAMETRIZED(df) ) {
+        if( FLOW_IS_PARAMETRIZED_OR_ANY_DEP_IS_REFERRER(df) ) {
             return 1;
-        }
-
-        for( jdf_dep_t *dep = df->deps; NULL != dep; dep = dep->next ) {
-            for( int target_call=0; target_call<2; ++target_call ) {
-                assert(dep->guard->guard_type==JDF_GUARD_UNCONDITIONAL || dep->guard->guard_type==JDF_GUARD_BINARY || dep->guard->guard_type==JDF_GUARD_TERNARY);
-                if(dep->guard->guard_type!=JDF_GUARD_TERNARY && target_call==1)
-                { // callfalse is only relevant for JDF_GUARD_UNCONDITIONAL and JDF_GUARD_BINARY
-                    continue;
-                }
-                jdf_call_t *call = target_call?dep->guard->callfalse:dep->guard->calltrue;
-                assert(call);
-
-                if( NULL !=call->parametrized_offset )
-                {
-                    return 1;
-                }
-            }
         }
     }
 
