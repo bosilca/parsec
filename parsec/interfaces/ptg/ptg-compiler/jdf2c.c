@@ -9099,12 +9099,12 @@ jdf_generate_code_iterate_successors_or_predecessors(const jdf_t *jdf,
                 jdf_call_t *call = dl->guard->calltrue;
                 string_arena_add_string(sa_ontask,
                                         "if( PARSEC_ITERATE_STOP == ontask(es, &nc, "
-                                        "(const parsec_task_t *)this_task, this_task->task_class->out[spec_%s_%s.out_offset_flow_of_%s_%s_for_%s+%s]"
-                                        "->dep_out[spec_%s_%s.out_flow_id_of_%s+%s]"
+                                        "(const parsec_task_t *)this_task, this_task->task_class->out[spec_%s_%s.out_flow_id_of_%s]"
+                                        "->dep_out[spec_%s_%s.out_offset_%s+%s]"
                                         ", &data, rank_src, rank_dst, vpid_dst,"
                                         " successor_repo, successor_repo_key, ontask_arg) )\n"
                                         "  return;\n",
-                                        jdf_basename, call->func_or_mem, jdf_basename, call->func_or_mem, call->var, call->parametrized_offset->alias,
+                                        jdf_basename, f->fname, JDF_OBJECT_ONAME(call),
                                         jdf_basename, f->fname, JDF_OBJECT_ONAME(call), call->parametrized_offset->alias);
             }
             else
@@ -9225,12 +9225,12 @@ jdf_generate_code_iterate_successors_or_predecessors(const jdf_t *jdf,
                         jdf_call_t *call = dl->guard->callfalse;
                         string_arena_add_string(sa_ontask,
                                             "if( PARSEC_ITERATE_STOP == ontask(es, &nc, (const parsec_task_t *)this_task, "
-                                            "(const parsec_task_t *)this_task, this_task->task_class->out[spec_%s_%s.out_offset_flow_of_%s_%s_for_%s+%s]"
-                                            "->dep_out[spec_%s_%s.out_flow_id_of_%s+%s]"
+                                            "(const parsec_task_t *)this_task, this_task->task_class->out[spec_%s_%s.out_flow_id_of_%s]"
+                                            "->dep_out[spec_%s_%s.out_offset_%s+%s]"
                                             ", &data, rank_src, rank_dst, vpid_dst,"
                                             " successor_repo, successor_repo_key, ontask_arg) )\n"
                                             "  return;\n",
-                                            jdf_basename, call->func_or_mem, jdf_basename, call->func_or_mem, call->var, call->parametrized_offset->alias,
+                                            jdf_basename, f->fname, JDF_OBJECT_ONAME(call),
                                             jdf_basename, f->fname, JDF_OBJECT_ONAME(call), call->parametrized_offset->alias);
                     }
                     else
@@ -9262,12 +9262,12 @@ jdf_generate_code_iterate_successors_or_predecessors(const jdf_t *jdf,
                         jdf_call_t *call = dl->guard->callfalse;
                         string_arena_add_string(sa_ontask,
                                             "if( PARSEC_ITERATE_STOP == ontask(es, &nc, (const parsec_task_t *)this_task, "
-                                            "(const parsec_task_t *)this_task, this_task->task_class->out[spec_%s_%s.out_offset_flow_of_%s_%s_for_%s+%s]"
-                                            "->dep_out[spec_%s_%s.out_flow_id_of_%s+%s]"
+                                            "(const parsec_task_t *)this_task, this_task->task_class->out[spec_%s_%s.out_flow_id_of_%s]"
+                                            "->dep_out[spec_%s_%s.out_offset_%s+%s]"
                                             ", &data, rank_src, rank_dst, vpid_dst,"
                                             " successor_repo, successor_repo_key, ontask_arg) )\n"
                                             "  return;\n",
-                                            jdf_basename, call->func_or_mem, jdf_basename, call->func_or_mem, call->var, call->parametrized_offset->alias,
+                                            jdf_basename, f->fname, JDF_OBJECT_ONAME(call),
                                             jdf_basename, f->fname, JDF_OBJECT_ONAME(call), call->parametrized_offset->alias);
                     }
                     else
