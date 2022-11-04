@@ -8859,6 +8859,28 @@ static void jdf_check_relatives( jdf_function_entry_t *f, jdf_dep_flags_t flow_t
         string_arena_init((SA_DATATYPE));                               \
     }
 
+char *dump_flow_offset_for_iterate_successors(string_arena_t *sa, jdf_function_entry_t *f, jdf_call_t *call)
+{
+    string_arena_init(sa);
+
+    //spec_%s_%s.out_flow_offset_of_%s]
+    string_arena_add_string(sa, "spec_%s_%s.out_flow_offset_of_%s",
+                            jdf_basename, f->fname, JDF_OBJECT_ONAME(call));
+    
+    return string_arena_get_string(sa);
+}
+
+char *dump_dep_offset_for_iterate_successors(string_arena_t *sa, jdf_function_entry_t *f, jdf_call_t *call)
+{
+    string_arena_init(sa);
+
+    //spec_%s_%s.out_dep_offset_%s+%s
+    string_arena_add_string(sa, "spec_%s_%s.out_dep_offset_%s+%s",
+                            jdf_basename, f->fname, JDF_OBJECT_ONAME(call), call->parametrized_offset->alias);
+    
+    return string_arena_get_string(sa);
+}
+
 static void
 jdf_generate_code_iterate_successors_or_predecessors(const jdf_t *jdf,
                                                      const jdf_function_entry_t *f,
@@ -8895,6 +8917,9 @@ jdf_generate_code_iterate_successors_or_predecessors(const jdf_t *jdf,
     string_arena_t *sa_type_r     = string_arena_new(256);
     string_arena_t *sa_tmp_type_r = string_arena_new(256);
     string_arena_t *sa_temp_r       = string_arena_new(1024);
+
+    string_arena_t *sa_flow_offset  = string_arena_new(64);
+    string_arena_t *sa_dep_offset   = string_arena_new(64);
 
     int depnb, last_datatype_idx;
     assignment_info_t ai;
@@ -9115,33 +9140,33 @@ jdf_generate_code_iterate_successors_or_predecessors(const jdf_t *jdf,
                 // if call is parametrized
                 string_arena_add_string(sa_ontask,
                                         "if( PARSEC_ITERATE_STOP == ontask(es, &nc, "
-                                        "(const parsec_task_t *)this_task, this_task->task_class->out[spec_%s_%s.out_flow_offset_of_%s]"
-                                        "->dep_out[spec_%s_%s.out_dep_offset_%s+%s]"
+                                        "(const parsec_task_t *)this_task, this_task->task_class->out[%s]"
+                                        "->dep_out[%s]"
                                         ", &data, rank_src, rank_dst, vpid_dst,"
                                         " successor_repo, successor_repo_key, ontask_arg) )\n"
                                         "  return;\n",
-                                        jdf_basename, f->fname, JDF_OBJECT_ONAME(call),
-                                        jdf_basename, f->fname, JDF_OBJECT_ONAME(call), call->parametrized_offset->alias);
-                // if flow is parametrized
+                                        dump_flow_offset_for_iterate_successors(sa_flow_offset, f, call),
+                                        dump_dep_offset_for_iterate_successors(sa_dep_offset, f, call));
+                /*// if flow is parametrized
                 string_arena_add_string(sa_ontask,
                                         "if( PARSEC_ITERATE_STOP == ontask(es, &nc, "
-                                        "(const parsec_task_t *)this_task, this_task->task_class->out[spec_%s_%s.out_flow_offset_of_%s]"
-                                        "->dep_out[spec_%s_%s.out_dep_offset_%s+%s]"
+                                        "(const parsec_task_t *)this_task, this_task->task_class->out[spec_%s_%s.out_flow_offset_of_%s + %s]"
+                                        "->dep_out[spec_%s_%s.out_dep_offset_%s]"
                                         ", &data, rank_src, rank_dst, vpid_dst,"
                                         " successor_repo, successor_repo_key, ontask_arg) )\n"
                                         "  return;\n",
-                                        jdf_basename, f->fname, JDF_OBJECT_ONAME(call),
-                                        jdf_basename, f->fname, JDF_OBJECT_ONAME(call), call->parametrized_offset->alias);
+                                        jdf_basename, f->fname, JDF_OBJECT_ONAME(call), smt,
+                                        jdf_basename, f->fname, JDF_OBJECT_ONAME(call));
                 // if both flow and call are parametrized
                 string_arena_add_string(sa_ontask,
                                         "if( PARSEC_ITERATE_STOP == ontask(es, &nc, "
-                                        "(const parsec_task_t *)this_task, this_task->task_class->out[spec_%s_%s.out_flow_offset_of_%s]"
-                                        "->dep_out[spec_%s_%s.out_dep_offset_%s+%s]"
+                                        "(const parsec_task_t *)this_task, this_task->task_class->out[spec_%s_%s.out_flow_offset_of_%s + %s]"
+                                        "->dep_out[spec_%s_%s.out_dep_offset_%s]"
                                         ", &data, rank_src, rank_dst, vpid_dst,"
                                         " successor_repo, successor_repo_key, ontask_arg) )\n"
                                         "  return;\n",
-                                        jdf_basename, f->fname, JDF_OBJECT_ONAME(call),
-                                        jdf_basename, f->fname, JDF_OBJECT_ONAME(call), call->parametrized_offset->alias);
+                                        jdf_basename, f->fname, JDF_OBJECT_ONAME(call), smt,
+                                        jdf_basename, f->fname, JDF_OBJECT_ONAME(call), call->parametrized_offset->alias);*/
             }
             else
             {
@@ -9261,13 +9286,13 @@ jdf_generate_code_iterate_successors_or_predecessors(const jdf_t *jdf,
                         jdf_call_t *call = dl->guard->callfalse;
                         string_arena_add_string(sa_ontask,
                                             "if( PARSEC_ITERATE_STOP == ontask(es, &nc, (const parsec_task_t *)this_task, "
-                                            "(const parsec_task_t *)this_task, this_task->task_class->out[spec_%s_%s.out_flow_offset_of_%s]"
-                                            "->dep_out[spec_%s_%s.out_dep_offset_%s+%s]"
+                                            "(const parsec_task_t *)this_task, this_task->task_class->out[%s]"
+                                            "->dep_out[%s]"
                                             ", &data, rank_src, rank_dst, vpid_dst,"
                                             " successor_repo, successor_repo_key, ontask_arg) )\n"
                                             "  return;\n",
-                                            jdf_basename, f->fname, JDF_OBJECT_ONAME(call),
-                                            jdf_basename, f->fname, JDF_OBJECT_ONAME(call), call->parametrized_offset->alias);
+                                            dump_flow_offset_for_iterate_successors(sa_flow_offset, f, call),
+                                            dump_dep_offset_for_iterate_successors(sa_dep_offset, f, call));
                     }
                     else
                     {
@@ -9298,13 +9323,13 @@ jdf_generate_code_iterate_successors_or_predecessors(const jdf_t *jdf,
                         jdf_call_t *call = dl->guard->callfalse;
                         string_arena_add_string(sa_ontask,
                                             "if( PARSEC_ITERATE_STOP == ontask(es, &nc, (const parsec_task_t *)this_task, "
-                                            "(const parsec_task_t *)this_task, this_task->task_class->out[spec_%s_%s.out_flow_offset_of_%s]"
-                                            "->dep_out[spec_%s_%s.out_dep_offset_%s+%s]"
+                                            "(const parsec_task_t *)this_task, this_task->task_class->out[%s]"
+                                            "->dep_out[%s]"
                                             ", &data, rank_src, rank_dst, vpid_dst,"
                                             " successor_repo, successor_repo_key, ontask_arg) )\n"
                                             "  return;\n",
-                                            jdf_basename, f->fname, JDF_OBJECT_ONAME(call),
-                                            jdf_basename, f->fname, JDF_OBJECT_ONAME(call), call->parametrized_offset->alias);
+                                            dump_flow_offset_for_iterate_successors(sa_flow_offset, f, call),
+                                            dump_dep_offset_for_iterate_successors(sa_dep_offset, f, call));
                     }
                     else
                     {
@@ -9390,6 +9415,8 @@ jdf_generate_code_iterate_successors_or_predecessors(const jdf_t *jdf,
     string_arena_free(sa_tmp_type_r);
     string_arena_free(sa_temp_r);
 
+    string_arena_free(sa_flow_offset);
+    string_arena_free(sa_dep_offset);
 }
 
 /**
