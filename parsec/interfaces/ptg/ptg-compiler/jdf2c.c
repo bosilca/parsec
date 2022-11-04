@@ -3558,6 +3558,7 @@ static void jdf_generate_startup_tasks(const jdf_t *jdf, const jdf_function_entr
                     assert(variable->op == JDF_PARAMETRIZED_FLOW_RANGE);
                     jdf_expr_t *max_parametrized_flow = variable->jdf_ta2;
 
+                    // TODO test
                     coutput("\n%s  this_task->data._f_%s = malloc(sizeof(parsec_data_pair_t)*((%s)+1));\n",
                             indent(nesting), dataflow->varname, dump_expr((void**)max_parametrized_flow, &expr_info));
                     coutput("%s  assert( NULL != this_task->data._f_%s );\n", indent(nesting), dataflow->varname);
