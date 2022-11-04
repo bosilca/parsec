@@ -302,6 +302,8 @@ void parsec_debug_dump_task_class_at_exec(parsec_task_class_t *tc)
     parsec_debug_verbose(1, parsec_debug_output, "## Task Class %s (%p) has %d flows, %d parameters, %d locals",
                          tc->name, (void *)tc, tc->nb_flows, tc->nb_parameters, tc->nb_locals);
 
+    parsec_debug_verbose(1, parsec_debug_output, "## dependencies_goal = %x\n", tc->dependencies_goal);
+
     for (i = 0; i < MAX_DATAFLOWS_PER_TASK; i++)
     {
         for (flow_in_out = 0; flow_in_out < 2; ++flow_in_out)

@@ -3410,22 +3410,6 @@ static void jdf_generate_startup_tasks(const jdf_t *jdf, const jdf_function_entr
             fname, parsec_get_name(jdf, f, "task_t"),
             parsec_get_name(jdf, f, "task_t"),
             jdf_basename, jdf_basename);
-    
-
-    // Generate the code to initialize the parametrized flow variables
-    // for(jdf_dataflow_t *fl=f->dataflow; NULL != fl; fl=fl->next) {
-    //     if( NULL != fl->local_variables ) { // If is parametrized
-    //         expr_info_t expr_info = EMPTY_EXPR_INFO;
-    //         expr_info.sa = string_arena_new(32);
-    //         expr_info.prefix = "";
-    //         expr_info.suffix = "";
-    //         expr_info.assignments = "max parametrized dataflow";
-
-    //         jdf_expr_t *variable = jdf_expr_lv_first(fl->local_variables);
-    //         assert(variable->op == JDF_RANGE);
-    //         jdf_expr_t *max_parametrized_flow = variable->jdf_ta2;
-    //     }
-    // }
 
     for(vl = f->locals; vl != NULL; vl = vl->next)
         coutput("  int %s = this_task->locals.%s.value;  /* retrieve value saved during the last iteration */\n", vl->name, vl->name);
@@ -3561,6 +3545,25 @@ static void jdf_generate_startup_tasks(const jdf_t *jdf, const jdf_function_entr
         struct jdf_dataflow *dataflow = f->dataflow;
         for(idx = 0; NULL != dataflow; idx++, dataflow = dataflow->next ) {
                 string_arena_t *osa = string_arena_new(16);
+
+
+                if( FLOW_IS_PARAMETRIZED(dataflow) ) {
+                    expr_info_t expr_info = EMPTY_EXPR_INFO;coutput("coucou\n");
+                    expr_info.sa = string_arena_new(32);
+                    expr_info.prefix = "";
+                    expr_info.suffix = "";
+                    expr_info.assignments = "max parametrized dataflow";
+
+                    jdf_expr_t *variable = jdf_expr_lv_first(dataflow->local_variables);
+                    assert(variable->op == JDF_PARAMETRIZED_FLOW_RANGE);
+                    jdf_expr_t *max_parametrized_flow = variable->jdf_ta2;
+
+                    coutput("\n%s  this_task->data._f_%s = malloc(sizeof(parsec_data_pair_t)*((%s)+1));\n",
+                            indent(nesting), dataflow->varname, dump_expr((void**)max_parametrized_flow, &expr_info));
+                    coutput("%s  assert( NULL != this_task->data._f_%s );\n", indent(nesting), dataflow->varname);
+                    coutput("%s  memset(this_task->data._f_%s, 0, sizeof(parsec_data_pair_t)*((%s)+1));\n",
+                    indent(nesting), dataflow->varname, dump_expr((void**)max_parametrized_flow, &expr_info));
+                }
 
                 string_arena_t *sa = string_arena_new(256);
                 dump_parametrized_flow_loop_if_parametrized(dataflow, indent(nesting), sa);
@@ -4191,35 +4194,6 @@ static void jdf_generate_internal_init(const jdf_t *jdf, const jdf_function_entr
          * second stage.
          */
         coutput("  this_task->status = PARSEC_TASK_STATUS_COMPLETE;\n");
-    }
-
-    // If the flow is parametrized, the data is an "array" of data
-    jdf_dataflow_t *dataflow = f->dataflow;
-    if(dataflow && FLOW_IS_PARAMETRIZED(dataflow))
-    {
-        string_arena_t *osa = string_arena_new(16);
-        string_arena_t *sa = string_arena_new(256);
-        
-        expr_info_t expr_info = EMPTY_EXPR_INFO;
-        expr_info.sa = string_arena_new(32);
-        expr_info.prefix = "";
-        expr_info.suffix = "";
-        expr_info.assignments = "max parametrized dataflow";
-
-        jdf_expr_t *variable = jdf_expr_lv_first(dataflow->local_variables);
-        assert(variable->op == JDF_PARAMETRIZED_FLOW_RANGE);
-        jdf_expr_t *max_parametrized_flow = variable->jdf_ta2;
-
-        coutput("\n%s  this_task->data._f_%s = malloc(sizeof(parsec_data_pair_t)*((%s)+1));\n",
-                indent(nesting), dataflow->varname, dump_expr((void**)max_parametrized_flow, &expr_info));
-        coutput("%s  assert( NULL != this_task->data._f_%s );\n", indent(nesting), dataflow->varname);
-        coutput("%s  memset(this_task->data._f_%s, 0, sizeof(parsec_data_pair_t)*((%s)+1));\n",
-        indent(nesting), dataflow->varname, dump_expr((void**)max_parametrized_flow, &expr_info));
-        
-        string_arena_free(sa);
-        string_arena_free(osa);
-
-        nesting--;
     }
 
     string_arena_free(sa1);
@@ -5580,6 +5554,18 @@ static void jdf_generate_new_function( const jdf_t* jdf )
 //                      "          if(flow_in_out) {\n"
 //                      "            spec_%s.out_offset_flow_of_%s_%s_for_%s = i;\n"
 //                      "          }\n"
+                        "          // Update the goal of the task class\n"
+                        "          if(flow_in_out == 0)\n"
+                        "          {\n"
+                        "            // If is input, shift the proper values in the goal\n"
+                        "            // Idea: 00abcxyz -> abcccxyz (if shift=2 (i.e. nb_specializations=3) and pivot index = 3)\n"
+                        "            // (c=1 necessarily)\n"
+                        "            int shift = nb_specializations_flow_of_%s_%s_for_parametrized_%s-1;\n"
+                        "            parsec_dependency_t unshifted_values = tc->dependencies_goal & ((1<<i)-1);\n"
+                        "            parsec_dependency_t shifted_values = (tc->dependencies_goal >> (i + 1)) << (i + 1 + shift);\n"
+                        "            parsec_dependency_t in_between = ((1<<(shift+1))-1) << i;\n"
+                        "            tc->dependencies_goal = unshifted_values | shifted_values | in_between;\n"
+                        "          }\n"
                         "          assert(i+nb_specializations_flow_of_%s_%s_for_parametrized_%s < MAX_DATAFLOWS_PER_TASK);\n"
                         "        }\n"
                         "        if(pivot_reached)\n"
@@ -5595,6 +5581,7 @@ static void jdf_generate_new_function( const jdf_t* jdf )
                         GET_PARAMETRIZED_FLOW_ITERATOR_NAME(df), jdf_basename, f->fname, df->varname,
                         jdf_basename, f->fname, df->varname,
                         //JDF_OBJECT_ONAME(f), jdf_basename, f->fname, df->varname,
+                        jdf_basename, f->fname, df->varname,
                         jdf_basename, f->fname, df->varname,
                         jdf_basename, f->fname, df->varname, jdf_basename, f->fname, df->varname, GET_PARAMETRIZED_FLOW_ITERATOR_NAME(df),
                         jdf_basename, f->fname, df->varname, GET_PARAMETRIZED_FLOW_ITERATOR_NAME(df),
