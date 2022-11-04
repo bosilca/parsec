@@ -177,6 +177,28 @@ static inline int task_class_any_flow_is_parametrized_or_referrer_util(const jdf
     return 0;
 }
 
+/**
+ * TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED
+ *  Tells whether any flow is parametrized
+ * 
+ * @param [IN] tc:            the task class to test.
+ * 
+ * @return a boolean value.
+ */
+#define TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(tc) \
+    task_class_any_flow_is_parametrized_util(tc)
+
+static inline int task_class_any_flow_is_parametrized_util(const jdf_function_entry_t *tc)
+{
+    for( jdf_dataflow_t* df = tc->dataflow; NULL != df; df = df->next ) {
+        if( FLOW_IS_PARAMETRIZED(df) ) {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
 
 
 /**

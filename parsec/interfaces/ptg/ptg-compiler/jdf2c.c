@@ -1525,7 +1525,8 @@ static inline char* jdf_generate_task_typedef(void **elt, void* arg)
             else
             { // Parametrized flow
                 // Becomes an array of data pairs
-                string_arena_add_string(sa_data, "  parsec_data_pair_t *_f_%s;\n", df->varname);
+                string_arena_add_string(sa_data, "  //parsec_data_pair_t *_f_%s;\n", df->varname);
+                nb_flows--; // This flow will be stored in the unused space of the array
             }
         }
     }
@@ -1559,6 +1560,19 @@ static inline char* jdf_generate_task_typedef(void **elt, void* arg)
                             string_arena_get_string(sa_data),
                             nb_flows,
                             parsec_get_name(NULL, f, "data_t"));
+    if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f)) {
+        string_arena_add_string(sa, "typedef struct %s {\n"
+                                "    %s super;\n",
+                                parsec_get_name(NULL, f, "parametrized_data_s"),
+                                parsec_get_name(NULL, f, "data_t"));
+        for(jdf_dataflow_t *df = f->dataflow; df != NULL; df = df->next) {
+            if( FLOW_IS_PARAMETRIZED(df) ) {
+                string_arena_add_string(sa, "    parsec_data_pair_t *_f_%s;\n", df->varname);
+            }
+        }
+        string_arena_add_string(sa, "} %s;\n\n",
+                                parsec_get_name(NULL, f, "parametrized_data_t"));
+    }
     string_arena_add_string(sa, "typedef struct %s {\n"
                             "    PARSEC_MINIMAL_EXECUTION_CONTEXT\n"
                             "#if defined(PARSEC_PROF_TRACE)\n"
@@ -1574,7 +1588,16 @@ static inline char* jdf_generate_task_typedef(void **elt, void* arg)
                             jdf_basename, f->fname,
                             jdf_basename, f->fname,
                             parsec_get_name(NULL, f, "task_t"));
-
+    if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f)) {
+        string_arena_add_string(sa, "typedef struct %s {\n"
+                                "    %s super;\n"
+                                "    %s parametrized_data;\n"
+                                "} %s;\n\n",
+                                parsec_get_name(NULL, f, "parametrized_task_s"),
+                                parsec_get_name(NULL, f, "task_t"),
+                                parsec_get_name(NULL, f, "parametrized_data_t"),
+                                parsec_get_name(NULL, f, "parametrized_task_t"));
+    }
 
     string_arena_free(sa_locals);
     string_arena_free(sa_data);
