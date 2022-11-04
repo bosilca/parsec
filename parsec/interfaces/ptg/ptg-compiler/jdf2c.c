@@ -1526,9 +1526,9 @@ static inline char* jdf_generate_task_typedef(void **elt, void* arg)
             { // Parametrized flow
                 // Becomes an array of data pairs
 
-                string_arena_add_string(sa_data, "  parsec_data_pair_t *_f_%s;\n", df->varname);
-                /*string_arena_add_string(sa_data, "  //parsec_data_pair_t *_f_%s;\n", df->varname);
-                nb_flows--; // This flow will be stored in the unused space of the array*/
+                //string_arena_add_string(sa_data, "  parsec_data_pair_t *_f_%s;\n", df->varname);
+                string_arena_add_string(sa_data, "  //parsec_data_pair_t *_f_%s;\n", df->varname);
+                nb_flows--; // This flow will be stored in the unused space of the array
             }
         }
     }
@@ -1562,7 +1562,7 @@ static inline char* jdf_generate_task_typedef(void **elt, void* arg)
                             string_arena_get_string(sa_data),
                             nb_flows,
                             parsec_get_name(NULL, f, "data_t"));
-    /*if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f)) {
+    if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f)) {
         string_arena_add_string(sa, "typedef struct %s {\n"
                                 "    %s super;\n",
                                 parsec_get_name(NULL, f, "parametrized_data_s"),
@@ -1574,7 +1574,7 @@ static inline char* jdf_generate_task_typedef(void **elt, void* arg)
         }
         string_arena_add_string(sa, "} %s;\n\n",
                                 parsec_get_name(NULL, f, "parametrized_data_t"));
-    }*/
+    }
     string_arena_add_string(sa, "typedef struct %s {\n"
                             "    PARSEC_MINIMAL_EXECUTION_CONTEXT\n"
                             "#if defined(PARSEC_PROF_TRACE)\n"
@@ -1590,7 +1590,7 @@ static inline char* jdf_generate_task_typedef(void **elt, void* arg)
                             jdf_basename, f->fname,
                             jdf_basename, f->fname,
                             parsec_get_name(NULL, f, "task_t"));
-    /*if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f)) {
+    if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f)) {
         string_arena_add_string(sa, "typedef struct %s {\n"
                                 "    %s super;\n"
                                 "    %s parametrized_data;\n"
@@ -1599,7 +1599,17 @@ static inline char* jdf_generate_task_typedef(void **elt, void* arg)
                                 parsec_get_name(NULL, f, "task_t"),
                                 parsec_get_name(NULL, f, "parametrized_data_t"),
                                 parsec_get_name(NULL, f, "parametrized_task_t"));
-    }*/
+
+        string_arena_add_string(sa, 
+            "PARSEC_OBJ_CLASS_DECLARATION(%s);\n"
+            "PARSEC_OBJ_CLASS_INSTANCE(%s, %s,\n"
+            "                          __parsec_LBM_LBM_STEP_constructor, NULL);\n\n",
+            parsec_get_name(NULL, f, "parametrized_data_t"),
+            parsec_get_name(NULL, f, "parametrized_task_t"),
+            parsec_get_name(NULL, f, "data_t"),
+            parsec_get_name(NULL, f, "constructor")
+        );
+    }
 
     string_arena_free(sa_locals);
     string_arena_free(sa_data);
