@@ -578,11 +578,6 @@ function:       VAR OPEN_PAR param_list CLOSE_PAR properties local_variables sim
                     e->priority          = $10;
                     e->bodies            = $11;
 
-/*
-                    for(jdf_expr_t *el = e->locals; NULL != el; el = el->next) {
-                        printf("%s has a local named %s\n", e->fname, el->jdf_var);
-                    }*/
-
                     jdf_link_params_and_locals(e);  /* link params and locals */
                     jdf_assign_ldef_index(e);       /* find the datatype indexes */
 
@@ -675,14 +670,6 @@ partitioning:   COLON VAR { named_expr_push_scope(); } named_array_offset_or_not
                   JDF_OBJECT_LINENO($$) = JDF_OBJECT_LINENO($6);
                   named_expr_pop_scope();
               }
-             /*
-             | COLON VAR PROPERTIES_ON expr_simple PROPERTIES_OFF OPEN_PAR expr_list_range CLOSE_PAR
-             {
-             	  printf("coucou ! %s, %s\n", $2, $4);
-             }
-              
-             |  PROPERTIES_ON expr_list PROPERTIES_OFF
-             {   printf("coucou\n"); }*/
          ;
 
 dataflow_list:  dataflow dataflow_list
@@ -1023,42 +1010,6 @@ call:         named_expr VAR named_array_offset_or_nothing VAR OPEN_PAR expr_lis
                   c->parametrized_offset = $3;
                   c->local_defs = $3?$3:$1; // If we want local_defs to contain the parametrized_offset, we need to indicate $3 and not $1
 
-                  /*if($1 != NULL && $3 != NULL)
-                  { // create a new separated parametrized_offset
-                    jdf_expr_t *new_expr = malloc(sizeof(jdf_expr_t));
-                    memcpy(new_expr, c->parametrized_offset, sizeof(jdf_expr_t));
-                    new_expr->next = NULL;
-                    c->parametrized_offset = new_expr;
-                  }*/
-
-                  // print infos
-                  printf("call: %s\n", $2);
-                  printf("  parametrized_offset: %s\n", (c->parametrized_offset)?(c->parametrized_offset->alias):"");
-                  printf("  local_defs: ");
-                  for(jdf_expr_t *e = c->local_defs; e != NULL; e = e->next)
-                  {
-                    printf("%s, ", e->alias);
-                  }
-                  printf("\n");
-                  /*if(c->local_defs) // Normally, $3 should already contain the local_defs of $1 because we pushed them in the same scope
-                  {
-                    assert(c->local_defs->next == NULL); // Only one variable is allowed in the referrer's offset
-                    c->local_defs->next = $1;
-                  }
-                  else
-                  {
-                    c->local_defs = $1;
-                  }*/
-                  /*if(c->local_defs) {
-                    // concatenate c->array_offset and ->local_defs
-                    jdf_expr_t *e;
-                    for(e = c->local_defs; e->next; e = e->next);
-                    e->next = c->parametrized_offset;
-                  }
-                  else
-                  {
-                    c->local_defs = c->parametrized_offset;
-                  }*/
                   c->func_or_mem = $4;
                   c->parameters = $6;
                   $$ = c;
