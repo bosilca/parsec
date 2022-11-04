@@ -1525,8 +1525,10 @@ static inline char* jdf_generate_task_typedef(void **elt, void* arg)
             else
             { // Parametrized flow
                 // Becomes an array of data pairs
-                string_arena_add_string(sa_data, "  //parsec_data_pair_t *_f_%s;\n", df->varname);
-                nb_flows--; // This flow will be stored in the unused space of the array
+
+                string_arena_add_string(sa_data, "  parsec_data_pair_t *_f_%s;\n", df->varname);
+                /*string_arena_add_string(sa_data, "  //parsec_data_pair_t *_f_%s;\n", df->varname);
+                nb_flows--; // This flow will be stored in the unused space of the array*/
             }
         }
     }
@@ -1560,7 +1562,7 @@ static inline char* jdf_generate_task_typedef(void **elt, void* arg)
                             string_arena_get_string(sa_data),
                             nb_flows,
                             parsec_get_name(NULL, f, "data_t"));
-    if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f)) {
+    /*if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f)) {
         string_arena_add_string(sa, "typedef struct %s {\n"
                                 "    %s super;\n",
                                 parsec_get_name(NULL, f, "parametrized_data_s"),
@@ -1572,7 +1574,7 @@ static inline char* jdf_generate_task_typedef(void **elt, void* arg)
         }
         string_arena_add_string(sa, "} %s;\n\n",
                                 parsec_get_name(NULL, f, "parametrized_data_t"));
-    }
+    }*/
     string_arena_add_string(sa, "typedef struct %s {\n"
                             "    PARSEC_MINIMAL_EXECUTION_CONTEXT\n"
                             "#if defined(PARSEC_PROF_TRACE)\n"
@@ -1588,7 +1590,7 @@ static inline char* jdf_generate_task_typedef(void **elt, void* arg)
                             jdf_basename, f->fname,
                             jdf_basename, f->fname,
                             parsec_get_name(NULL, f, "task_t"));
-    if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f)) {
+    /*if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f)) {
         string_arena_add_string(sa, "typedef struct %s {\n"
                                 "    %s super;\n"
                                 "    %s parametrized_data;\n"
@@ -1597,7 +1599,7 @@ static inline char* jdf_generate_task_typedef(void **elt, void* arg)
                                 parsec_get_name(NULL, f, "task_t"),
                                 parsec_get_name(NULL, f, "parametrized_data_t"),
                                 parsec_get_name(NULL, f, "parametrized_task_t"));
-    }
+    }*/
 
     string_arena_free(sa_locals);
     string_arena_free(sa_data);
@@ -1720,7 +1722,8 @@ static void jdf_generate_predeclarations( const jdf_t *jdf )
                 coutput("#endif\n");
                 for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
                     if( FLOW_IS_PARAMETRIZED(df) ) {
-                        coutput("  int out_offset_flow_of_%s_%s_for_%s;\n", jdf_basename, f->fname, df->varname);
+                        coutput("  int out_dep_offset_flow_of_%s_%s_for_%s;\n", jdf_basename, f->fname, df->varname);
+                        coutput("  int out_offset_dep_of_%s_%s_for_%s;\n", jdf_basename, f->fname, df->varname);
                     }
                 }
 
@@ -1742,14 +1745,14 @@ static void jdf_generate_predeclarations( const jdf_t *jdf )
                             {
                                 // Then the dep refers to a parametrized flow
 
-                                coutput("  int out_offset_flow_of_%s_%s_for_%s_dep%d_atline_%d%s;\n",
+                                coutput("  int out_dep_offset_flow_of_%s_%s_for_%s_dep%d_atline_%d%s;\n",
                                         jdf_basename, f->fname, df->varname,
                                         depid, JDF_OBJECT_LINENO(dep),
                                         // If ternary, add _iftrue or _iffalse
                                         (dep->guard->guard_type==JDF_GUARD_TERNARY) ? ((target_call)?"_iffalse":"_iftrue") : "");
 
                                 // We also keep track of the flow that id that contains the referrer
-                                coutput("  int out_flow_id_of_flow_of_%s_%s_for_%s_dep%d_atline_%d%s;\n",
+                                coutput("  int out_flow_offset_of_flow_of_%s_%s_for_%s_dep%d_atline_%d%s;\n",
                                         jdf_basename, f->fname, df->varname,
                                         depid, JDF_OBJECT_LINENO(dep),
                                         // If ternary, add _iftrue or _iffalse
@@ -4813,7 +4816,9 @@ static void jdf_generate_one_function( const jdf_t *jdf, jdf_function_entry_t *f
         string_arena_add_string(sa, "#endif\n");
         for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
             if( FLOW_IS_PARAMETRIZED(df) ) {
-                string_arena_add_string(sa, "  , .out_offset_flow_of_%s_%s_for_%s = -1\n", jdf_basename, f->fname, df->varname);
+                string_arena_add_string(sa, "  , .out_dep_offset_flow_of_%s_%s_for_%s = -1\n", jdf_basename, f->fname, df->varname);
+                // store the offset for every output dep of this parametrized flow
+                string_arena_add_string(sa, "  , .out_offset_dep_of_%s_%s_for_%s = -1\n", jdf_basename, f->fname, df->varname);
             }
         }
 
@@ -4834,12 +4839,12 @@ static void jdf_generate_one_function( const jdf_t *jdf, jdf_function_entry_t *f
 
                     if( NULL != call->parametrized_offset )
                     {
-                        string_arena_add_string(sa, "  , .out_offset_flow_of_%s_%s_for_%s_dep%d_atline_%d%s = -1\n",
+                        string_arena_add_string(sa, "  , .out_dep_offset_flow_of_%s_%s_for_%s_dep%d_atline_%d%s = -1\n",
                                         jdf_basename, f->fname, df->varname,
                                         depid, JDF_OBJECT_LINENO(dep),
                                         // If ternary, add _iftrue or _iffalse
                                         (dep->guard->guard_type==JDF_GUARD_TERNARY) ? ((target_call)?"_iffalse":"_iftrue") : "");
-                        string_arena_add_string(sa, "  , .out_flow_id_of_flow_of_%s_%s_for_%s_dep%d_atline_%d%s = -1\n",
+                        string_arena_add_string(sa, "  , .out_flow_offset_of_flow_of_%s_%s_for_%s_dep%d_atline_%d%s = -1\n",
                                         jdf_basename, f->fname, df->varname,
                                         depid, JDF_OBJECT_LINENO(dep),
                                         // If ternary, add _iftrue or _iffalse
@@ -5749,7 +5754,7 @@ static void jdf_generate_new_function( const jdf_t* jdf )
                     //    JDF_OBJECT_ONAME(f), jdf_basename, f->fname, df->varname,);
 
                     // For the moment, do not set this, I think it is not needed
-                    coutput("    spec_%s.out_offset_flow_of_%s_%s_for_%s = -1;\n",
+                    coutput("    spec_%s.out_dep_offset_flow_of_%s_%s_for_%s = -1;\n",
                         JDF_OBJECT_ONAME(f), jdf_basename, f->fname, df->varname);
                     coutput("  }\n");
                 }
@@ -5785,12 +5790,12 @@ static void jdf_generate_new_function( const jdf_t* jdf )
 
                             assert(!FLOW_IS_PARAMETRIZED(df)); // If the flow is parametrized, 
 
-                            coutput("    spec_%s.out_offset_flow_of_%s_%s_for_%s_dep%d_atline_%d%s = parsec_helper_get_dep_index(tc, dep, 1);\n",
+                            coutput("    spec_%s.out_dep_offset_flow_of_%s_%s_for_%s_dep%d_atline_%d%s = parsec_helper_get_dep_index(tc, dep, 1);\n",
                                 JDF_OBJECT_ONAME(f), jdf_basename, f->fname, df->varname,
                                 depid, JDF_OBJECT_LINENO(dep),
                                 // If ternary, add _iftrue or _iffalse
                                 (dep->guard->guard_type==JDF_GUARD_TERNARY) ? ((target_call)?"_iffalse":"_iftrue") : "");
-                            coutput("    spec_%s.out_flow_id_of_flow_of_%s_%s_for_%s_dep%d_atline_%d%s = parsec_helper_get_flow_index_that_contains_dep(tc, dep, 1);\n",
+                            coutput("    spec_%s.out_flow_offset_of_flow_of_%s_%s_for_%s_dep%d_atline_%d%s = parsec_helper_get_flow_index_that_contains_dep(tc, dep, 1);\n",
                                 JDF_OBJECT_ONAME(f), jdf_basename, f->fname, df->varname,
                                 depid, JDF_OBJECT_LINENO(dep),
                                 // If ternary, add _iftrue or _iffalse
@@ -9107,10 +9112,31 @@ jdf_generate_code_iterate_successors_or_predecessors(const jdf_t *jdf,
             if(NULL != dl->guard->calltrue->parametrized_offset)
             {
                 jdf_call_t *call = dl->guard->calltrue;
+                // if call is parametrized
                 string_arena_add_string(sa_ontask,
                                         "if( PARSEC_ITERATE_STOP == ontask(es, &nc, "
-                                        "(const parsec_task_t *)this_task, this_task->task_class->out[spec_%s_%s.out_flow_id_of_%s]"
-                                        "->dep_out[spec_%s_%s.out_offset_%s+%s]"
+                                        "(const parsec_task_t *)this_task, this_task->task_class->out[spec_%s_%s.out_flow_offset_of_%s]"
+                                        "->dep_out[spec_%s_%s.out_dep_offset_%s+%s]"
+                                        ", &data, rank_src, rank_dst, vpid_dst,"
+                                        " successor_repo, successor_repo_key, ontask_arg) )\n"
+                                        "  return;\n",
+                                        jdf_basename, f->fname, JDF_OBJECT_ONAME(call),
+                                        jdf_basename, f->fname, JDF_OBJECT_ONAME(call), call->parametrized_offset->alias);
+                // if flow is parametrized
+                string_arena_add_string(sa_ontask,
+                                        "if( PARSEC_ITERATE_STOP == ontask(es, &nc, "
+                                        "(const parsec_task_t *)this_task, this_task->task_class->out[spec_%s_%s.out_flow_offset_of_%s]"
+                                        "->dep_out[spec_%s_%s.out_dep_offset_%s+%s]"
+                                        ", &data, rank_src, rank_dst, vpid_dst,"
+                                        " successor_repo, successor_repo_key, ontask_arg) )\n"
+                                        "  return;\n",
+                                        jdf_basename, f->fname, JDF_OBJECT_ONAME(call),
+                                        jdf_basename, f->fname, JDF_OBJECT_ONAME(call), call->parametrized_offset->alias);
+                // if both flow and call are parametrized
+                string_arena_add_string(sa_ontask,
+                                        "if( PARSEC_ITERATE_STOP == ontask(es, &nc, "
+                                        "(const parsec_task_t *)this_task, this_task->task_class->out[spec_%s_%s.out_flow_offset_of_%s]"
+                                        "->dep_out[spec_%s_%s.out_dep_offset_%s+%s]"
                                         ", &data, rank_src, rank_dst, vpid_dst,"
                                         " successor_repo, successor_repo_key, ontask_arg) )\n"
                                         "  return;\n",
@@ -9235,8 +9261,8 @@ jdf_generate_code_iterate_successors_or_predecessors(const jdf_t *jdf,
                         jdf_call_t *call = dl->guard->callfalse;
                         string_arena_add_string(sa_ontask,
                                             "if( PARSEC_ITERATE_STOP == ontask(es, &nc, (const parsec_task_t *)this_task, "
-                                            "(const parsec_task_t *)this_task, this_task->task_class->out[spec_%s_%s.out_flow_id_of_%s]"
-                                            "->dep_out[spec_%s_%s.out_offset_%s+%s]"
+                                            "(const parsec_task_t *)this_task, this_task->task_class->out[spec_%s_%s.out_flow_offset_of_%s]"
+                                            "->dep_out[spec_%s_%s.out_dep_offset_%s+%s]"
                                             ", &data, rank_src, rank_dst, vpid_dst,"
                                             " successor_repo, successor_repo_key, ontask_arg) )\n"
                                             "  return;\n",
@@ -9272,8 +9298,8 @@ jdf_generate_code_iterate_successors_or_predecessors(const jdf_t *jdf,
                         jdf_call_t *call = dl->guard->callfalse;
                         string_arena_add_string(sa_ontask,
                                             "if( PARSEC_ITERATE_STOP == ontask(es, &nc, (const parsec_task_t *)this_task, "
-                                            "(const parsec_task_t *)this_task, this_task->task_class->out[spec_%s_%s.out_flow_id_of_%s]"
-                                            "->dep_out[spec_%s_%s.out_offset_%s+%s]"
+                                            "(const parsec_task_t *)this_task, this_task->task_class->out[spec_%s_%s.out_flow_offset_of_%s]"
+                                            "->dep_out[spec_%s_%s.out_dep_offset_%s+%s]"
                                             ", &data, rank_src, rank_dst, vpid_dst,"
                                             " successor_repo, successor_repo_key, ontask_arg) )\n"
                                             "  return;\n",
