@@ -1561,13 +1561,14 @@ static inline char* jdf_generate_task_typedef(void **elt, void* arg)
                             nb_flows, f->fname, nb_flows, f->fname);
     string_arena_add_string(sa, "typedef struct %s {\n"
                             "%s"
-                            "  parsec_data_pair_t unused[MAX_LOCAL_COUNT-%d];\n"
+                            "  parsec_data_pair_t %s[MAX_LOCAL_COUNT-%d];\n"
                             "} %s;\n\n",
                             parsec_get_name(NULL, f, "data_s"),
                             string_arena_get_string(sa_data),
+                            TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f) ? "dynamic" : "unused",
                             nb_flows,
                             parsec_get_name(NULL, f, "data_t"));
-    if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f)) {
+    /*if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f)) {
         string_arena_add_string(sa, "typedef struct %s {\n"
                                 "    %s super;\n",
                                 parsec_get_name(NULL, f, "parametrized_data_s"),
@@ -1579,7 +1580,7 @@ static inline char* jdf_generate_task_typedef(void **elt, void* arg)
         }
         string_arena_add_string(sa, "} %s;\n\n",
                                 parsec_get_name(NULL, f, "parametrized_data_t"));
-    }
+    }*/
     string_arena_add_string(sa, "typedef struct %s {\n"
                             "    PARSEC_MINIMAL_EXECUTION_CONTEXT\n"
                             "#if defined(PARSEC_PROF_TRACE)\n"
