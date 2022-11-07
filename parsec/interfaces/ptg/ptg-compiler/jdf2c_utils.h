@@ -71,6 +71,26 @@ util_dump_array_offset_if_parametrized(string_arena_t *sa, const jdf_dataflow_t 
     return string_arena_get_string(sa);
 }
 
+/**
+ * @brief Dumps the proper access to the data, wether the flow is parametrized or not
+ * 
+ */
+#define DUMP_DATA_FIELD_NAME_IN_TASK(sa, flow, basename)\
+    util_dump_data_field_name_in_task(sa, flow, basename)
+
+static inline char *util_dump_data_field_name_in_task(string_arena_t *sa, const jdf_dataflow_t *flow, const char *basename)
+{
+    string_arena_init(sa);
+
+    if( FLOW_IS_PARAMETRIZED(flow) ) {
+        string_arena_add_string(sa, "parametrized__f_%s(%s)", flow->varname, get_parametrized_flow_iterator_name(flow));
+    } else {
+        string_arena_add_string(sa, "_f_%s", flow->varname);
+    }
+
+    return string_arena_get_string(sa);
+}
+
 /** 
  * VARIABLE_IS_FLOW_LEVEL
  *   Tells whether a variable is a flow level variable or not.
