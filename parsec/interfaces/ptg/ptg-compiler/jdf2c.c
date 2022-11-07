@@ -7333,8 +7333,8 @@ static void jdf_generate_code_cache_awareness_update(const jdf_t *jdf, const jdf
 
         dump_parametrized_flow_loop_if_parametrized(df, "  ", sa);
         //dump_parametrized_flow_loop(df, df->local_variables->alias, "  ", sa);
-        string_arena_add_string(sa, "%s  cache_buf_referenced(es->closest_cache, %s);\n",
-                        INDENTATION_IF_PARAMETRIZED(df), DUMP_DATA_FIELD_NAME_IN_TASK(osa, df, df->varname));
+        string_arena_add_string(sa, "%s  cache_buf_referenced(es->closest_cache, _f_%s%s);\n",
+                        INDENTATION_IF_PARAMETRIZED(df), df->varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, df));
         dump_parametrized_flow_loop_end_if_parametrized(df, "  ", sa);
         //string_arena_add_string(sa, "  }\n");
 
