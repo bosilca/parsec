@@ -8639,10 +8639,10 @@ static char *jdf_dump_context_assignment(string_arena_t *sa_open,
     }
     
     // Iterate if the flow is parametrized
-    dump_parametrized_flow_loop_if_parametrized(flow, "    ", sa_open);
+    /*dump_parametrized_flow_loop_if_parametrized(flow, "    ", sa_open);
     if(FLOW_IS_PARAMETRIZED(flow)) {
         ++nbopen;
-    }
+    }*/
 
     for(vl = targetf->locals, i = 0; vl != NULL; vl = vl->next, i++) {
 
@@ -9028,13 +9028,15 @@ jdf_generate_code_iterate_successors_or_predecessors(const jdf_t *jdf,
         nb_open_ldef = 0;
 
 
-        dump_parametrized_flow_loop_if_parametrized(fl, "    ", sa_coutput); // TODO: this is completely wrong, this should be inside the whole loop
+        dump_parametrized_flow_loop_if_parametrized(fl, "    ", sa_coutput);
+        if(FLOW_IS_PARAMETRIZED(fl))
+        {
+            nb_open_ldef++;
+        }
 
         string_arena_add_string(sa_coutput,
                 "%s    data.data   = this_task->data.%s.data_out;\n",
                 INDENTATION_IF_PARAMETRIZED(fl), DUMP_DATA_FIELD_NAME_IN_TASK(osa, fl, fl->varname));
-
-        dump_parametrized_flow_loop_end_if_parametrized(fl, "    ", sa_coutput);
 
         for(dl = fl->deps; dl != NULL; dl = dl->next) {
             if( !(dl->dep_flags & flow_type) ) continue;
@@ -9208,28 +9210,6 @@ jdf_generate_code_iterate_successors_or_predecessors(const jdf_t *jdf,
                                         "  return;\n",
                                         JDF_OBJECT_ONAME(dl->guard->calltrue));
             }
-
-/*
-            if(dl->guard->guard_type == JDF_GUARD_TERNARY && NULL != dl->guard->callfalse) {
-                dump_parametrized_flow_loop_if_parametrized(dl->guard->callfalse, indent(nb_open_ldef), sa_coutput);
-                if(FLOW_IS_PARAMETRIZED(dl->guard->callfalse)) {
-                    nb_open_ldef++;
-                }
-            }
-            if(NULL != dl->guard->calltrue)
-            {
-                dump_parametrized_flow_loop_if_parametrized(dl->guard->calltrue, indent(nb_open_ldef), sa_coutput);
-                if(FLOW_IS_PARAMETRIZED(dl->guard->calltrue)) {
-                    nb_open_ldef++;
-                }
-            }
-*/
-/*
-                dump_parametrized_flow_loop_if_parametrized(f->dataflow, indent(nb_open_ldef), sa_coutput);
-                if(FLOW_IS_PARAMETRIZED(f->dataflow)) {
-                    nb_open_ldef++;
-                }
-*/
 
             if( NULL != dl->local_defs ) {
                 jdf_expr_t *ld;
