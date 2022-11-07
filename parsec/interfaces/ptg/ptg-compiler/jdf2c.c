@@ -235,7 +235,8 @@ parsec_get_name(const jdf_t *jdf, const jdf_function_entry_t *f, char* fmt, ...)
 
 static char *parsec_get_task_type_name(const jdf_t *jdf, const jdf_function_entry_t *f)
 {
-    return parsec_get_name(jdf, f, TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f)?"parametrized_task_t":"task_t");
+    //return parsec_get_name(jdf, f, TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f)?"parametrized_task_t":"task_t");
+    return parsec_get_name(jdf, f, "task_t");
 }
 
 /**
@@ -1919,6 +1920,16 @@ static void jdf_generate_structure(jdf_t *jdf)
                    dump_globals, sa2, "", "#define ", "\n", "\n");
     if( 1 < strlen(string_arena_get_string(sa1)) ) {
         coutput("/* Globals */\n%s\n", string_arena_get_string(sa1));
+    }
+
+    for( jdf_function_entry_t* f = jdf->functions; NULL != f; f = f->next ) {
+        for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
+            if( FLOW_IS_PARAMETRIZED(df) ) {
+                coutput("#define parametrized__f_%s(it) (dynamic[(spec_%s.out_dep_offset_flow_of_%s_%s_for_%s)+(it)])\n",
+                    f->fname,
+                    JDF_OBJECT_ONAME(f), jdf_basename, f->fname, df->varname);
+            }
+        }
     }
 
     coutput("static inline int parsec_imin(int a, int b) { return (a <= b) ? a : b; };\n\n"
@@ -9015,7 +9026,7 @@ jdf_generate_code_iterate_successors_or_predecessors(const jdf_t *jdf,
         nb_open_ldef = 0;
 
 
-        dump_parametrized_flow_loop_if_parametrized(fl, "    ", sa_coutput);
+        dump_parametrized_flow_loop_if_parametrized(fl, "    ", sa_coutput); // TODO: this is completely wrong, this should be inside the whole loop
 
         string_arena_add_string(sa_coutput,
                 "%s    data.data   = this_task->data._f_%s%s.data_out;\n",
