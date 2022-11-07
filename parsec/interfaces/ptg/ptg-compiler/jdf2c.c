@@ -3777,6 +3777,34 @@ string_arena_init(sa);
 
 
 
+/*
+TODO: framework suggested by Thomas:
+
+int __parsec_LBM_LBM_STEP_constructor(parsec_task_t *task) {
+  // initialize the fields above the base object on which the task derives
+}
+
+PARSEC_OBJ_DECLARE(__parsec_LBM_LBM_STEP_task_t);
+PARSEC_OBJ_CLASS_INSTANCE(__parsec_LBM_LBM_STEP_task_t, parsec_list_item_t,
+                          __parsec_LBM_LBM_STEP_constructor, NULL);
+
+void __parsec_LBM_LBM_new_task(parsec_task_t **task)
+{
+   __parsec_LBM_LBM_STEP_task_t *n = PARSEC_OBJ_NEW(__parsec_LBM_LBM_STEP_task_t);
+   *task = &n->super;
+}
+
+parsec_taskpool_t *LBM_new(...)
+{
+    parsec_taskpool_t *lbm_tp = malloc(...);
+    ...
+    lbm_tp->new_task = __parsec_LBM_LBM_new_task;
+    ...
+    return lbm_tp;
+}
+*/
+
+
     // simple version:
     coutput( 
         "int %s(const parsec_task_t** task)\n"
@@ -3786,7 +3814,14 @@ string_arena_init(sa);
         parsec_get_name(jdf, f, "task_t"), parsec_get_name(jdf, f, "task_t"),
         jdf_basename, jdf_basename);
 
-    coutput("  memset(spec_task->data.dynamic, 0, sizeof(parsec_data_pair_t) * MAX_LOCAL_COUNT);\n");
+    int non_parametrized_count = 0;
+    for(jdf_dataflow_t *flow = f->dataflow; NULL != flow; flow = flow->next) {
+        if( !FLOW_IS_PARAMETRIZED(flow) ) {
+            non_parametrized_count++;
+        }
+    }
+
+    coutput("  memset(spec_task->data.dynamic, 0, sizeof(parsec_data_pair_t) * (MAX_LOCAL_COUNT-%d));\n", non_parametrized_count);
 
     coutput( "}\n");
 }
