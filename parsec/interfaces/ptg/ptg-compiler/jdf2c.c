@@ -3716,6 +3716,81 @@ static void jdf_generate_startup_tasks(const jdf_t *jdf, const jdf_function_entr
             "}\n\n");
 }
 
+jdf_generate_task_constructor(jdf_t *jdf, jdf_function_entry_t *f)
+{
+    /*coutput( 
+        "int %s(const parsec_task_t* task)\n"
+        "{\n"
+        "  %s *spec_task = (%s*)task;\n"
+        "  const __parsec_%s_internal_taskpool_t *__parsec_tp = (const __parsec_%s_internal_taskpool_t *)task->taskpool;\n"
+        , parsec_get_name(NULL, f, "constructor"),
+        parsec_get_name(jdf, f, "task_t"), parsec_get_name(jdf, f, "task_t"),
+        jdf_basename, jdf_basename);
+
+    string_arena_t *sa = string_arena_new(64);
+
+    coutput("  int specializations_num = 0;\n");
+
+    for(jdf_dataflow_t *flow = f->dataflow; NULL != flow; flow = flow->next) {
+        if( FLOW_IS_PARAMETRIZED(flow) ) {
+            coutput("  specializations_num += %s;\n", jdf_expr_print(sa, flow->expr));
+
+            string_arena_init(sa);
+            dump_parametrized_flow_loop(flow, GET_PARAMETRIZED_FLOW_ITERATOR_NAME(flow), "  ", sa);
+            coutput("%s", string_arena_get_string(sa));
+
+            coutput("    // ...\n");
+
+            string_arena_init(sa);
+            dump_parametrized_flow_loop_end(flow, "  ", sa);
+            coutput("%s", string_arena_get_string(sa));
+        }
+    }
+
+    coutput("  memset(spec_task->data.dynamic, 0, sizeof(parsec_data_pair_t) * MAX_LOCAL_COUNT);\n");
+
+    string_arena_free(sa);
+
+/*
+string_arena_init(sa);
+                    dump_parametrized_flow_loop(df, GET_PARAMETRIZED_FLOW_ITERATOR_NAME(df), "    ", sa);
+
+        // First parametrized flows:
+        string_arena_add_string(sa, "  // Local parametrized flows of %s\n", f->fname);
+        string_arena_add_string(sa, "#if defined(PARSEC_DEBUG_NOISIER)\n");
+        for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
+            if( FLOW_IS_PARAMETRIZED(df) ) {
+                string_arena_add_string(sa, "  , .nb_specializations_flow_of_%s_%s_for_%s = -1\n", jdf_basename, f->fname, df->varname);
+            }
+        }
+        string_arena_add_string(sa, "#endif\n");
+        for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
+            if( FLOW_IS_PARAMETRIZED(df) ) {
+                string_arena_add_string(sa, "  , .out_dep_offset_flow_of_%s_%s_for_%s = -1\n", jdf_basename, f->fname, df->varname);
+                // store the offset for every output dep of this parametrized flow
+                string_arena_add_string(sa, "  , .out_offset_dep_of_%s_%s_for_%s = -1\n", jdf_basename, f->fname, df->varname);
+            }
+        }
+
+*/
+
+
+
+
+    // simple version:
+    coutput( 
+        "int %s(const parsec_task_t** task)\n"
+        "{\n"
+        "  %s *spec_task = (%s*)(*task);\n",
+        parsec_get_name(NULL, f, "constructor"),
+        parsec_get_name(jdf, f, "task_t"), parsec_get_name(jdf, f, "task_t"),
+        jdf_basename, jdf_basename);
+
+    coutput("  memset(spec_task->data.dynamic, 0, sizeof(parsec_data_pair_t) * MAX_LOCAL_COUNT);\n");
+
+    coutput( "}\n");
+}
+
 /* structure to handle the correspondence between local variables and function parameters */
 typedef struct jdf_l2p_s {
     const jdf_variable_list_t    *vl;
@@ -4806,6 +4881,28 @@ static void jdf_generate_one_function( const jdf_t *jdf, jdf_function_entry_t *f
         string_arena_add_string(sa, "  .release_task = &%s,\n", prefix);
     }
 
+
+    if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f)) {
+        string_arena_add_string(sa, "  .new_task = &%s,\n", parsec_get_name(NULL, f, "constructor"));
+
+        /*string_arena_add_string(sa, 
+            "PARSEC_OBJ_CLASS_DECLARATION(%s);\n"
+            "PARSEC_OBJ_CLASS_INSTANCE(%s, %s,\n"
+            "                          %s, NULL);\n\n",
+            parsec_get_name(NULL, f, "task_t"),
+            parsec_get_name(NULL, f, "task_t"),
+            "parsec_list_item_t",
+            //parsec_get_name(NULL, f, "constructor")
+            "NULL"
+        );*/
+    }
+    else
+    {
+        string_arena_add_string(sa, "  .new_task = NULL,\n");
+    }
+
+    //.new_task = (parsec_task_new_t*)new_task_of_%s_%s,
+
     if( NULL != f->simcost ) {
         sprintf(prefix, "simulation_cost_of_%s_%s", jdf_basename, f->fname);
         jdf_generate_simulation_cost_fct(jdf, f, prefix);
@@ -4826,6 +4923,10 @@ static void jdf_generate_one_function( const jdf_t *jdf, jdf_function_entry_t *f
 
     if( f->flags & JDF_FUNCTION_FLAG_CAN_BE_STARTUP ) {
         jdf_generate_startup_tasks(jdf, f, jdf_property_get_function(f->properties, JDF_PROP_UD_STARTUP_TASKS_FN_NAME, NULL));
+    }
+
+    if( TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f) ) {
+        jdf_generate_task_constructor(jdf, f);
     }
 
     string_arena_add_string(sa, "};\n");
@@ -9390,11 +9491,17 @@ jdf_generate_code_iterate_successors_or_predecessors(const jdf_t *jdf,
         } else if( 1 == flowempty ) {
             coutput("  /* Flow of data %s has only OUTPUT dependencies to Memory */\n", fl->varname);
         } else {
-            coutput("  if( action_mask & 0x%x ) {  /* Flow of data %s [%d] */\n"
-                    "%s"
-                    "  }\n",
-                    (flow_type & JDF_DEP_FLOW_OUT) ? fl->flow_dep_mask_out : fl->flow_dep_mask_in/*mask*/, fl->varname, fl->flow_index,
-                    string_arena_get_string(sa_coutput)/*IFBODY*/);
+            /*if(FLOW_IS_PARAMETRIZED(fl)) {
+                
+            }
+            else*/
+            {
+                coutput("  if( action_mask & 0x%x ) {  /* Flow of data %s [%d] */\n"
+                        "%s"
+                        "  }\n",
+                        (flow_type & JDF_DEP_FLOW_OUT) ? fl->flow_dep_mask_out : fl->flow_dep_mask_in/*mask*/, fl->varname, fl->flow_index,
+                        string_arena_get_string(sa_coutput)/*IFBODY*/);
+            }
         }
     }
     coutput("  (void)data;(void)nc;(void)es;(void)ontask;(void)ontask_arg;(void)rank_dst;(void)action_mask;\n");
