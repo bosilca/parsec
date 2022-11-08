@@ -8147,16 +8147,53 @@ static void jdf_generate_code_hook_cuda(const jdf_t *jdf,
 
     /* Dump the dataflow */
     coutput("  gpu_task->pushout = 0;\n");
+
+    if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f)) {
+        coutput("  int current_flow_id=0;\n");
+    }
+
+    int parametrized_flow_has_been_encountered = 0;
+
+    string_arena_t *sa_di = string_arena_new(64);
     for(fl = f->dataflow, di = 0; fl != NULL; fl = fl->next, di++) {
-        coutput("  gpu_task->flow[%d]         = &%s;\n",
-                di, JDF_OBJECT_ONAME( fl ));
+        coutput("  // Dataflow %s\n", fl->varname);
+
+        if(FLOW_IS_PARAMETRIZED(fl)) {
+            // If this flow is parametrized, all the following ones will have a dynamic id
+            parametrized_flow_has_been_encountered = 1;
+        }
+
+        string_arena_init(sa_di);
+        if( parametrized_flow_has_been_encountered ) {
+            // We use the current_flow_id variable because we cannot compute di at compile time
+            string_arena_add_string(sa_di, "current_flow_id", di);
+        } else {
+            string_arena_add_string(sa_di, "%d", di);
+        }
+        const char *di_str = string_arena_get_string(sa_di);
+
+        if(FLOW_IS_PARAMETRIZED(fl)) {
+            string_arena_t *sa = string_arena_new(64);
+            dump_parametrized_flow_loop(fl, get_parametrized_flow_iterator_name(fl), "  ", sa);
+            coutput("%s", string_arena_get_string(sa));
+            string_arena_free(sa);
+        }
+
+        if( FLOW_IS_PARAMETRIZED(fl) ) {
+            coutput("%s  gpu_task->flow[%s]         = NULL;\n",
+                 INDENTATION_IF_PARAMETRIZED(fl), di_str);
+        }else{
+            coutput("%s  gpu_task->flow[%s]         = &%s;\n",
+                 INDENTATION_IF_PARAMETRIZED(fl), di_str, JDF_OBJECT_ONAME( fl ));
+        }
 
         sprintf(sa->ptr, "%s.dc", fl->varname);
         jdf_find_property(body->properties, sa->ptr, &desc_property);
         if(desc_property == NULL){
-            coutput("  gpu_task->flow_dc[%d] = NULL;\n", di);
+            coutput("%s  gpu_task->flow_dc[%s] = NULL;\n", INDENTATION_IF_PARAMETRIZED(fl), di_str);
         }else{
-            coutput("  gpu_task->flow_dc[%d] = (parsec_data_collection_t *)%s;\n", di,
+            coutput("%s  gpu_task->flow_dc[%s] = (parsec_data_collection_t *)%s;\n",
+                        INDENTATION_IF_PARAMETRIZED(fl), di_str,
                         dump_expr((void**)desc_property->expr, &info));
         }
 
@@ -8169,16 +8206,16 @@ static void jdf_generate_code_hook_cuda(const jdf_t *jdf,
                         fl->varname, JDF_OBJECT_LINENO(fl));
                 exit(-1);
             }
-            coutput("  gpu_task->flow_nb_elts[%d] = 0;\n", di);
+            coutput("%s  gpu_task->flow_nb_elts[%s] = 0;\n", INDENTATION_IF_PARAMETRIZED(fl), di_str);
         }else{
             if(size_property == NULL){
-                coutput("  gpu_task->flow_nb_elts[%d] = gpu_task->ec->data[%d].data_in->original->nb_elts;\n", di, di);
+                coutput("%s  gpu_task->flow_nb_elts[%s] = gpu_task->ec->data[%s].data_in->original->nb_elts;\n", INDENTATION_IF_PARAMETRIZED(fl), di_str, di_str);
             }else{
-                coutput("  gpu_task->flow_nb_elts[%d] = %s;\n",
-                        di, dump_expr((void**)size_property->expr, &info));
+                coutput("%s  gpu_task->flow_nb_elts[%s] = %s;\n",
+                        INDENTATION_IF_PARAMETRIZED(fl), di_str, dump_expr((void**)size_property->expr, &info));
                 if( (stage_in_property == NULL) || ( stage_out_property == NULL )){
-                    coutput("  assert(gpu_task->ec->data[%d].data_in->original->nb_elts <= %s);\n",
-                            di, dump_expr((void**)size_property->expr, &info));
+                    coutput("%s  assert(gpu_task->ec->data[%s].data_in->original->nb_elts <= %s);\n",
+                            INDENTATION_IF_PARAMETRIZED(fl), di_str, dump_expr((void**)size_property->expr, &info));
                 }
 
             }
@@ -8208,33 +8245,33 @@ static void jdf_generate_code_hook_cuda(const jdf_t *jdf,
                 switch( dl->guard->guard_type ) {
                 case JDF_GUARD_UNCONDITIONAL:
                     if(testtrue) {
-                        coutput("  gpu_task->pushout |= (1 << %d);\n", di);
+                        coutput("  gpu_task->pushout |= (1 << %s);\n", di_str);
                         goto nextflow;
                     }
                     break;
                 case JDF_GUARD_BINARY:
                     if(testtrue) {
                         coutput("  if( %s ) {\n"
-                                "    gpu_task->pushout |= (1 << %d);\n"
+                                "    gpu_task->pushout |= (1 << %s);\n"
                                 "  }",
-                                dump_expr((void**)dl->guard->guard, &info), di);
+                                dump_expr((void**)dl->guard->guard, &info), di_str);
                     }
                     break;
                 case JDF_GUARD_TERNARY:
                     if( testtrue ) {
                         if( testfalse ) {
-                            coutput("  gpu_task->pushout |= (1 << %d);\n", di);
+                            coutput("  gpu_task->pushout |= (1 << %s);\n", di_str);
                         } else {
                             coutput("  if( %s ) {\n"
-                                    "    gpu_task->pushout |= (1 << %d);\n"
+                                    "    gpu_task->pushout |= (1 << %s);\n"
                                     "  }\n",
-                                    dump_expr((void**)dl->guard->guard, &info), di);
+                                    dump_expr((void**)dl->guard->guard, &info), di_str);
                         }
                     } else if ( testfalse ) {
                         coutput("  if( !(%s) ) {\n"
-                                "    gpu_task->pushout |= (1 << %d);\n"
+                                "    gpu_task->pushout |= (1 << %s);\n"
                                 "  }\n",
-                                dump_expr((void**)dl->guard->guard, &info), di);
+                                dump_expr((void**)dl->guard->guard, &info), di_str);
                     }
                     break;
                 }
@@ -8242,7 +8279,24 @@ static void jdf_generate_code_hook_cuda(const jdf_t *jdf,
           nextflow:
             ;
         }
+
+        if(FLOW_IS_PARAMETRIZED(fl)) {
+            coutput("    current_flow_id++;\n");
+
+            string_arena_t *sa = string_arena_new(64);
+            dump_parametrized_flow_loop_end_if_parametrized(fl, "  ", sa);
+            coutput("%s", string_arena_get_string(sa));
+            string_arena_free(sa);
+        }
     }
+
+    /*if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f)) {
+        coutput("  assert(this_task->task_class->nb_flows > 0);\n");
+        coutput("  memcpy(gpu_task->flow, this_task->task_class->flow, sizeof(parsec_flow_t) * this_task->task_class->nb_flows);\n");
+    }*/
+
+    string_arena_free(sa_di);
+
     string_arena_free(info.sa);
 
     coutput("  parsec_device_load[dev_index] += gpu_task->load;\n"
