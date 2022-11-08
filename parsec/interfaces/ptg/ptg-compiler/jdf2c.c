@@ -4969,7 +4969,7 @@ static void jdf_generate_one_function( const jdf_t *jdf, jdf_function_entry_t *f
     if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED_OR_REFERRER(f))
     {
         string_arena_add_string(sa, "static parsec_%s_task_class_t spec_%s = {\n", JDF_OBJECT_ONAME(f), JDF_OBJECT_ONAME(f));
-        string_arena_add_string(sa, "  .super = %s", JDF_OBJECT_ONAME(f));
+        string_arena_add_string(sa, "  .super = %s\n", JDF_OBJECT_ONAME(f));
 
         // First parametrized flows:
         string_arena_add_string(sa, "  // Local parametrized flows of %s\n", f->fname);
@@ -5718,10 +5718,15 @@ static void jdf_generate_new_function( const jdf_t* jdf )
 
                     coutput(
                         "      parsec_helper_copy_flow(&flow_of_%s_%s_for_parametrized_%s[%s], &flow_of_%s_%s_for_%s);\n"
-                        "      flow_of_%s_%s_for_parametrized_%s[%s].flow_index = %s;\n",
+                        "      flow_of_%s_%s_for_parametrized_%s[%s].flow_index = %s;\n"
+                        "      char specialized_flow_name[64];\n"
+                        "      sprintf(specialized_flow_name, \"%s_%s_%%d\", %s);\n"
+                        "      flow_of_%s_%s_for_parametrized_%s[%s].name = strdup(specialized_flow_name);\n",
                         jdf_basename, f->fname, df->varname, GET_PARAMETRIZED_FLOW_ITERATOR_NAME(df),
                         jdf_basename, f->fname, df->varname,
-                        jdf_basename, f->fname, df->varname, GET_PARAMETRIZED_FLOW_ITERATOR_NAME(df), GET_PARAMETRIZED_FLOW_ITERATOR_NAME(df)
+                        jdf_basename, f->fname, df->varname, GET_PARAMETRIZED_FLOW_ITERATOR_NAME(df), GET_PARAMETRIZED_FLOW_ITERATOR_NAME(df),
+                        df->varname, GET_PARAMETRIZED_FLOW_ITERATOR_NAME(df), GET_PARAMETRIZED_FLOW_ITERATOR_NAME(df),
+                        jdf_basename, f->fname, df->varname, GET_PARAMETRIZED_FLOW_ITERATOR_NAME(df)
                     );
                     
                     string_arena_init(sa);
@@ -6540,6 +6545,7 @@ jdf_generate_code_reshape_input_from_dep(const jdf_t *jdf,
      * Format: type = XX   type_remote = ... -> pack XX unpack XX
      * */
     coutput("%s    data.data   = NULL;\n", spaces);
+    coutput("%s    assert(consumed_entry);\n", spaces);
     coutput("%s    data.data_future   = (parsec_datacopy_future_t*)consumed_entry->data[consumed_flow_index];\n",
             spaces);
 
