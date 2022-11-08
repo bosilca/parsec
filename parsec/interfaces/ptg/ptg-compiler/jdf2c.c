@@ -1744,7 +1744,6 @@ static void jdf_generate_predeclarations( const jdf_t *jdf )
                     if( FLOW_IS_PARAMETRIZED(df) ) {
                         coutput("  int in_flow_offset_of_parametrized_flow_of_%s_%s_for_%s;\n", jdf_basename, f->fname, df->varname);
                         coutput("  int out_flow_offset_of_parametrized_flow_of_%s_%s_for_%s;\n", jdf_basename, f->fname, df->varname);
-                        coutput("  int out_dep_offset_of_parametrized_flow_of_%s_%s_for_%s;\n", jdf_basename, f->fname, df->varname);
                         coutput("  int data_dynamic_offset_of_parametrized_%s_%s_for_%s;\n", jdf_basename, f->fname, df->varname);
                     }
                 }
@@ -4984,7 +4983,6 @@ static void jdf_generate_one_function( const jdf_t *jdf, jdf_function_entry_t *f
         string_arena_add_string(sa, "#endif\n");
         for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
             if( FLOW_IS_PARAMETRIZED(df) ) {
-                string_arena_add_string(sa, "  , .out_dep_offset_of_parametrized_flow_of_%s_%s_for_%s = -1\n", jdf_basename, f->fname, df->varname);
                 // store the offset for every output dep of this parametrized flow
                 string_arena_add_string(sa, "  , .in_flow_offset_of_parametrized_%s = -1\n", JDF_OBJECT_ONAME(df));
                 string_arena_add_string(sa, "  , .out_flow_offset_of_parametrized_%s = -1\n", JDF_OBJECT_ONAME(df));
@@ -5942,10 +5940,8 @@ static void jdf_generate_new_function( const jdf_t* jdf )
 
                         coutput("    spec_%s.in_flow_offset_of_parametrized_flow_of_%s_%s_for_%s = parsec_helper_get_flow_index(tc, &flow_of_%s_%s_for_parametrized_%s[0], 0);\n",
                             JDF_OBJECT_ONAME(f), jdf_basename, f->fname, df->varname, jdf_basename, f->fname, df->varname);
-                        coutput("    spec_%s.out_flow_offset_of_parametrized_flow_of_%s_%s_for_%s = -1;\n",
-                            JDF_OBJECT_ONAME(f), jdf_basename, f->fname, df->varname);
-                        coutput("    spec_%s.out_dep_offset_of_parametrized_flow_of_%s_%s_for_%s = -1;\n",
-                            JDF_OBJECT_ONAME(f), jdf_basename, f->fname, df->varname);
+                        coutput("    spec_%s.out_flow_offset_of_parametrized_flow_of_%s_%s_for_%s = parsec_helper_get_flow_index(tc, &flow_of_%s_%s_for_parametrized_%s[0], 1);\n",
+                            JDF_OBJECT_ONAME(f), jdf_basename, f->fname, df->varname, jdf_basename, f->fname, df->varname);
                         coutput("\n");
 
                         coutput("    spec_%s.data_dynamic_offset_of_parametrized_%s_%s_for_%s = current_data_offset_for_%s_%s;\n",
@@ -5961,8 +5957,6 @@ static void jdf_generate_new_function( const jdf_t* jdf )
                         coutput("    assert(spec_%s.in_flow_offset_of_parametrized_flow_of_%s_%s_for_%s >= 0);\n",
                                 JDF_OBJECT_ONAME(f), jdf_basename, f->fname, df->varname);
                         coutput("    assert(spec_%s.out_flow_offset_of_parametrized_flow_of_%s_%s_for_%s >= 0);\n",
-                                JDF_OBJECT_ONAME(f), jdf_basename, f->fname, df->varname);
-                        coutput("    assert(spec_%s.out_dep_offset_of_parametrized_flow_of_%s_%s_for_%s >= 0);\n",
                                 JDF_OBJECT_ONAME(f), jdf_basename, f->fname, df->varname);
                         coutput("    assert(spec_%s.data_dynamic_offset_of_parametrized_%s_%s_for_%s >= 0);\n",
                                 JDF_OBJECT_ONAME(f), jdf_basename, f->fname, df->varname);
