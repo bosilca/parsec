@@ -446,7 +446,7 @@ parsec_dep_t *parsec_helper_copy_dep(parsec_dep_t * dep_to, parsec_dep_t * dep_f
     return dep_to;
 }
 
-int parsec_helper_dep_is_in_flow(parsec_flow_t *flow, parsec_dep_t *dep)
+int parsec_helper_dep_is_in_flow(const parsec_flow_t *flow, const parsec_dep_t *dep)
 {
     int i;
     for (i = 0; i < MAX_DEP_IN_COUNT; i++)
@@ -478,7 +478,7 @@ int parsec_helper_dep_is_in_flow(parsec_flow_t *flow, parsec_dep_t *dep)
     return 0;
 }
 
-int parsec_helper_get_dep_index(parsec_task_class_t *tc, parsec_dep_t *dep, int in_out)
+int parsec_helper_get_dep_index(const parsec_task_class_t *tc, const parsec_dep_t *dep, int in_out)
 {
     int i;
     for (i = 0; i < MAX_DATAFLOWS_PER_TASK; i++)
@@ -509,7 +509,7 @@ int parsec_helper_get_dep_index(parsec_task_class_t *tc, parsec_dep_t *dep, int 
     return -1;
 }
 
-int parsec_helper_get_flow_index_that_contains_dep(parsec_task_class_t *tc, parsec_dep_t *dep, int in_out)
+int parsec_helper_get_flow_index_that_contains_dep(const parsec_task_class_t *tc, const parsec_dep_t *dep, int in_out)
 {
     int i;
     for (i = 0; i < MAX_DATAFLOWS_PER_TASK; i++)
@@ -528,5 +528,26 @@ int parsec_helper_get_flow_index_that_contains_dep(parsec_task_class_t *tc, pars
     }
 
     assert(0);
+    return -1;
+}
+
+int parsec_helper_get_flow_index(const parsec_task_class_t *tc, const parsec_flow_t *flow, int in_out)
+{
+    int i;
+    for (i = 0; i < MAX_DATAFLOWS_PER_TASK; i++)
+    {
+        parsec_flow_t *_flow = (in_out ? tc->out[i] : tc->in[i]);
+
+        if (!flow)
+        {
+            break;
+        }
+
+        if (flow == _flow)
+        {
+            return i;
+        }
+    }
+
     return -1;
 }
