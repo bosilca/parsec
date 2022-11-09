@@ -6815,6 +6815,81 @@ jdf_generate_code_call_initialization(const jdf_t *jdf, const jdf_call_t *call,
                 parsec_get_name(jdf, targetf, "parsec_assignment_t"), parsec_get_name(jdf, targetf, "parsec_assignment_t"));
         coutput("%s", jdf_create_code_assignments_calls(sa, strlen(spaces)+1, jdf, "target_locals", call));
 
+        if(FLOW_IS_PARAMETRIZED(flow)) {
+            // Check that the jdf dependencies are correct
+            coutput("\n#if defined(PARSEC_DEBUG_PARANOID)\n");
+            for(jdf_variable_list_t *vl = targetf->locals; vl != NULL; vl = vl->next) {
+                coutput("#define %s %s%s\n", vl->name, targetf->fname, vl->name);
+            }
+
+
+            // Search in targetf all the dependencies (referrers) that point to me (parametrized flow)
+            for(jdf_dataflow_t *target_flow = targetf->dataflow; target_flow != NULL; target_flow = target_flow->next) {
+                int dep_index = 0;
+                for(jdf_dep_t *target_dep = target_flow->deps; NULL != target_dep; target_dep = target_dep->next, ++dep_index) {
+                    jdf_guarded_call_t *guard = target_dep->guard;
+                    switch(guard->guard_type) {
+                        case JDF_GUARD_TERNARY:
+                            call = guard->callfalse;
+                            if(call->parametrized_offset && 0 == strcmp(call->var, flow->varname) && 0 == strcmp(call->func_or_mem, f->fname)) {
+                                expr_info_t expr_info = EMPTY_EXPR_INFO;
+                                expr_info.sa = string_arena_new(64);
+                                expr_info.prefix = "";
+                                expr_info.suffix = "";
+                                expr_info.assignments = "expr info of referrer";
+
+                                //jdf_expr_t *from = variable->jdf_ta1;
+                                //jdf_expr_t *to = df->local_variables->jdf_ta2;
+                                //jdf_expr_t *step = variable->jdf_ta3;
+
+                                //coutput("  const int nb_specializations_of_parametrized_flow_of_%s_%s_for_parametrized_%s = (%s)+1;\n",
+                                //        jdf_basename, f->fname, df->varname, dump_expr((void**)to, &expr_info));
+
+                                coutput(
+                                    "%s  // callfalse dependency %d of flow %s of function %s\n"
+                                    "%s  if(%s != %s) {\n"
+                                    "%s    parsec_fatal(\"!!!\");\n"
+                                    "%s  }\n",
+                                    spaces, dep_index, target_flow->varname, targetf->fname,
+                                    spaces, dump_expr((void**)call->parametrized_offset, &info),
+                                    get_parametrized_flow_iterator_name(flow),
+                                    spaces,
+                                    spaces);
+                            }
+                        case JDF_GUARD_BINARY:
+                        case JDF_GUARD_UNCONDITIONAL:
+                            call = guard->calltrue;
+                            if(call->parametrized_offset && 0 == strcmp(call->var, flow->varname) && 0 == strcmp(call->func_or_mem, f->fname)) {
+                                expr_info_t expr_info = EMPTY_EXPR_INFO;
+                                expr_info.sa = string_arena_new(64);
+                                expr_info.prefix = "";
+                                expr_info.suffix = "";
+                                expr_info.assignments = "expr info of referrer";
+
+                                coutput(
+                                    "%s  // calltrue dependency %d of flow %s of function %s\n"
+                                    "%s  if(%s != %s) {\n"
+                                    "%s    parsec_fatal(\"!!!\");\n"
+                                    "%s  }\n",
+                                    spaces, dep_index, target_flow->varname, targetf->fname,
+                                    spaces, dump_expr((void**)call->parametrized_offset, &info),
+                                    get_parametrized_flow_iterator_name(flow),
+                                    spaces,
+                                    spaces);
+                            }
+                            break;
+                        default:
+                            assert(0);
+                    }
+                }
+            }
+
+            for(jdf_variable_list_t *vl = targetf->locals; vl != NULL; vl = vl->next) {
+                coutput("#undef %s\n", vl->name);
+            }
+            coutput("#endif // PARSEC_DEBUG_PARANOID\n\n");
+        }
+
         /* Code to fulfill a reshape promise set up by predecessor if there's one */
         jdf_generate_code_consume_predecessor_setup(jdf, call,
                                                     f, flow,
