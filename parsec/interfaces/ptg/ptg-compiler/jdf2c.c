@@ -585,7 +585,8 @@ char * dump_expr(void **elem, void *arg)
     return string_arena_get_string(sa);
 }
 
-char *dump_referrer_iterator(const jdf_function_entry_t *f, void *arg, jdf_expr_t *e, const char *name)
+// TODO: remove, now handle automatically in the variable stack
+char *dump_referrer_iterator(const jdf_function_entry_t *f, void *arg)
 {
     string_arena_t *sa = arg;
 
@@ -606,6 +607,7 @@ char *dump_referrer_iterator(const jdf_function_entry_t *f, void *arg, jdf_expr_
                         string_arena_add_string(sa, "  int %s = locals->ldef[%d].value; (void) %s;\n",
                             call->parametrized_offset->alias, call->parametrized_offset->ldef_index, call->parametrized_offset->alias);
                     }
+                     __attribute__ ((fallthrough));
                 case JDF_GUARD_BINARY:
                 case JDF_GUARD_UNCONDITIONAL:
                     call = guard->calltrue;
@@ -967,7 +969,7 @@ static char *dump_data_copy_init_for_inline_function(void **elem, void *arg)
     string_arena_add_string(sa,
                             "%s  parsec_data_copy_t *_f_%s = this_task->data.%s.data_%s;\n"
                             "%s  (void)_f_%s;",
-                            INDENTATION_IF_PARAMETRIZED(f), DUMP_DATA_FIELD_NAME_IN_TASK(osa, f), where,
+                            INDENTATION_IF_PARAMETRIZED(f), varname, DUMP_DATA_FIELD_NAME_IN_TASK(osa, f), where,
                             INDENTATION_IF_PARAMETRIZED(f), varname
                             );
 
@@ -983,7 +985,7 @@ static char *dump_data_copy_init_for_inline_function(void **elem, void *arg)
  * dump_dataflow_varname:
  *  Takes the pointer to a flow *f, and print the varname
  */
-static char *dump_dataflow_varname(void **elem, void *_)
+char *dump_dataflow_varname(void **elem, void *_)
 {
     (void)_;
     jdf_dataflow_t *f = (jdf_dataflow_t *)elem;
@@ -3717,7 +3719,7 @@ static void jdf_generate_startup_tasks(const jdf_t *jdf, const jdf_function_entr
             "}\n\n");
 }
 
-void jdf_generate_task_constructor(jdf_t *jdf, jdf_function_entry_t *f)
+void jdf_generate_task_constructor(const jdf_t *jdf, jdf_function_entry_t *f)
 {
     /*coutput( 
         "int %s(const parsec_task_t* task)\n"
@@ -3751,7 +3753,7 @@ void jdf_generate_task_constructor(jdf_t *jdf, jdf_function_entry_t *f)
     coutput("  memset(spec_task->data.dynamic, 0, sizeof(parsec_data_pair_t) * MAX_LOCAL_COUNT);\n");
 
     string_arena_free(sa);
-
+*/
 /*
 string_arena_init(sa);
                     dump_parametrized_flow_loop(df, GET_PARAMETRIZED_FLOW_ITERATOR_NAME(df), "    ", sa);
@@ -6925,7 +6927,7 @@ static void jdf_generate_code_call_init_output(const jdf_t *jdf, const jdf_call_
                                                const char *spaces)
 {
     int dataindex;
-    string_arena_t *sa, *sa_arena, *sa_datatype, *sa_count, *osa, *sa_loop ;
+    string_arena_t *sa, *sa_arena, *sa_datatype, *sa_count, *osa ;
     expr_info_t info = EMPTY_EXPR_INFO;
 
     if( (NULL != call) && (NULL != call->var) ) {
@@ -6960,7 +6962,6 @@ static void jdf_generate_code_call_init_output(const jdf_t *jdf, const jdf_call_
     sa_arena  = string_arena_new(64);
     sa_datatype = string_arena_new(64);
     sa_count = string_arena_new(64);
-    sa_loop = string_arena_new(64);
     /* This is the case of a pure output data. There's no reshaping. New datacopy should be directly
      * allocated using the correct arena/datatype.
      */
@@ -6978,19 +6979,10 @@ static void jdf_generate_code_call_init_output(const jdf_t *jdf, const jdf_call_
     coutput("%s  /* Flow %s [%d] dependency [%d] pure output data  */\n",
              spaces, flow->varname, flow->flow_index, dl->dep_index);
 
-
-    // a priori, the loop should already be generated when entering jdf_generate_code_call_init_output
-    // dump_parametrized_flow_loop_if_parametrized(flow, "  ", sa_loop);
-    // coutput("%s", string_arena_get_string(sa_loop));
-
     coutput("%s  if( NULL == (chunk = this_task->data.%s.data_in) ) {\n"
             "%s     /* No data set up by predecessor */\n",
              spaces, DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow),
              spaces);
-    
-    // string_arena_init(sa_loop);
-    // dump_parametrized_flow_loop_end_if_parametrized(flow, "  ", sa_loop);
-    // coutput("%s", string_arena_get_string(sa_loop));
 
     coutput("%s    chunk = parsec_arena_get_copy(%s->arena, %s, target_device, %s);\n"
             "%s    chunk->original->owner_device = target_device;\n",
@@ -7791,8 +7783,8 @@ jdf_generate_code_datatype_lookup(const jdf_t *jdf,
     string_arena_free(sa_temp);
 }
 
-static void jdf_generate_check_for_one_call_to_call_link(const jdf_t *jdf, jdf_function_entry_t *sourcef, jdf_dataflow_t *source_flow, int dep_index, jdf_call_t *source_call,
-                                                            jdf_function_entry_t *targetf, jdf_dataflow_t *target_flow, jdf_call_t *target_call, int is_calltrue)
+static void jdf_generate_check_for_one_call_to_call_link(const jdf_t *jdf, const jdf_function_entry_t *sourcef, const jdf_dataflow_t *source_flow, int dep_index, const jdf_call_t *source_call,
+                                                            const jdf_function_entry_t *targetf, const jdf_dataflow_t *target_flow, const jdf_call_t *target_call, int is_calltrue)
 {
     string_arena_t *sa = string_arena_new(64);
 
@@ -7877,13 +7869,14 @@ static void jdf_generate_check_for_one_call_to_call_link(const jdf_t *jdf, jdf_f
         coutput("#define %s %s%s\n", vl->name, targetf->fname, vl->name);
     }
 
+    // dump the parsec_fatal if an incoherency is detected
     coutput(
         "%s    // call%s dependency %d of flow %s of function %s\n"
         "%s    if(%s != %s) {\n"
-        "%s      parsec_fatal(\"A dependency between a parametrized flow and its referrer is incoherent.\"\n"
-        "%s          \"If %s = %%d, yet %s != %%d\"\n"
-        "%s          \"The parametrized flow is %s of task class %s.\"\n"
-        "%s          \"The referrer is call%s of dep %d of flow %s of task class %s.\",\n"
+        "%s      parsec_fatal(\"A dependency between a parametrized flow and its referrer is incoherent.\\n\"\n"
+        "%s          \"If %s = %%d, %s != %%d\\n\"\n"
+        "%s          \"The parametrized flow is %s of task class %s.\\n\"\n"
+        "%s          \"The referrer is call%s of dep %d of flow %s of task class %s.\\n\",\n"
         "%s          %s, %s);\n"
         "%s    }\n",
         spaces, is_calltrue?"true":"false", dep_index, target_flow->varname, targetf->fname,
@@ -7903,7 +7896,7 @@ static void jdf_generate_check_for_one_call_to_call_link(const jdf_t *jdf, jdf_f
     coutput("%s  }\n", spaces);
 }
 
-static void jdf_generate_check_parametrized_link(const jdf_t *jdf, jdf_function_entry_t *sourcef, jdf_dataflow_t *source_flow, jdf_call_t *source_call)
+static void jdf_generate_check_parametrized_link(const jdf_t *jdf, const jdf_function_entry_t *sourcef, const jdf_dataflow_t *source_flow, const jdf_call_t *source_call)
 {
     for(jdf_function_entry_t *targetf = jdf->functions; targetf != NULL; targetf = targetf->next) {
         if(strcmp(targetf->fname, source_call->func_or_mem) != 0)
@@ -7922,6 +7915,7 @@ static void jdf_generate_check_parametrized_link(const jdf_t *jdf, jdf_function_
                         if(target_call->parametrized_offset && 0 == strcmp(target_call->var, source_flow->varname) && 0 == strcmp(target_call->func_or_mem, sourcef->fname)) {
                             jdf_generate_check_for_one_call_to_call_link(jdf, sourcef, source_flow, dep_index, source_call, targetf, target_flow, target_call, 0);
                         }
+                         __attribute__ ((fallthrough));
                     case JDF_GUARD_BINARY:
                     case JDF_GUARD_UNCONDITIONAL:
                         target_call = guard->calltrue;
@@ -7935,30 +7929,6 @@ static void jdf_generate_check_parametrized_link(const jdf_t *jdf, jdf_function_
             }
         }
     }
-    /*jdf_function_entry_t *targetf = find_target_function(jdf, target_call->func_or_mem);
-    for(jdf_dataflow_t *target_flow = targetf->dataflow; target_flow != NULL; target_flow = target_flow->next) {
-        int dep_index = 0;
-        for(jdf_dep_t *target_dep = target_flow->deps; NULL != target_dep; target_dep = target_dep->next, ++dep_index) {
-            jdf_guarded_call_t *guard = target_dep->guard;
-            jdf_call_t *target_call;
-            switch(guard->guard_type) {
-                case JDF_GUARD_TERNARY:
-                    target_call = guard->callfalse;
-                    if(target_call->parametrized_offset && 0 == strcmp(target_call->var, source_flow->varname) && 0 == strcmp(target_call->func_or_mem, sourcef->fname)) {
-                        jdf_generate_check_for_one_call_to_call_link(jdf, sourcef, source_flow, dep_index, source_call, targetf, target_flow, target_call, 0);
-                    }
-                case JDF_GUARD_BINARY:
-                case JDF_GUARD_UNCONDITIONAL:
-                    target_call = guard->calltrue;
-                    if(target_call->parametrized_offset && 0 == strcmp(target_call->var, source_flow->varname) && 0 == strcmp(target_call->func_or_mem, sourcef->fname)) {
-                        jdf_generate_check_for_one_call_to_call_link(jdf, sourcef, source_flow, dep_index, source_call, targetf, target_flow, target_call, 1);
-                    }
-                    break;
-                default:
-                    assert(0);
-            }
-        }
-    }*/
 }
 
 static void
@@ -8026,6 +7996,7 @@ jdf_generate_code_data_lookup(const jdf_t *jdf,
                 case JDF_GUARD_TERNARY:
                     call = guard->callfalse;
                     jdf_generate_check_parametrized_link(jdf, f, flow, call);
+                     __attribute__ ((fallthrough));
                 case JDF_GUARD_BINARY:
                 case JDF_GUARD_UNCONDITIONAL:
                     call = guard->calltrue;
