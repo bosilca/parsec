@@ -75,10 +75,10 @@ util_dump_array_offset_if_parametrized(string_arena_t *sa, const jdf_dataflow_t 
  * @brief Dumps the proper access to the data, wether the flow is parametrized or not
  * 
  */
-#define DUMP_DATA_FIELD_NAME_IN_TASK(sa, flow, basename)\
-    util_dump_data_field_name_in_task(sa, flow, basename)
+#define DUMP_DATA_FIELD_NAME_IN_TASK(sa, flow)\
+    util_dump_data_field_name_in_task(sa, flow)
 
-static inline char *util_dump_data_field_name_in_task(string_arena_t *sa, const jdf_dataflow_t *flow, const char *basename)
+static inline char *util_dump_data_field_name_in_task(string_arena_t *sa, const jdf_dataflow_t *flow)
 {
     string_arena_init(sa);
 

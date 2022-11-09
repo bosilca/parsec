@@ -931,7 +931,7 @@ static char *dump_data_initialization_from_data_array(void **elem, void *arg)
     string_arena_add_string(sa,
                             "%s  _f_%s%s = this_task->data.%s.data_%s;\n",
                             INDENTATION_IF_PARAMETRIZED(f), varname, DUMP_ARRAY_OFFSET_IF_PARAMETRIZED(osa, f),
-                            DUMP_DATA_FIELD_NAME_IN_TASK(osa2, f, f->varname), where);
+                            DUMP_DATA_FIELD_NAME_IN_TASK(osa2, f), where);
 
     string_arena_add_string(sa,
                             "%s  %s%s = PARSEC_DATA_COPY_GET_PTR(_f_%s%s);\n",
@@ -967,7 +967,7 @@ static char *dump_data_copy_init_for_inline_function(void **elem, void *arg)
     string_arena_add_string(sa,
                             "%s  parsec_data_copy_t *_f_%s = this_task->data.%s.data_%s;\n"
                             "%s  (void)_f_%s;",
-                            INDENTATION_IF_PARAMETRIZED(f), DUMP_DATA_FIELD_NAME_IN_TASK(osa, f, f->varname), where,
+                            INDENTATION_IF_PARAMETRIZED(f), DUMP_DATA_FIELD_NAME_IN_TASK(osa, f), where,
                             INDENTATION_IF_PARAMETRIZED(f), varname
                             );
 
@@ -3637,11 +3637,11 @@ static void jdf_generate_startup_tasks(const jdf_t *jdf, const jdf_function_entr
                         "%s  new_task->data.%s.data_in         = NULL;\n"
                         "%s  new_task->data.%s.data_out        = NULL;\n"
                         "%s  new_task->data.%s.fulfill         = 0;\n",
-                        indent(nesting), DUMP_DATA_FIELD_NAME_IN_TASK(osa, dataflow, dataflow->varname),
-                        indent(nesting), DUMP_DATA_FIELD_NAME_IN_TASK(osa, dataflow, dataflow->varname),
-                        indent(nesting), DUMP_DATA_FIELD_NAME_IN_TASK(osa, dataflow, dataflow->varname),
-                        indent(nesting), DUMP_DATA_FIELD_NAME_IN_TASK(osa, dataflow, dataflow->varname),
-                        indent(nesting), DUMP_DATA_FIELD_NAME_IN_TASK(osa, dataflow, dataflow->varname));
+                        indent(nesting), DUMP_DATA_FIELD_NAME_IN_TASK(osa, dataflow),
+                        indent(nesting), DUMP_DATA_FIELD_NAME_IN_TASK(osa, dataflow),
+                        indent(nesting), DUMP_DATA_FIELD_NAME_IN_TASK(osa, dataflow),
+                        indent(nesting), DUMP_DATA_FIELD_NAME_IN_TASK(osa, dataflow),
+                        indent(nesting), DUMP_DATA_FIELD_NAME_IN_TASK(osa, dataflow));
 
                 string_arena_init(sa);
                 dump_parametrized_flow_loop_end_if_parametrized(dataflow, indent(nesting), sa);
@@ -3717,7 +3717,7 @@ static void jdf_generate_startup_tasks(const jdf_t *jdf, const jdf_function_entr
             "}\n\n");
 }
 
-jdf_generate_task_constructor(jdf_t *jdf, jdf_function_entry_t *f)
+void jdf_generate_task_constructor(jdf_t *jdf, jdf_function_entry_t *f)
 {
     /*coutput( 
         "int %s(const parsec_task_t* task)\n"
@@ -3812,8 +3812,7 @@ parsec_taskpool_t *LBM_new(...)
         "{\n"
         "  %s *spec_task = (%s*)(*task);\n",
         parsec_get_name(NULL, f, "constructor"),
-        parsec_get_name(jdf, f, "task_t"), parsec_get_name(jdf, f, "task_t"),
-        jdf_basename, jdf_basename);
+        parsec_get_name(jdf, f, "task_t"), parsec_get_name(jdf, f, "task_t"));
 
     int non_parametrized_count = 0;
     for(jdf_dataflow_t *flow = f->dataflow; NULL != flow; flow = flow->next) {
@@ -5619,16 +5618,6 @@ static void jdf_generate_new_function( const jdf_t* jdf )
         for( jdf_function_entry_t* f = jdf->functions; NULL != f; f = f->next ) {
             for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
                 if( FLOW_IS_PARAMETRIZED(df) ) {
-                    expr_info_t expr_info = EMPTY_EXPR_INFO;
-                    expr_info.sa = string_arena_new(64);
-                    expr_info.prefix = "";
-                    expr_info.suffix = "";
-                    expr_info.assignments = "parametrized flow range";
-
-                    //jdf_expr_t *from = variable->jdf_ta1;
-                    jdf_expr_t *to = df->local_variables->jdf_ta2;
-                    //jdf_expr_t *step = variable->jdf_ta3;
-
                     coutput("  flow_of_%s_%s_for_parametrized_%s = malloc(sizeof(parsec_flow_t) * nb_specializations_of_parametrized_flow_of_%s_%s_for_parametrized_%s);\n",
                             jdf_basename, f->fname, df->varname, jdf_basename, f->fname, df->varname);
                 }
@@ -6686,9 +6675,9 @@ jdf_generate_code_consume_predecessor_setup(const jdf_t *jdf, const jdf_call_t *
         coutput("%s    consumed_repo = this_task->data.%s.source_repo;\n"
                 "%s    consumed_entry = this_task->data.%s.source_repo_entry;\n"
                 "%s    consumed_entry_key = this_task->data.%s.source_repo_entry->ht_item.key;\n",
-                spaces, DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow, flow->varname),
-                spaces, DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow, flow->varname),
-                spaces, DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow, flow->varname));
+                spaces, DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow),
+                spaces, DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow),
+                spaces, DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow));
         /* Is this current task repo or predecessor repo? Different flow index */
 
         coutput("%s    if( (reshape_entry != NULL) && (reshape_entry->data[%d] != NULL) ){\n"
@@ -6699,8 +6688,8 @@ jdf_generate_code_consume_predecessor_setup(const jdf_t *jdf, const jdf_call_t *
                 spaces, flow->flow_index);
         coutput("%s        assert( (this_task->data.%s.source_repo == reshape_repo)\n"
                 "%s             && (this_task->data.%s.source_repo_entry == reshape_entry));\n",
-                spaces, DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow, flow->varname),
-                spaces, DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow, flow->varname));
+                spaces, DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow),
+                spaces, DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow));
         coutput("%s    }else{\n"
                 "%s        /* Reshape promise set up on input by predecessor is the predecesssor task repo */\n"
                 "%s        consumed_flow_index = %d;\n"
@@ -6806,7 +6795,7 @@ jdf_generate_code_call_initialization(const jdf_t *jdf, const jdf_call_t *call,
 
     coutput("%s  if( NULL == (chunk = this_task->data.%s.data_in) ) {\n"
             "%s  /* No data set up by predecessor on this task input flow */\n",
-             spaces, DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow, flow->varname),
+             spaces, DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow),
              spaces);
 
     /* Function calls */
@@ -6814,81 +6803,6 @@ jdf_generate_code_call_initialization(const jdf_t *jdf, const jdf_call_t *call,
         coutput("%s *target_locals = (%s*)&generic_locals;\n",
                 parsec_get_name(jdf, targetf, "parsec_assignment_t"), parsec_get_name(jdf, targetf, "parsec_assignment_t"));
         coutput("%s", jdf_create_code_assignments_calls(sa, strlen(spaces)+1, jdf, "target_locals", call));
-
-        if(FLOW_IS_PARAMETRIZED(flow)) {
-            // Check that the jdf dependencies are correct
-            coutput("\n#if defined(PARSEC_DEBUG_PARANOID)\n");
-            for(jdf_variable_list_t *vl = targetf->locals; vl != NULL; vl = vl->next) {
-                coutput("#define %s %s%s\n", vl->name, targetf->fname, vl->name);
-            }
-
-
-            // Search in targetf all the dependencies (referrers) that point to me (parametrized flow)
-            for(jdf_dataflow_t *target_flow = targetf->dataflow; target_flow != NULL; target_flow = target_flow->next) {
-                int dep_index = 0;
-                for(jdf_dep_t *target_dep = target_flow->deps; NULL != target_dep; target_dep = target_dep->next, ++dep_index) {
-                    jdf_guarded_call_t *guard = target_dep->guard;
-                    switch(guard->guard_type) {
-                        case JDF_GUARD_TERNARY:
-                            call = guard->callfalse;
-                            if(call->parametrized_offset && 0 == strcmp(call->var, flow->varname) && 0 == strcmp(call->func_or_mem, f->fname)) {
-                                expr_info_t expr_info = EMPTY_EXPR_INFO;
-                                expr_info.sa = string_arena_new(64);
-                                expr_info.prefix = "";
-                                expr_info.suffix = "";
-                                expr_info.assignments = "expr info of referrer";
-
-                                //jdf_expr_t *from = variable->jdf_ta1;
-                                //jdf_expr_t *to = df->local_variables->jdf_ta2;
-                                //jdf_expr_t *step = variable->jdf_ta3;
-
-                                //coutput("  const int nb_specializations_of_parametrized_flow_of_%s_%s_for_parametrized_%s = (%s)+1;\n",
-                                //        jdf_basename, f->fname, df->varname, dump_expr((void**)to, &expr_info));
-
-                                coutput(
-                                    "%s  // callfalse dependency %d of flow %s of function %s\n"
-                                    "%s  if(%s != %s) {\n"
-                                    "%s    parsec_fatal(\"!!!\");\n"
-                                    "%s  }\n",
-                                    spaces, dep_index, target_flow->varname, targetf->fname,
-                                    spaces, dump_expr((void**)call->parametrized_offset, &info),
-                                    get_parametrized_flow_iterator_name(flow),
-                                    spaces,
-                                    spaces);
-                            }
-                        case JDF_GUARD_BINARY:
-                        case JDF_GUARD_UNCONDITIONAL:
-                            call = guard->calltrue;
-                            if(call->parametrized_offset && 0 == strcmp(call->var, flow->varname) && 0 == strcmp(call->func_or_mem, f->fname)) {
-                                expr_info_t expr_info = EMPTY_EXPR_INFO;
-                                expr_info.sa = string_arena_new(64);
-                                expr_info.prefix = "";
-                                expr_info.suffix = "";
-                                expr_info.assignments = "expr info of referrer";
-
-                                coutput(
-                                    "%s  // calltrue dependency %d of flow %s of function %s\n"
-                                    "%s  if(%s != %s) {\n"
-                                    "%s    parsec_fatal(\"!!!\");\n"
-                                    "%s  }\n",
-                                    spaces, dep_index, target_flow->varname, targetf->fname,
-                                    spaces, dump_expr((void**)call->parametrized_offset, &info),
-                                    get_parametrized_flow_iterator_name(flow),
-                                    spaces,
-                                    spaces);
-                            }
-                            break;
-                        default:
-                            assert(0);
-                    }
-                }
-            }
-
-            for(jdf_variable_list_t *vl = targetf->locals; vl != NULL; vl = vl->next) {
-                coutput("#undef %s\n", vl->name);
-            }
-            coutput("#endif // PARSEC_DEBUG_PARANOID\n\n");
-        }
 
         /* Code to fulfill a reshape promise set up by predecessor if there's one */
         jdf_generate_code_consume_predecessor_setup(jdf, call,
@@ -6903,7 +6817,7 @@ jdf_generate_code_call_initialization(const jdf_t *jdf, const jdf_call_t *call,
         coutput("%s    ACQUIRE_FLOW(this_task, \"%s\", &%s_%s, \"%s\", target_locals, chunk);\n"
                 "%s    this_task->data.%s.data_out = chunk;\n",
                 spaces, flow->varname, jdf_basename, call->func_or_mem, call->var,
-                spaces, DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow, flow->varname));
+                spaces, DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow));
         if(FLOW_IS_PARAMETRIZED(flow)) {
             coutput("%s    parsec_debug_verbose(1, parsec_debug_output, \"%s = %%d\", %s);\n",
                     spaces, get_parametrized_flow_iterator_name(flow), get_parametrized_flow_iterator_name(flow));
@@ -6930,7 +6844,7 @@ jdf_generate_code_call_initialization(const jdf_t *jdf, const jdf_call_t *call,
 
             coutput("%s    this_task->data.%s.data_out = chunk;\n"
                     "%s    PARSEC_OBJ_RETAIN(chunk);\n",
-                    spaces, DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow, flow->varname),
+                    spaces, DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow),
                     spaces);
 
         }
@@ -6960,7 +6874,7 @@ jdf_generate_code_call_initialization(const jdf_t *jdf, const jdf_call_t *call,
                         "%s    this_task->data.%s.data_out = chunk;\n",
                         spaces, string_arena_get_string(sa), string_arena_get_string(sa2), string_arena_get_string(sa),
                         spaces,
-                        spaces, DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow, flow->varname));
+                        spaces, DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow));
 
                 string_arena_free(info.sa);
             }
@@ -6991,7 +6905,7 @@ jdf_generate_code_call_initialization(const jdf_t *jdf, const jdf_call_t *call,
                 "%s    parsec_prof_grapher_data_input(chunk->original, (parsec_task_t*)this_task, &%s, 0);\n"
                 "#endif\n"
                 "%s  }\n",
-                spaces, DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow, flow->varname),
+                spaces, DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow),
                 spaces, JDF_OBJECT_ONAME( flow ),
                 spaces);
     }
@@ -7071,7 +6985,7 @@ static void jdf_generate_code_call_init_output(const jdf_t *jdf, const jdf_call_
 
     coutput("%s  if( NULL == (chunk = this_task->data.%s.data_in) ) {\n"
             "%s     /* No data set up by predecessor */\n",
-             spaces, DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow, flow->varname),
+             spaces, DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow),
              spaces);
     
     // string_arena_init(sa_loop);
@@ -7084,7 +6998,7 @@ static void jdf_generate_code_call_init_output(const jdf_t *jdf, const jdf_call_
             spaces);
     coutput("%s    this_task->data.%s.data_out = chunk;\n"
             "%s  }\n",
-            spaces, DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow, flow->varname),
+            spaces, DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow),
             spaces);
 
 #if defined(PARSEC_DEBUG_NOISIER) || defined(PARSEC_DEBUG_PARANOID)
@@ -7129,10 +7043,10 @@ static void jdf_generate_code_flow_initialization(const jdf_t *jdf,
                 "%s  this_task->data.%s.source_repo       = NULL;\n"
                 "%s  this_task->data.%s.source_repo_entry = NULL;\n",
                 flow->varname,
-                INDENTATION_IF_PARAMETRIZED(flow), DUMP_DATA_FIELD_NAME_IN_TASK(sa, flow, flow->varname),
-                INDENTATION_IF_PARAMETRIZED(flow), DUMP_DATA_FIELD_NAME_IN_TASK(sa, flow, flow->varname),
-                INDENTATION_IF_PARAMETRIZED(flow), DUMP_DATA_FIELD_NAME_IN_TASK(sa, flow, flow->varname),
-                INDENTATION_IF_PARAMETRIZED(flow), DUMP_DATA_FIELD_NAME_IN_TASK(sa, flow, flow->varname));
+                INDENTATION_IF_PARAMETRIZED(flow), DUMP_DATA_FIELD_NAME_IN_TASK(sa, flow),
+                INDENTATION_IF_PARAMETRIZED(flow), DUMP_DATA_FIELD_NAME_IN_TASK(sa, flow),
+                INDENTATION_IF_PARAMETRIZED(flow), DUMP_DATA_FIELD_NAME_IN_TASK(sa, flow),
+                INDENTATION_IF_PARAMETRIZED(flow), DUMP_DATA_FIELD_NAME_IN_TASK(sa, flow));
         
         string_arena_init(sa);
         dump_parametrized_flow_loop_end_if_parametrized(flow, "  ", sa);
@@ -7148,7 +7062,7 @@ static void jdf_generate_code_flow_initialization(const jdf_t *jdf,
     coutput("%s", string_arena_get_string(osa));
 
     coutput("\n"
-            "%sif(! this_task->data.%s.fulfill ){ /* Flow %s */\n", INDENTATION_IF_PARAMETRIZED(flow), DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow, flow->varname), flow->varname);
+            "%sif(! this_task->data.%s.fulfill ){ /* Flow %s */\n", INDENTATION_IF_PARAMETRIZED(flow), DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow), flow->varname);
 
     coutput("%s  consumed_repo = NULL;\n"
             "%s  consumed_entry_key = 0;\n"
@@ -7162,9 +7076,9 @@ static void jdf_generate_code_flow_initialization(const jdf_t *jdf,
         }
     }
     if( !has_output_deps ) {
-        coutput("\n%s    this_task->data.%s.data_out = NULL;  /* input only */\n", INDENTATION_IF_PARAMETRIZED(flow), DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow, flow->varname));
+        coutput("\n%s    this_task->data.%s.data_out = NULL;  /* input only */\n", INDENTATION_IF_PARAMETRIZED(flow), DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow));
     } else {
-        coutput("\n%s    this_task->data.%s.data_out = NULL;  /* By default, if nothing matches */\n", INDENTATION_IF_PARAMETRIZED(flow), DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow, flow->varname));
+        coutput("\n%s    this_task->data.%s.data_out = NULL;  /* By default, if nothing matches */\n", INDENTATION_IF_PARAMETRIZED(flow), DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow));
     }
     
     sa  = string_arena_new(64);
@@ -7254,9 +7168,9 @@ static void jdf_generate_code_flow_initialization(const jdf_t *jdf,
      coutput("%s    this_task->data.%s.data_in     = chunk;\n"
              "%s    this_task->data.%s.source_repo       = consumed_repo;\n"
              "%s    this_task->data.%s.source_repo_entry = consumed_entry;\n",
-             INDENTATION_IF_PARAMETRIZED(flow), DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow, flow->varname),
-             INDENTATION_IF_PARAMETRIZED(flow), DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow, flow->varname),
-             INDENTATION_IF_PARAMETRIZED(flow), DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow, flow->varname));
+             INDENTATION_IF_PARAMETRIZED(flow), DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow),
+             INDENTATION_IF_PARAMETRIZED(flow), DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow),
+             INDENTATION_IF_PARAMETRIZED(flow), DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow));
      if( !(f->flags & JDF_FUNCTION_FLAG_NO_SUCCESSORS) ) {
         /* If we have consume from our repo, we clean up the repo entry for that flow,
          * so we don't have old stuff during release_deps_of when we will set up outputs
@@ -7268,14 +7182,14 @@ static void jdf_generate_code_flow_initialization(const jdf_t *jdf,
                 "%s       */\n"
                 "%s      this_task->repo_entry->data[%d] = NULL;\n"
                 "%s    }\n",
-                INDENTATION_IF_PARAMETRIZED(flow), DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow, flow->varname),
+                INDENTATION_IF_PARAMETRIZED(flow), DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow),
                 INDENTATION_IF_PARAMETRIZED(flow), INDENTATION_IF_PARAMETRIZED(flow), INDENTATION_IF_PARAMETRIZED(flow), INDENTATION_IF_PARAMETRIZED(flow), 
                 flow->flow_index,
                 INDENTATION_IF_PARAMETRIZED(flow));
     }
     coutput("%s    this_task->data.%s.fulfill = 1;\n"
             "}\n\n",
-            INDENTATION_IF_PARAMETRIZED(flow), DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow, flow->varname));/*    coutput("if(! this_task->data._f_%s.fulfill ){\n", flow->varname);*/
+            INDENTATION_IF_PARAMETRIZED(flow), DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow));/*    coutput("if(! this_task->data._f_%s.fulfill ){\n", flow->varname);*/
 
 
     string_arena_init(osa);
@@ -7421,10 +7335,10 @@ static void jdf_generate_code_call_final_write(const jdf_t *jdf,
                 "%s                            this_task->data.%s.data_out, &data);\n"
                 "%s  }\n",
                 spaces, call->func_or_mem, string_arena_get_string(sa),
-                spaces, DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow, flow->varname), DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow, flow->varname),
+                spaces, DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow), DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow),
                 spaces,
                 spaces,
-                spaces, DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow, flow->varname),
+                spaces, DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow),
                 spaces, string_arena_get_string(sa_arena),
                 spaces, string_arena_get_string(sa_type_src),
                 spaces, string_arena_get_string(sa_count_src),
@@ -7437,7 +7351,7 @@ static void jdf_generate_code_call_final_write(const jdf_t *jdf,
                 spaces,
                 spaces,
                 spaces, call->func_or_mem, string_arena_get_string(sa),
-                spaces, DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow, flow->varname),
+                spaces, DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow),
                 spaces);
 
         coutput("#if defined(PARSEC_PROF_GRAPHER) && defined(PARSEC_PROF_TRACE)\n"
@@ -7886,6 +7800,8 @@ jdf_generate_code_data_lookup(const jdf_t *jdf,
     assignment_info_t ai;
     jdf_dataflow_t *fl;
 
+    char spaces[] = "";
+
     sa  = string_arena_new(64);
     sa2 = string_arena_new(64);
 
@@ -7917,6 +7833,102 @@ jdf_generate_code_data_lookup(const jdf_t *jdf,
 
     UTIL_DUMP_LIST(sa, f->dataflow, next,
                    dump_data_declaration, sa2, "", "", "", "");
+    
+
+    // Check that the jdf dependencies are correct
+    for( jdf_dataflow_t* flow = f->dataflow; flow != NULL; flow = flow->next ) {
+        if(!FLOW_IS_PARAMETRIZED(flow)) {
+            continue;
+        }
+
+        coutput("  /* check the dependencies for %s */\n", flow->varname);
+        coutput("#if defined(PARSEC_DEBUG_PARANOID)\n");
+
+
+        // Search in targetf all the dependencies (referrers) that point to me (parametrized flow)
+        for(jdf_function_entry_t *targetf = jdf->functions; targetf != NULL; targetf = targetf->next) {
+            for(jdf_dataflow_t *target_flow = targetf->dataflow; target_flow != NULL; target_flow = target_flow->next) {
+                int dep_index = 0;
+                for(jdf_dep_t *target_dep = target_flow->deps; NULL != target_dep; target_dep = target_dep->next, ++dep_index) {
+                    jdf_guarded_call_t *guard = target_dep->guard;
+                    jdf_call_t *call;
+                    switch(guard->guard_type) {
+                        case JDF_GUARD_TERNARY:
+                            call = guard->callfalse;
+                            if(call->parametrized_offset && 0 == strcmp(call->var, flow->varname) && 0 == strcmp(call->func_or_mem, f->fname)) {
+                                expr_info_t expr_info = EMPTY_EXPR_INFO;
+                                expr_info.sa = string_arena_new(64);
+                                expr_info.prefix = "";
+                                expr_info.suffix = "";
+                                expr_info.assignments = "expr info of referrer";
+
+                                for(jdf_variable_list_t *vl = targetf->locals; vl != NULL; vl = vl->next) {
+                                    coutput("#define %s %s%s\n", vl->name, targetf->fname, vl->name);
+                                }
+
+                                coutput("%s *target_locals = (%s*)&generic_locals;\n",
+                                        parsec_get_name(jdf, targetf, "parsec_assignment_t"), parsec_get_name(jdf, targetf, "parsec_assignment_t"));
+                                coutput("%s", jdf_create_code_assignments_calls(sa, strlen(spaces)+1, jdf, "target_locals", call));
+
+                                coutput(
+                                    "%s  // callfalse dependency %d of flow %s of function %s\n"
+                                    "%s  if(%s != %s) {\n"
+                                    "%s    parsec_fatal(\"!!!\");\n"
+                                    "%s  }\n",
+                                    spaces, dep_index, target_flow->varname, targetf->fname,
+                                    spaces, dump_expr((void**)call->parametrized_offset, &expr_info),
+                                    get_parametrized_flow_iterator_name(flow),
+                                    spaces,
+                                    spaces);
+
+                                for(jdf_variable_list_t *vl = targetf->locals; vl != NULL; vl = vl->next) {
+                                    coutput("#undef %s\n", vl->name);
+                                }
+                            }
+                        case JDF_GUARD_BINARY:
+                        case JDF_GUARD_UNCONDITIONAL:
+                            call = guard->calltrue;
+                            if(call->parametrized_offset && 0 == strcmp(call->var, flow->varname) && 0 == strcmp(call->func_or_mem, f->fname)) {
+                                expr_info_t expr_info = EMPTY_EXPR_INFO;
+                                expr_info.sa = string_arena_new(64);
+                                expr_info.prefix = "";
+                                expr_info.suffix = "";
+                                expr_info.assignments = "expr info of referrer";
+
+                                for(jdf_variable_list_t *vl = targetf->locals; vl != NULL; vl = vl->next) {
+                                    coutput("#define %s %s%s\n", vl->name, targetf->fname, vl->name);
+                                }
+                                
+                                coutput("%s *target_locals = (%s*)&generic_locals;\n",
+                                        parsec_get_name(jdf, targetf, "parsec_assignment_t"), parsec_get_name(jdf, targetf, "parsec_assignment_t"));
+                                coutput("%s", jdf_create_code_assignments_calls(sa, strlen(spaces)+1, jdf, "target_locals", call));
+
+                                coutput(
+                                    "%s  // calltrue dependency %d of flow %s of function %s\n"
+                                    "%s  if(%s != %s) {\n"
+                                    "%s    parsec_fatal(\"!!!\");\n"
+                                    "%s  }\n",
+                                    spaces, dep_index, target_flow->varname, targetf->fname,
+                                    spaces, dump_expr((void**)call->parametrized_offset, &expr_info),
+                                    get_parametrized_flow_iterator_name(flow),
+                                    spaces,
+                                    spaces);
+
+                                for(jdf_variable_list_t *vl = targetf->locals; vl != NULL; vl = vl->next) {
+                                    coutput("#undef %s\n", vl->name);
+                                }
+                            }
+                            break;
+                        default:
+                            assert(0);
+                    }
+                }
+            }
+        }
+        coutput("#endif // PARSEC_DEBUG_PARANOID\n\n");
+    }
+
+
 
     /* We need to set up +1 as usage limit because we are creating it during datalookup *ONLY* when it hasn't been
      * advanced by the predecessor.
@@ -8103,7 +8115,7 @@ static void jdf_generate_code_hook_cuda(const jdf_t *jdf,
         coutput("    data_repo_entry_t *e%s = this_task->data.%s.source_repo_entry;\n"
                 "    if( (NULL != e%s) && (e%s->sim_exec_date > this_task->sim_exec_date) )\n"
                 "      this_task->sim_exec_date = e%s->sim_exec_date;\n",
-                fl->varname, DUMP_DATA_FIELD_NAME_IN_TASK(osa, fl, fl->varname),
+                fl->varname, DUMP_DATA_FIELD_NAME_IN_TASK(osa, fl),
                 fl->varname, fl->varname,
                 fl->varname);
     }
@@ -8265,7 +8277,7 @@ static void jdf_generate_code_hook_cuda(const jdf_t *jdf,
         string_arena_init(sa_di);
         if( parametrized_flow_has_been_encountered ) {
             // We use the current_flow_id variable because we cannot compute di at compile time
-            string_arena_add_string(sa_di, "current_flow_id", di);
+            string_arena_add_string(sa_di, "current_flow_id");
         } else {
             string_arena_add_string(sa_di, "%d", di);
         }
@@ -8513,7 +8525,7 @@ static void jdf_generate_code_hook(const jdf_t *jdf,
         coutput("%s    data_repo_entry_t *e%s = this_task->data.%s.source_repo_entry;\n"
                 "%s    if( (NULL != e%s) && (e%s->sim_exec_date > this_task->sim_exec_date) )\n"
                 "%s      this_task->sim_exec_date = e%s->sim_exec_date;\n",
-                INDENTATION_IF_PARAMETRIZED(fl), fl->varname, DUMP_DATA_FIELD_NAME_IN_TASK(osa, fl, fl->varname),
+                INDENTATION_IF_PARAMETRIZED(fl), fl->varname, DUMP_DATA_FIELD_NAME_IN_TASK(osa, fl),
                 INDENTATION_IF_PARAMETRIZED(fl), fl->varname, fl->varname,
                 INDENTATION_IF_PARAMETRIZED(fl), fl->varname);
         
@@ -8643,11 +8655,11 @@ jdf_generate_code_complete_hook(const jdf_t *jdf,
                     "%s                          parsec_task_snprintf(tmp, 128, (parsec_task_t*)(this_task)),\n"
                     "%s                          this_task->data.%s.data_out, this_task->data.%s.data_out->version, __FILE__, __LINE__);\n"
                     "%s  }\n",
-                    INDENTATION_IF_PARAMETRIZED(fl), DUMP_DATA_FIELD_NAME_IN_TASK(osa, fl, fl->varname),
+                    INDENTATION_IF_PARAMETRIZED(fl), DUMP_DATA_FIELD_NAME_IN_TASK(osa, fl),
                     INDENTATION_IF_PARAMETRIZED(fl),
-                    INDENTATION_IF_PARAMETRIZED(fl), DUMP_DATA_FIELD_NAME_IN_TASK(osa, fl, fl->varname), fl->varname,
+                    INDENTATION_IF_PARAMETRIZED(fl), DUMP_DATA_FIELD_NAME_IN_TASK(osa, fl), fl->varname,
                     INDENTATION_IF_PARAMETRIZED(fl), INDENTATION_IF_PARAMETRIZED(fl), INDENTATION_IF_PARAMETRIZED(fl), INDENTATION_IF_PARAMETRIZED(fl),
-                    DUMP_DATA_FIELD_NAME_IN_TASK(osa, fl, fl->varname), DUMP_DATA_FIELD_NAME_IN_TASK(osa, fl, fl->varname),
+                    DUMP_DATA_FIELD_NAME_IN_TASK(osa, fl), DUMP_DATA_FIELD_NAME_IN_TASK(osa, fl),
                     INDENTATION_IF_PARAMETRIZED(fl));
             
             string_arena_init(osa);
@@ -8711,8 +8723,8 @@ static void jdf_generate_code_free_hash_table_entry(const jdf_t *jdf, const jdf_
             coutput("%s    if( NULL != this_task->data.%s.source_repo_entry ) {\n"
                     "%s        data_repo_entry_used_once( this_task->data.%s.source_repo, this_task->data.%s.source_repo_entry->ht_item.key );\n"
                     "%s    }\n",
-                    INDENTATION_IF_PARAMETRIZED(df), DUMP_DATA_FIELD_NAME_IN_TASK(osa, df, df->varname),
-                    INDENTATION_IF_PARAMETRIZED(df), DUMP_DATA_FIELD_NAME_IN_TASK(osa, df, df->varname), DUMP_DATA_FIELD_NAME_IN_TASK(osa, df, df->varname),
+                    INDENTATION_IF_PARAMETRIZED(df), DUMP_DATA_FIELD_NAME_IN_TASK(osa, df),
+                    INDENTATION_IF_PARAMETRIZED(df), DUMP_DATA_FIELD_NAME_IN_TASK(osa, df), DUMP_DATA_FIELD_NAME_IN_TASK(osa, df),
                     INDENTATION_IF_PARAMETRIZED(df));
 
             string_arena_free(osa);
@@ -8735,8 +8747,8 @@ static void jdf_generate_code_free_hash_table_entry(const jdf_t *jdf, const jdf_
                 coutput("%s    if( NULL != this_task->data.%s.data_in ) {\n"
                         "%s        PARSEC_DATA_COPY_RELEASE(this_task->data.%s.data_in);\n"
                         "%s    }\n",
-                        INDENTATION_IF_PARAMETRIZED(df), DUMP_DATA_FIELD_NAME_IN_TASK(osa, df, df->varname),
-                        INDENTATION_IF_PARAMETRIZED(df), DUMP_DATA_FIELD_NAME_IN_TASK(osa, df, df->varname),
+                        INDENTATION_IF_PARAMETRIZED(df), DUMP_DATA_FIELD_NAME_IN_TASK(osa, df),
+                        INDENTATION_IF_PARAMETRIZED(df), DUMP_DATA_FIELD_NAME_IN_TASK(osa, df),
                         INDENTATION_IF_PARAMETRIZED(df));
 
                 string_arena_free(osa);
@@ -9214,7 +9226,7 @@ static void jdf_check_relatives( jdf_function_entry_t *f, jdf_dep_flags_t flow_t
         string_arena_init((SA_DATATYPE));                               \
     }
 
-char *dump_flow_offset_for_iterate_successors(string_arena_t *sa, jdf_function_entry_t *f, jdf_call_t *call)
+char *dump_flow_offset_for_iterate_successors(string_arena_t *sa, const jdf_function_entry_t *f, const jdf_call_t *call)
 {
     string_arena_init(sa);
 
@@ -9225,7 +9237,7 @@ char *dump_flow_offset_for_iterate_successors(string_arena_t *sa, jdf_function_e
     return string_arena_get_string(sa);
 }
 
-char *dump_dep_offset_for_iterate_successors(string_arena_t *sa, jdf_function_entry_t *f, jdf_call_t *call)
+char *dump_dep_offset_for_iterate_successors(string_arena_t *sa, const jdf_function_entry_t *f, const jdf_call_t *call)
 {
     string_arena_init(sa);
 
@@ -9359,7 +9371,7 @@ jdf_generate_code_iterate_successors_or_predecessors(const jdf_t *jdf,
 
         string_arena_add_string(sa_coutput,
                 "%s    data.data   = this_task->data.%s.data_out;\n",
-                INDENTATION_IF_PARAMETRIZED(fl), DUMP_DATA_FIELD_NAME_IN_TASK(osa, fl, fl->varname));
+                INDENTATION_IF_PARAMETRIZED(fl), DUMP_DATA_FIELD_NAME_IN_TASK(osa, fl));
 
         for(dl = fl->deps; dl != NULL; dl = dl->next) {
             if( !(dl->dep_flags & flow_type) ) continue;
