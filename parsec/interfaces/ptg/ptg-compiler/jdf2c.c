@@ -1755,6 +1755,11 @@ static void jdf_generate_predeclarations( const jdf_t *jdf )
                 for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
                     int depid=1;
                     for( jdf_dep_t *dep = df->deps; NULL != dep; dep = dep->next, depid++ ) {
+                        if((dep->dep_flags & JDF_DEP_FLOW_OUT) == 0)
+                        { // We only need the out indices
+                            continue;
+                        }
+
                         for( int target_call=0; target_call<2; ++target_call ) {
                             assert(dep->guard->guard_type==JDF_GUARD_UNCONDITIONAL || dep->guard->guard_type==JDF_GUARD_BINARY || dep->guard->guard_type==JDF_GUARD_TERNARY);
                             if(dep->guard->guard_type!=JDF_GUARD_TERNARY && target_call==1)
@@ -4997,6 +5002,11 @@ static void jdf_generate_one_function( const jdf_t *jdf, jdf_function_entry_t *f
         for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
             int depid=1;
             for( jdf_dep_t *dep = df->deps; NULL != dep; dep = dep->next, depid++ ) {
+                if((dep->dep_flags & JDF_DEP_FLOW_OUT) == 0)
+                { // We only need the out indices
+                    continue;
+                }
+
                 for( int target_call=0; target_call<2; ++target_call ) {
                     assert(dep->guard->guard_type==JDF_GUARD_UNCONDITIONAL || dep->guard->guard_type==JDF_GUARD_BINARY || dep->guard->guard_type==JDF_GUARD_TERNARY);
                     if(dep->guard->guard_type!=JDF_GUARD_TERNARY && target_call==1)
@@ -5985,7 +5995,7 @@ static void jdf_generate_new_function( const jdf_t* jdf )
                                 // If ternary, add _iftrue or _iffalse
                                 (dep->guard->guard_type==JDF_GUARD_TERNARY) ? ((target_call)?"_iffalse":"_iftrue") : "");
 
-                            assert(!FLOW_IS_PARAMETRIZED(df)); // If the flow is parametrized, 
+                            //assert(!FLOW_IS_PARAMETRIZED(df)); // If the flow is parametrized, // Commenting this because a referrer can be parametrized as well??
 
                             coutput("    spec_%s.out_dep_offset_of_referrer_flow_of_%s_%s_for_%s_dep%d_atline_%d%s = parsec_helper_get_dep_index(tc, dep, 1);\n",
                                 JDF_OBJECT_ONAME(f), jdf_basename, f->fname, df->varname,
@@ -5993,6 +6003,18 @@ static void jdf_generate_new_function( const jdf_t* jdf )
                                 // If ternary, add _iftrue or _iffalse
                                 (dep->guard->guard_type==JDF_GUARD_TERNARY) ? ((target_call)?"_iffalse":"_iftrue") : "");
                             coutput("    spec_%s.out_flow_offset_of_referrer_flow_of_%s_%s_for_%s_dep%d_atline_%d%s = parsec_helper_get_flow_index_that_contains_dep(tc, dep, 1);\n",
+                                JDF_OBJECT_ONAME(f), jdf_basename, f->fname, df->varname,
+                                depid, JDF_OBJECT_LINENO(dep),
+                                // If ternary, add _iftrue or _iffalse
+                                (dep->guard->guard_type==JDF_GUARD_TERNARY) ? ((target_call)?"_iffalse":"_iftrue") : "");
+
+                            coutput("\n");
+                            coutput("    assert(spec_%s.out_dep_offset_of_referrer_flow_of_%s_%s_for_%s_dep%d_atline_%d%s >= 0);\n",
+                                JDF_OBJECT_ONAME(f), jdf_basename, f->fname, df->varname,
+                                depid, JDF_OBJECT_LINENO(dep),
+                                // If ternary, add _iftrue or _iffalse
+                                (dep->guard->guard_type==JDF_GUARD_TERNARY) ? ((target_call)?"_iffalse":"_iftrue") : "");
+                            coutput("    assert(spec_%s.out_flow_offset_of_referrer_flow_of_%s_%s_for_%s_dep%d_atline_%d%s >= 0);\n",
                                 JDF_OBJECT_ONAME(f), jdf_basename, f->fname, df->varname,
                                 depid, JDF_OBJECT_LINENO(dep),
                                 // If ternary, add _iftrue or _iffalse
@@ -9410,6 +9432,8 @@ jdf_generate_code_iterate_successors_or_predecessors(const jdf_t *jdf,
     if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED_OR_REFERRER(f) && (flow_type & JDF_DEP_FLOW_IN))
     {
         coutput("  parsec_fatal(\"%s is parametrized, parsec does not handle iterate_predecessors of parametrized flows yet\");\n", name);
+        coutput("}\n");
+        return;
     }
 #endif  /* defined(PARSEC_ALLOW_PARAMETRIZED_FLOWS) */
 
