@@ -304,10 +304,11 @@ typedef int (parsec_datatype_lookup_t)(struct parsec_execution_stream_s* es,
                                       parsec_dep_data_description_t * data);
 
 /**
- * Allocate a new task that matches the function_t type. This can also be a task
- * of a generic type (such as parsec_task_t).
+ * Allocate a new task of this task class and return it as a generic
+ * task class (parsec_task_t).
+ * @return PARSEC_SUCCESS if the returned task can be used, or PARSEC_ERROR otherwise.
  */
-typedef int (parsec_new_task_function_t)(const parsec_task_t** task);
+typedef parsec_task_t* (parsec_new_task_function_t)(parsec_execution_stream_t* es);
 
 /**
  *

@@ -3110,8 +3110,7 @@ static void jdf_generate_startup_tasks(const jdf_t *jdf, const jdf_function_entr
             "%s  } else {\n"
             "%s    vpid = (vpid + 1) %% context->nb_vp;  /* spread the initial joy */\n"
             "%s  }\n"
-            "%s  new_task = (%s*)parsec_thread_mempool_allocate( context->virtual_processes[vpid]->execution_streams[0]->context_mempool );\n"
-            "%s  new_task->status = PARSEC_TASK_STATUS_NONE;\n",
+            "%s  new_task = (%s*)__parsec_tp->super.super.task_classes_array[%s_%s.task_class_id]->new_task(es);\n",
             indent(nesting), f->predicate->func_or_mem,
             indent(nesting), f->predicate->func_or_mem, f->predicate->func_or_mem,
             UTIL_DUMP_LIST(sa2, f->predicate->parameters, next,
@@ -3121,23 +3120,16 @@ static void jdf_generate_startup_tasks(const jdf_t *jdf, const jdf_function_entr
             indent(nesting),
             indent(nesting),
             indent(nesting),
-            indent(nesting), parsec_get_name(jdf, f, "task_t"),
-            indent(nesting));
+            indent(nesting), parsec_get_name(jdf, f, "task_t"), jdf_basename, f->fname);
 
     JDF_COUNT_LIST_ENTRIES(f->locals, jdf_variable_list_t, next, nb_locals);
     coutput("%s  /* Copy only the valid elements from this_task to new_task one */\n"
-            "%s  new_task->taskpool   = this_task->taskpool;\n"
-            "%s  new_task->task_class = __parsec_tp->super.super.task_classes_array[%s_%s.task_class_id];\n"
-            "%s  new_task->chore_mask   = PARSEC_DEV_ALL;\n",
+            "%s  new_task->taskpool   = this_task->taskpool;\n",
             indent(nesting),
-            indent(nesting),
-            indent(nesting), jdf_basename, f->fname,
             indent(nesting));
     for(vl = f->locals; vl != NULL; vl = vl->next, idx++)
         coutput("%s  new_task->locals.%s.value = this_task->locals.%s.value;\n", indent(nesting), vl->name, vl->name);
 
-    coutput("%s  PARSEC_LIST_ITEM_SINGLETON(new_task);\n",
-            indent(nesting));
     if( NULL != f->priority ) {
         coutput("%s  new_task->priority = __parsec_tp->super.super.priority + priority_of_%s_%s_as_expr_fct((__parsec_%s_internal_taskpool_t*)new_task->taskpool, &new_task->locals);\n",
                 indent(nesting), jdf_basename, f->fname, jdf_basename);
@@ -3145,8 +3137,16 @@ static void jdf_generate_startup_tasks(const jdf_t *jdf, const jdf_function_entr
         coutput("%s  new_task->priority = __parsec_tp->super.super.priority;\n", indent(nesting));
     }
 
-    coutput("%s  new_task->repo_entry = NULL;\n",
+    coutput("%s  PARSEC_LIST_ITEM_SINGLETON(new_task);\n"
+            "%s  new_task->status = PARSEC_TASK_STATUS_NONE;\n"
+            "%s  new_task->chore_mask   = PARSEC_DEV_ALL;\n"
+            "%s  new_task->repo_entry = NULL;\n",
+            indent(nesting),
+            indent(nesting),
+            indent(nesting),
             indent(nesting));
+    coutput("%s  new_task->task_class = __parsec_tp->super.super.task_classes_array[%s_%s.task_class_id];\n",
+            indent(nesting), jdf_basename, f->fname);
     {
         struct jdf_dataflow *dataflow = f->dataflow;
         for(idx = 0; NULL != dataflow; idx++, dataflow = dataflow->next ) {
@@ -4297,6 +4297,9 @@ static void jdf_generate_one_function( const jdf_t *jdf, jdf_function_entry_t *f
     sprintf(prefix, "hook_of_%s_%s", jdf_basename, f->fname);
     jdf_generate_code_hooks(jdf, f, prefix);
     string_arena_add_string(sa, "  .complete_execution = (parsec_hook_t*)complete_%s,\n", prefix);
+
+    jdf_generate_code_new_task(jdf, f, "");
+    string_arena_add_string(sa, "  .new_task = (parsec_hook_t*)new_task_%s_%s,\n", jdf_basename, f->fname);
 
     /**
      * By default assume that the even if the JDF writer provides a specialized function to count
