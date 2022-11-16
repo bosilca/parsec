@@ -157,13 +157,13 @@ typedef int32_t parsec_dependency_t;
  * runtime.
  */
 
-#define MAX_DATAFLOWS_PER_TASK  16
+#define MAX_DATAFLOWS_PER_TASK  64
 
 #define MAX_LOCAL_COUNT  20
 #define MAX_PARAM_COUNT  20
 
-#define MAX_DEP_IN_COUNT  24
-#define MAX_DEP_OUT_COUNT 24
+#define MAX_DEP_IN_COUNT  20
+#define MAX_DEP_OUT_COUNT 20
 
 #define MAX_TASK_STRLEN 128
 
