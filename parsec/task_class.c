@@ -112,11 +112,10 @@ bool parsec_helper_flow_is_in_flow_array(const parsec_flow_t *flow, parsec_flow_
  */
 void parsec_shift_all_flows_after(parsec_task_class_t *tc, parsec_flow_t *pivot_flow, int shift)
 {
-    int i, j, k;
-    int flow_in_out, dep_in_out;
+    int i;
+    int flow_in_out;
     int pivot_index;
     parsec_flow_t *flow;
-    parsec_dep_t *dep;
 
     // use an array to keep track of the flows we already treated
     parsec_flow_t *treated_flows[MAX_DATAFLOWS_PER_TASK];
@@ -216,7 +215,7 @@ void parsec_shift_all_deps_after(parsec_flow_t *flow, int dep_in_out, parsec_dep
 
     // Look for the pivot dep
     pivot_dep_index = -1;
-    for (int i = 0; i < dep_in_out?MAX_DEP_OUT_COUNT:MAX_DEP_IN_COUNT; i++)
+    for (int i = 0; i < (dep_in_out?MAX_DEP_OUT_COUNT:MAX_DEP_IN_COUNT); i++)
     {
         parsec_dep_t *dep = (parsec_dep_t *)(dep_in_out ? flow->dep_out[i] : flow->dep_in[i]);
 
@@ -242,7 +241,7 @@ void parsec_shift_all_deps_after(parsec_flow_t *flow, int dep_in_out, parsec_dep
 
     // Find the last non-null dep
     int last_dep_index;
-    for (last_dep_index = pivot_dep_index + 1; last_dep_index < dep_in_out?MAX_DEP_OUT_COUNT:MAX_DEP_IN_COUNT; ++last_dep_index)
+    for (last_dep_index = pivot_dep_index + 1; last_dep_index < (dep_in_out?MAX_DEP_OUT_COUNT:MAX_DEP_IN_COUNT); ++last_dep_index)
     {
         parsec_dep_t *dep = (parsec_dep_t *)(dep_in_out ? flow->dep_out[last_dep_index] : flow->dep_in[last_dep_index]);
 
@@ -260,7 +259,7 @@ void parsec_shift_all_deps_after(parsec_flow_t *flow, int dep_in_out, parsec_dep
 
         assert(dep); // We should not have a NULL dep here
         // assert(dep->dep_index == i); // The dep index can acutally be anything
-        assert(i + shift < dep_in_out?MAX_DEP_OUT_COUNT:MAX_DEP_IN_COUNT); // We should not overflow the array
+        assert(i + shift < (dep_in_out?MAX_DEP_OUT_COUNT:MAX_DEP_IN_COUNT)); // We should not overflow the array
 
         dep->dep_index += shift;
 
@@ -358,7 +357,6 @@ void parsec_check_sanity_of_task_class(parsec_task_class_t *tc)
 {
     int i, j;
     int flow_in_out, dep_in_out;
-    parsec_flow_t *flow;
     parsec_dep_t *dep;
 
     // flows can appear twice in a task class (if both in and out)
@@ -369,7 +367,7 @@ void parsec_check_sanity_of_task_class(parsec_task_class_t *tc)
     {
         for (flow_in_out = 0; flow_in_out < 2; ++flow_in_out)
         {
-            flow = (parsec_flow_t *)(flow_in_out ? tc->out[i] : tc->in[i]);
+            const parsec_flow_t *flow = (parsec_flow_t *)(flow_in_out ? tc->out[i] : tc->in[i]);
 
             if (flow && !parsec_helper_flow_is_in_flow_array(flow, treated_flows, treated_flows_size))
             {
@@ -384,7 +382,7 @@ void parsec_check_sanity_of_task_class(parsec_task_class_t *tc)
     // Check the coherency of the flow flags
     for (i = 0; i < MAX_DATAFLOWS_PER_TASK; i++)
     {
-        flow = tc->out[i];
+        const parsec_flow_t *flow = tc->out[i];
 
         if (!flow)
         {
@@ -419,7 +417,7 @@ parsec_flow_t *parsec_helper_copy_flow(parsec_flow_t *flow_to, parsec_flow_t *fl
     int i;
     for (flow_in_out = 0; flow_in_out < 2; ++flow_in_out)
     {
-        for (i = 0; i < flow_in_out ? MAX_DEP_OUT_COUNT : MAX_DEP_IN_COUNT; i++)
+        for (i = 0; i < (flow_in_out ? MAX_DEP_OUT_COUNT : MAX_DEP_IN_COUNT); i++)
         {
             parsec_dep_t *dep = (parsec_dep_t *)(flow_in_out ? flow_to->dep_out[i] : flow_to->dep_in[i]);
 
@@ -497,7 +495,7 @@ int parsec_helper_get_flow_index_that_contains_dep(const parsec_task_class_t *tc
     int i;
     for (i = 0; i < MAX_DATAFLOWS_PER_TASK; i++)
     {
-        parsec_flow_t *flow = (in_out ? tc->out[i] : tc->in[i]);
+        const parsec_flow_t *flow = (in_out ? tc->out[i] : tc->in[i]);
 
         if (!flow)
         {
@@ -519,7 +517,7 @@ int parsec_helper_get_flow_index(const parsec_task_class_t *tc, const parsec_flo
     int i;
     for (i = 0; i < MAX_DATAFLOWS_PER_TASK; i++)
     {
-        parsec_flow_t *_flow = (in_out ? tc->out[i] : tc->in[i]);
+        const parsec_flow_t *_flow = (in_out ? tc->out[i] : tc->in[i]);
 
         if (!flow)
         {

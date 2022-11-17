@@ -5798,13 +5798,13 @@ static void jdf_generate_new_function( const jdf_t* jdf )
 
                     coutput(
                         "      parsec_helper_copy_flow(&flow_of_%s_%s_for_parametrized_%s[%s], &flow_of_%s_%s_for_%s);\n"
-                        "      flow_of_%s_%s_for_parametrized_%s[%s].flow_index = %s;\n"
+                        "      flow_of_%s_%s_for_parametrized_%s[%s].flow_index = flow_of_%s_%s_for_%s.flow_index + %s;\n"
                         "      char specialized_flow_name[64];\n"
                         "      sprintf(specialized_flow_name, \"%s_%s_%%d\", %s);\n"
                         "      flow_of_%s_%s_for_parametrized_%s[%s].name = strdup(specialized_flow_name);\n",
                         jdf_basename, f->fname, df->varname, GET_PARAMETRIZED_FLOW_ITERATOR_NAME(df),
                         jdf_basename, f->fname, df->varname,
-                        jdf_basename, f->fname, df->varname, GET_PARAMETRIZED_FLOW_ITERATOR_NAME(df), GET_PARAMETRIZED_FLOW_ITERATOR_NAME(df),
+                        jdf_basename, f->fname, df->varname, GET_PARAMETRIZED_FLOW_ITERATOR_NAME(df), jdf_basename, f->fname, df->varname, GET_PARAMETRIZED_FLOW_ITERATOR_NAME(df),
                         df->varname, GET_PARAMETRIZED_FLOW_ITERATOR_NAME(df), GET_PARAMETRIZED_FLOW_ITERATOR_NAME(df),
                         jdf_basename, f->fname, df->varname, GET_PARAMETRIZED_FLOW_ITERATOR_NAME(df)
                     );
@@ -6040,6 +6040,7 @@ static void jdf_generate_new_function( const jdf_t* jdf )
                                 JDF_OBJECT_ONAME(f), jdf_basename, f->fname, df->varname, jdf_basename, f->fname);
                         coutput("    current_data_offset_for_%s_%s += nb_specializations_of_parametrized_flow_of_%s_%s_for_parametrized_%s;\n",
                                 jdf_basename, f->fname, jdf_basename, f->fname, df->varname);
+                        coutput("\n");
                         
 
                         depid=1;
@@ -6085,6 +6086,7 @@ static void jdf_generate_new_function( const jdf_t* jdf )
                             }
                         }
 
+                        coutput("\n");
 
                         // Now output asserts:
 
@@ -6158,13 +6160,40 @@ static void jdf_generate_new_function( const jdf_t* jdf )
 
                         if( NULL != call->parametrized_offset )
                         {
-
                             coutput("  { // Parametrized referrer %s of task class %s\n", df->varname, f->fname);
                             coutput("    parsec_task_class_t *tc = __parsec_tp->super.super.task_classes_array[%d];\n", f->task_class_id);
-                            coutput("    parsec_dep_t *dep = %s_referrer_dep%d_atline_%d%s;\n\n",
-                                JDF_OBJECT_ONAME(df), depid, JDF_OBJECT_LINENO(dep),
-                                // If ternary, add _iftrue or _iffalse
-                                (dep->guard->guard_type==JDF_GUARD_TERNARY) ? ((target_call)?"_iffalse":"_iftrue") : "");
+
+
+
+                            if(FLOW_IS_PARAMETRIZED(df))
+                            {
+                                coutput("    parsec_dep_t *dep = &flow_of_%s_%s_for_%s_dep%d_atline_%d%s;\n\n",
+                                            jdf_basename, f->fname, df->varname,
+                                            depid, JDF_OBJECT_LINENO(dep),
+                                            // If ternary, add _iftrue or _iffalse
+                                            (dep->guard->guard_type==JDF_GUARD_TERNARY) ? ((target_call)?"_iffalse":"_iftrue") : "");
+                            }
+                            else
+                            {
+                                coutput("    parsec_dep_t *dep = %s_referrer_dep%d_atline_%d%s;\n\n",
+                                    JDF_OBJECT_ONAME(df), depid, JDF_OBJECT_LINENO(dep),
+                                    // If ternary, add _iftrue or _iffalse
+                                    (dep->guard->guard_type==JDF_GUARD_TERNARY) ? ((target_call)?"_iffalse":"_iftrue") : "");
+                            }
+                            /*if(FLOW_IS_PARAMETRIZED(df))
+                            {
+                                coutput("    parsec_dep_t *dep = %s_referrer_dep%d_atline_%d%s;\n\n",
+                                    JDF_OBJECT_ONAME(df), depid, JDF_OBJECT_LINENO(dep),
+                                    // If ternary, add _iftrue or _iffalse
+                                    (dep->guard->guard_type==JDF_GUARD_TERNARY) ? ((target_call)?"_iffalse":"_iftrue") : "");
+                            }
+                            else
+                            {
+                                coutput("    parsec_dep_t *dep = %s_referrer_dep%d_atline_%d%s;\n\n",
+                                    JDF_OBJECT_ONAME(df), depid, JDF_OBJECT_LINENO(dep),
+                                    // If ternary, add _iftrue or _iffalse
+                                    (dep->guard->guard_type==JDF_GUARD_TERNARY) ? ((target_call)?"_iffalse":"_iftrue") : "");
+                            }*/
 
                             //assert(!FLOW_IS_PARAMETRIZED(df)); // If the flow is parametrized, // Commenting this because a referrer can be parametrized as well??
 
