@@ -8223,7 +8223,7 @@ static void jdf_generate_check_for_one_call_to_call_link(const jdf_t *jdf, const
             coutput(
                 "%s    if((%s) %s (%s)) {\n"
                 "%s      parsec_fatal(\"A dependency between a parametrized flow and its referrer is incoherent.\\n\"\n"
-                "%s          \"If %s = %%d, %s != %%d\\n\"\n"
+                "%s          \"If %s = %%d, %s !%s %%d\\n\"\n"
                 "%s          \"The parametrized flow is %s of task class %s.\\n\"\n"
                 "%s          \"The referrer is call%s of dep %d of flow %s of task class %s.\\n\",\n"
                 "%s          %s, %s);\n"
@@ -8231,9 +8231,9 @@ static void jdf_generate_check_for_one_call_to_call_link(const jdf_t *jdf, const
                 spaces,
                 // lower or upper bound, depending on the comparator
                 dump_expr((void**)(comparator?source_flow->local_variables->jdf_ta1:source_flow->local_variables->jdf_ta2), &expr_info),
-                comparator?">":"<", get_parametrized_flow_iterator_name(source_flow),
+                comparator?">":"<", target_call->local_defs->alias,
                 spaces,
-                spaces, get_parametrized_flow_iterator_name(source_flow), dump_expr((void**)target_call->parametrized_offset, &expr_info),
+                spaces, get_parametrized_flow_iterator_name(source_flow), dump_expr((void**)target_call->parametrized_offset, &expr_info), comparator?">":"<",
                 spaces, source_flow->varname, sourcef->fname,
                 spaces, is_calltrue?"true":"false", dep_index, target_flow->varname, targetf->fname,
                 spaces, get_parametrized_flow_iterator_name(source_flow), get_parametrized_flow_iterator_name(source_flow),
