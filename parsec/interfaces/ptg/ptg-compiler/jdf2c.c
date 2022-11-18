@@ -7456,12 +7456,23 @@ static void jdf_generate_code_flow_initialization(const jdf_t *jdf,
         coutput("%s    if( this_task->data.%s.source_repo_entry == this_task->repo_entry ){\n"
                 "%s      /* in case we have consume from this task repo entry for the flow,\n"
                 "%s       * it is cleaned up, avoiding having old stuff during release_deps_of\n"
-                "%s       */\n"
-                "%s      this_task->repo_entry->data[%d] = NULL;\n"
-                "%s    }\n",
+                "%s       */\n",
                 INDENTATION_IF_PARAMETRIZED(flow), DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow),
-                INDENTATION_IF_PARAMETRIZED(flow), INDENTATION_IF_PARAMETRIZED(flow), INDENTATION_IF_PARAMETRIZED(flow), INDENTATION_IF_PARAMETRIZED(flow), 
-                flow->flow_index,
+                INDENTATION_IF_PARAMETRIZED(flow), INDENTATION_IF_PARAMETRIZED(flow), INDENTATION_IF_PARAMETRIZED(flow));
+        if(!TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f))
+        { // If no flow is parametrized, the flow index will not be altered
+            coutput("%s      this_task->repo_entry->data[%d] = NULL;\n", INDENTATION_IF_PARAMETRIZED(flow), 
+                    flow->flow_index);
+                    // TODO this seems wrong, this_task->repo_entry->data has a size of 1, but flow->flow_index can be > 1
+        }
+        else
+        {
+            // It is also definitely wrong if the flow is parametrized, since the flow index can change at runtime
+            coutput("%s      // this_task->repo_entry->data[%d] = NULL;\n", INDENTATION_IF_PARAMETRIZED(flow), 
+                    flow->flow_index);
+            coutput("%s      assert(0);\n", INDENTATION_IF_PARAMETRIZED(flow));
+        }
+        coutput("%s    }\n",
                 INDENTATION_IF_PARAMETRIZED(flow));
     }
     coutput("%s    this_task->data.%s.fulfill = 1;\n"
@@ -8150,32 +8161,115 @@ static void jdf_generate_check_for_one_call_to_call_link(const jdf_t *jdf, const
         }
     }
 
+    int nb_opened_call_locals = 0;
+    int any_local_is_ranged = 0;
+
+    // add the relevant call variables:
+    jdf_call_t *dl = target_call;
+    if( NULL != dl->local_defs ) {
+        jdf_expr_t *ld;
+        for(ld = jdf_expr_lv_first(dl->local_defs); ld != NULL; ld = jdf_expr_lv_next(dl->local_defs, ld)) {
+            
+            assert(NULL != ld->alias);
+            assert(-1 != ld->ldef_index);
+
+            if(JDF_RANGE == ld->op || JDF_PARAMETRIZED_FLOW_RANGE == ld->op)
+            {
+                any_local_is_ranged = 1;
+            }
+
+            if(strcmp(ld->alias, get_parametrized_flow_iterator_name(source_flow))==0)
+            { // skip the local that is the parametrized iterator (already handled in the outer loop)
+                continue;
+            }
+
+            expr_info_t expr_info = EMPTY_EXPR_INFO;
+            expr_info.sa = string_arena_new(64);
+            expr_info.prefix = "";
+            expr_info.suffix = "";
+            expr_info.assignments = "";
+
+            coutput("%s  int %s;\n", spaces, ld->alias);
+            if(JDF_RANGE == ld->op || JDF_PARAMETRIZED_FLOW_RANGE == ld->op) {
+                coutput(
+                                        "%s  for( %s = %s;",
+                                        spaces, ld->alias, dump_expr((void**)ld->jdf_ta1, &expr_info));
+                coutput("%s <= %s; %s+=",
+                                        ld->alias, dump_expr((void**)ld->jdf_ta2, &expr_info), ld->alias);
+                coutput("%s) {\n",
+                                        dump_expr((void**)ld->jdf_ta3, &expr_info),
+                                        spaces);
+                ++nb_opened_call_locals;
+            } else {
+                coutput(
+                                        "%s  %s = %s;\n",
+                                        spaces, ld->alias, dump_expr((void**)ld, &expr_info));
+            }
+        }
+    }
+
     for(jdf_variable_list_t *vl = targetf->locals; vl != NULL; vl = vl->next) {
         coutput("#define %s %s%s\n", vl->name, targetf->fname, vl->name);
     }
 
     // dump the parsec_fatal if an incoherency is detected
-    coutput(
-        "%s    // call%s dependency %d of flow %s of function %s\n"
-        "%s    if(%s != %s) {\n"
-        "%s      parsec_fatal(\"A dependency between a parametrized flow and its referrer is incoherent.\\n\"\n"
-        "%s          \"If %s = %%d, %s != %%d\\n\"\n"
-        "%s          \"The parametrized flow is %s of task class %s.\\n\"\n"
-        "%s          \"The referrer is call%s of dep %d of flow %s of task class %s.\\n\",\n"
-        "%s          %s, %s);\n"
-        "%s    }\n",
-        spaces, is_calltrue?"true":"false", dep_index, target_flow->varname, targetf->fname,
-        spaces, dump_expr((void**)target_call->parametrized_offset, &expr_info), get_parametrized_flow_iterator_name(source_flow),
-        spaces,
-        spaces, get_parametrized_flow_iterator_name(source_flow), dump_expr((void**)target_call->parametrized_offset, &expr_info),
-        spaces, source_flow->varname, sourcef->fname,
-        spaces, is_calltrue?"true":"false", dep_index, target_flow->varname, targetf->fname,
-        spaces, get_parametrized_flow_iterator_name(source_flow), get_parametrized_flow_iterator_name(source_flow),
-        spaces);
+    coutput("%s    // call%s dependency %d of flow %s of function %s\n", 
+            spaces, is_calltrue?"true":"false", dep_index, target_flow->varname, targetf->fname);
+    if(any_local_is_ranged)
+    {
+        coutput("%s    // Ensure that we stay in the bounds;\n", spaces);
+
+        for(int comparator=0;comparator<2;comparator++) {
+            coutput(
+                "%s    if((%s) %s (%s)) {\n"
+                "%s      parsec_fatal(\"A dependency between a parametrized flow and its referrer is incoherent.\\n\"\n"
+                "%s          \"If %s = %%d, %s != %%d\\n\"\n"
+                "%s          \"The parametrized flow is %s of task class %s.\\n\"\n"
+                "%s          \"The referrer is call%s of dep %d of flow %s of task class %s.\\n\",\n"
+                "%s          %s, %s);\n"
+                "%s    }\n",
+                spaces,
+                // lower or upper bound, depending on the comparator
+                dump_expr((void**)(comparator?source_flow->local_variables->jdf_ta1:source_flow->local_variables->jdf_ta2), &expr_info),
+                comparator?">":"<", get_parametrized_flow_iterator_name(source_flow),
+                spaces,
+                spaces, get_parametrized_flow_iterator_name(source_flow), dump_expr((void**)target_call->parametrized_offset, &expr_info),
+                spaces, source_flow->varname, sourcef->fname,
+                spaces, is_calltrue?"true":"false", dep_index, target_flow->varname, targetf->fname,
+                spaces, get_parametrized_flow_iterator_name(source_flow), get_parametrized_flow_iterator_name(source_flow),
+                spaces);
+        }
+    }
+    else
+    {
+        coutput("%s    // Since no local is ranged, we can assume an exact equality);\n", spaces);
+
+        coutput(
+            "%s    if((%s) != (%s)) {\n"
+            "%s      parsec_fatal(\"A dependency between a parametrized flow and its referrer is incoherent.\\n\"\n"
+            "%s          \"If %s = %%d, %s != %%d\\n\"\n"
+            "%s          \"The parametrized flow is %s of task class %s.\\n\"\n"
+            "%s          \"The referrer is call%s of dep %d of flow %s of task class %s.\\n\",\n"
+            "%s          %s, %s);\n"
+            "%s    }\n",
+            spaces, dump_expr((void**)target_call->parametrized_offset, &expr_info), get_parametrized_flow_iterator_name(source_flow),
+            spaces,
+            spaces, get_parametrized_flow_iterator_name(source_flow), dump_expr((void**)target_call->parametrized_offset, &expr_info),
+            spaces, source_flow->varname, sourcef->fname,
+            spaces, is_calltrue?"true":"false", dep_index, target_flow->varname, targetf->fname,
+            spaces, get_parametrized_flow_iterator_name(source_flow), get_parametrized_flow_iterator_name(source_flow),
+            spaces);
+    }
 
 
     for(jdf_variable_list_t *vl = targetf->locals; vl != NULL; vl = vl->next) {
         coutput("#undef %s\n", vl->name);
+    }
+
+    // close opened calls:
+    while(nb_opened_call_locals > 0) {
+        coutput("%s  }\n", spaces);
+        --nb_opened_call_locals;
     }
 
     coutput("%s  }\n", spaces);
