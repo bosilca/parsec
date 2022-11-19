@@ -234,6 +234,7 @@ void parsec_shift_all_deps_after(parsec_flow_t *flow, int dep_in_out, parsec_dep
     // If the pivot was not found in this flow_in_out, skip the shift
     if (pivot_dep_index == -1)
     {
+        assert(0);
         return;
     }
 
