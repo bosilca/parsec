@@ -6341,10 +6341,10 @@ static void jdf_generate_new_function( const jdf_t* jdf )
         coutput(
             "#if defined(PARSEC_DEBUG_PARANOID)\n"
             "  // use parsec_debug_dump_task_class_at_exec(tc); on each task class\n"
-            "  parsec_debug_verbose(1, parsec_debug_output, \"##\");\n"
-            "  parsec_debug_verbose(1, parsec_debug_output, \"##\");\n"
-            "  parsec_debug_verbose(1, parsec_debug_output, \"############ Task classes after update ############\");\n"
-            "  parsec_debug_verbose(1, parsec_debug_output, \"##\");\n"
+            "  parsec_debug_verbose(10, parsec_debug_output, \"##\");\n"
+            "  parsec_debug_verbose(10, parsec_debug_output, \"##\");\n"
+            "  parsec_debug_verbose(10, parsec_debug_output, \"############ Task classes after update ############\");\n"
+            "  parsec_debug_verbose(10, parsec_debug_output, \"##\");\n"
             "  for( int i = 0; i < __parsec_tp->super.super.nb_task_classes; i++ ) {\n"
             "    parsec_task_class_t *tc = __parsec_tp->super.super.task_classes_array[i];\n"
             "    parsec_debug_dump_task_class_at_exec(tc);\n"
@@ -7153,8 +7153,10 @@ jdf_generate_code_call_initialization(const jdf_t *jdf, const jdf_call_t *call,
                 spaces, flow->varname, jdf_basename, call->func_or_mem, call->var,
                 spaces, DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow));
         if(FLOW_IS_PARAMETRIZED(flow)) {
-            coutput("%s    parsec_debug_verbose(1, parsec_debug_output, \"%s = %%d\", %s);\n",
+            coutput("#if defined(PARSEC_DEBUG_NOISIER)\n");
+            coutput("%s    parsec_debug_verbose(10, parsec_debug_output, \"%s = %%d\", %s);\n",
                     spaces, get_parametrized_flow_iterator_name(flow), get_parametrized_flow_iterator_name(flow));
+            coutput("#endif\n");
         }
 
     }
