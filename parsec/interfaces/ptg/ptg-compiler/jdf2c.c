@@ -5822,9 +5822,9 @@ static void jdf_generate_new_function( const jdf_t* jdf )
                     coutput(
                         "      parsec_helper_copy_flow(&flow_of_%s_%s_for_parametrized_%s[%s], &flow_of_%s_%s_for_%s);\n"
                         "      flow_of_%s_%s_for_parametrized_%s[%s].flow_index = flow_of_%s_%s_for_%s.flow_index + %s;\n"
-                        "      char specialized_flow_name[64];\n"
+                        "      //char specialized_flow_name[64];\n"
                         "      //sprintf(specialized_flow_name, \"%s_%s_%%d\", %s); // modifying the name causes find_target_flow to fail!\n"
-                        "      flow_of_%s_%s_for_parametrized_%s[%s].name = strdup(specialized_flow_name);\n",
+                        "      //flow_of_%s_%s_for_parametrized_%s[%s].name = strdup(specialized_flow_name);\n",
                         jdf_basename, f->fname, df->varname, GET_PARAMETRIZED_FLOW_ITERATOR_NAME(df),
                         jdf_basename, f->fname, df->varname,
                         jdf_basename, f->fname, df->varname, GET_PARAMETRIZED_FLOW_ITERATOR_NAME(df), jdf_basename, f->fname, df->varname, GET_PARAMETRIZED_FLOW_ITERATOR_NAME(df),
