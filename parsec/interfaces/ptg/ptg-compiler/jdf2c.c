@@ -5542,7 +5542,7 @@ static void jdf_generate_constructor( const jdf_t* jdf )
             "\n\n"
             "#if defined(PARSEC_DEBUG_PARANOID)\n"
             "  // use parsec_debug_dump_task_class_at_exec(tc); on each task class\n"
-            "  parsec_debug_verbose(1, parsec_debug_output, \"############ Task classes before update ############\\n\");\n"
+            "  parsec_debug_verbose(10, parsec_debug_output, \"############ Task classes before update ############\\n\");\n"
             "  for( uint32_t i = 0; i < __parsec_tp->super.super.nb_task_classes; i++ ) {\n"
             "    parsec_task_class_t *tc = __parsec_tp->super.super.task_classes_array[i];\n"
             "    parsec_debug_dump_task_class_at_exec(tc);\n"
