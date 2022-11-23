@@ -9747,13 +9747,15 @@ char *dump_flow_offset_for_iterate_successors(string_arena_t *sa, const jdf_func
 
     // TODO: if flow can be computed at compile time (i.e. no parametrized flow declared before him)
 
-    /*if(FLOW_IS_PARAMETRIZED(flow))
+    //jdf_function_entry_t *tarfetf = find_target_function(jdf, call->func_or_mem);
+    //jdf_flow_t *referred_flow = jdf_get_flow_by_name(f, call->flow);
+    if(FLOW_IS_PARAMETRIZED(flow))
     {
-        string_arena_add_string(sa, "spec_%s_%s.out_flow_offset_of_parametrized_flow_of_%s_%s_for_%s+%s",
-                            jdf_basename, f->fname, jdf_basename, f->fname, flow->varname,
+        string_arena_add_string(sa, "spec_%s_%s.out_flow_offset_of%s%s_%s+%s",
+                            jdf_basename, f->fname, call->parametrized_offset!=NULL?"_referrer":"", FLOW_IS_PARAMETRIZED(flow)?"_parametrized":"", JDF_OBJECT_ONAME(call),
                             get_parametrized_flow_iterator_name(flow));
     }
-    else*/
+    else
     {
         string_arena_add_string(sa, "spec_%s_%s.out_flow_offset_of%s%s_%s",
                             jdf_basename, f->fname, call->parametrized_offset!=NULL?"_referrer":"", FLOW_IS_PARAMETRIZED(flow)?"_parametrized":"", JDF_OBJECT_ONAME(call));
