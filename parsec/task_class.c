@@ -302,7 +302,7 @@ void parsec_debug_dump_task_class_at_exec(parsec_task_class_t *tc)
     parsec_debug_verbose(1, parsec_debug_output, "## Task Class %s (%p) has %d flows, %d parameters, %d locals",
                          tc->name, (void *)tc, tc->nb_flows, tc->nb_parameters, tc->nb_locals);
 
-    parsec_debug_verbose(1, parsec_debug_output, "## dependencies_goal = %x\n", tc->dependencies_goal);
+    parsec_debug_verbose(1, parsec_debug_output, "## dependencies_goal = %x", tc->dependencies_goal);
 
     for (i = 0; i < MAX_DATAFLOWS_PER_TASK; i++)
     {
@@ -459,6 +459,19 @@ int parsec_helper_dep_is_in_flow(const parsec_flow_t *flow, const parsec_dep_t *
     return 0;
 }
 
+int parsec_helper_get_dep_index_in_flow(const parsec_flow_t *flow, const parsec_dep_t *dep, int in_out)
+{
+    int i;
+    for (i = 0; i < (in_out ? MAX_DEP_OUT_COUNT : MAX_DEP_IN_COUNT); i++)
+    {
+        if (dep == (in_out ? flow->dep_out[i] : flow->dep_in[i]))
+        {
+            return i;
+        }
+    }
+    return -1;
+}
+
 int parsec_helper_get_dep_index(const parsec_task_class_t *tc, const parsec_dep_t *dep, int in_out)
 {
     int i;
@@ -472,18 +485,7 @@ int parsec_helper_get_dep_index(const parsec_task_class_t *tc, const parsec_dep_
 
         if (parsec_helper_dep_is_in_flow(flow, dep, in_out))
         {
-            for(int j = 0; j < (in_out ? MAX_DEP_OUT_COUNT : MAX_DEP_IN_COUNT); j++)
-            {
-                parsec_dep_t *_dep = (parsec_dep_t *)(in_out ? flow->dep_out[j] : flow->dep_in[j]);
-                if(!_dep)
-                {
-                    break;
-                }
-                if(_dep == dep)
-                {
-                    return j;
-                }
-            }
+            return parsec_helper_get_dep_index_in_flow(flow, dep, in_out);
         }
     }
 

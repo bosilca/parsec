@@ -24,6 +24,7 @@ parsec_flow_t *parsec_helper_copy_flow(parsec_flow_t *flow_to, parsec_flow_t *fl
 parsec_dep_t *parsec_helper_copy_dep(parsec_dep_t * dep_to, parsec_dep_t * dep_from);
 
 int parsec_helper_dep_is_in_flow(const parsec_flow_t *flow, const parsec_dep_t *dep, int in_out);
+int parsec_helper_get_dep_index_in_flow(const parsec_flow_t *flow, const parsec_dep_t *dep, int in_out);
 int parsec_helper_get_dep_index(const parsec_task_class_t *tc, const parsec_dep_t *dep, int in_out);
 int parsec_helper_get_flow_index_that_contains_dep(const parsec_task_class_t *tc, const parsec_dep_t *dep, int in_out);
 int parsec_helper_get_flow_index(const parsec_task_class_t *tc, const parsec_flow_t *flow, int in_out);

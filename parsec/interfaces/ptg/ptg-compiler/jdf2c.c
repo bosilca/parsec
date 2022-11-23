@@ -5947,7 +5947,6 @@ static void jdf_generate_new_function( const jdf_t* jdf )
                                     // If ternary, add _iftrue or _iffalse
                                     (dep->guard->guard_type==JDF_GUARD_TERNARY) ? ((target_call)?"_iffalse":"_iftrue") : "");
                                 coutput("    int flow_in_out = %d;\n", dep_in_out);
-                                coutput("    int depid=dep->dep_index;\n");
 
 
     // spec_%s_%s.offset_%s%s will be computed after all the shifts have been computed, just to be certain that no future shift will change the value
@@ -5996,6 +5995,8 @@ static void jdf_generate_new_function( const jdf_t* jdf )
                                     coutput("\n    parsec_flow_t *flow = &flow_of_%s_%s_for_%s;\n",
                                         jdf_basename, f->fname, df->varname);
                                 }
+                                coutput("    int depid=parsec_helper_get_dep_index_in_flow(flow, dep, flow_in_out);\n");
+
                                 coutput(
                                     "    // Shift the deps that are after dep (which references the parametrized flow)\n"
                                     "    parsec_shift_all_deps_after(flow, flow_in_out, dep, nb_specializations_of_parametrized_flow_of_%s_%s_for_parametrized_%s-1);\n\n",
