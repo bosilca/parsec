@@ -5791,13 +5791,145 @@ static void jdf_generate_new_function( const jdf_t* jdf )
             }
         }
         coutput("    NULL\n  };*/\n");
+        coutput("\n");
+
+        // Declare local arrays to simplify the future parametrization of flows
         coutput("  const int nb_parametrized_flows = %d;\n", nb_parametrized_flows);
+        // Number of specializations of each parametrized flow
+        coutput("  const int nb_specializations_of_parametrized_flows[] = {\n");
+        for( jdf_function_entry_t* f = jdf->functions; NULL != f; f = f->next ) {
+            for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
+                if( FLOW_IS_PARAMETRIZED(df) ) {
+                    coutput("    nb_specializations_of_parametrized_flow_of_%s_%s_for_parametrized_%s,\n", jdf_basename, f->fname, df->varname);
+                }
+            }
+        }
+        coutput("    0\n  };\n");
+        // Task class of each parametrized flow
+        coutput("  parsec_task_class_t *task_class_of_parametrized_flows[] = {\n");
+        for( jdf_function_entry_t* f = jdf->functions; NULL != f; f = f->next ) {
+            for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
+                if( FLOW_IS_PARAMETRIZED(df) ) {
+                    coutput("    __parsec_tp->super.super.task_classes_array[%d],\n", f->task_class_id);
+                }
+            }
+        }
+        coutput("    NULL\n  };\n");
+        // Specialization array of each parametrized flow
+        coutput("  parsec_flow_t *specialization_array_of_parametrized_flows[] = {\n");
+        for( jdf_function_entry_t* f = jdf->functions; NULL != f; f = f->next ) {
+            for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
+                if( FLOW_IS_PARAMETRIZED(df) ) {
+                    coutput("    &flow_of_%s_%s_for_parametrized_%s[0],\n", jdf_basename, f->fname, df->varname);
+                }
+            }
+        }
+        coutput("    NULL\n  };\n");
+        // Base flow of each parametrized flow (the base jdf generated one which will be replaced with each specialization)
+        coutput("  const parsec_flow_t *base_flow_of_parametrized_flows[] = {\n");
+        for( jdf_function_entry_t* f = jdf->functions; NULL != f; f = f->next ) {
+            for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
+                if( FLOW_IS_PARAMETRIZED(df) ) {
+                    coutput("    &flow_of_%s_%s_for_%s,\n", jdf_basename, f->fname, df->varname);
+                }
+            }
+        }
+        coutput("    NULL\n  };\n");
 
         coutput("\n");
 
-        coutput("  // Unroll all the parametrized flows\n");
 
-        for( jdf_function_entry_t* f = jdf->functions; NULL != f; f = f->next ) {
+
+        coutput("  // Unroll all the parametrized flows\n");
+        coutput("  for( int parametrized_flow_id=0; parametrized_flow_id<nb_parametrized_flows; ++parametrized_flow_id ) {\n");
+
+
+        coutput("    parsec_task_class_t *tc = (parsec_task_class_t*)task_class_of_parametrized_flows[parametrized_flow_id];\n");
+        coutput("    const int nb_specializations_of_current_flow = nb_specializations_of_parametrized_flows[parametrized_flow_id];\n");
+        coutput("    parsec_flow_t *specialization_array_of_current_flow = specialization_array_of_parametrized_flows[parametrized_flow_id];\n");
+        coutput("    const parsec_flow_t *base_flow_of_current_flow = base_flow_of_parametrized_flows[parametrized_flow_id];\n");
+        coutput(
+            "    // Shift the flows that are after the parametrized flow\n"
+            "    parsec_shift_all_flows_after(tc, base_flow_of_current_flow, 0, nb_specializations_of_current_flow-1); // in\n"
+            "    parsec_shift_all_flows_after(tc, base_flow_of_current_flow, 1, nb_specializations_of_current_flow-1); // out\n"
+            "\n"
+        );
+        coutput(
+            "    // Unroll the parametrized flow to generate each specialized flow\n"
+        );
+
+        coutput("    for( int parametrized_iterator=0; parametrized_iterator<nb_specializations_of_current_flow; ++parametrized_iterator ) {\n");
+
+        coutput(
+            "      parsec_helper_copy_flow(&specialization_array_of_current_flow[parametrized_iterator], base_flow_of_current_flow);\n"
+            "      specialization_array_of_current_flow[parametrized_iterator].flow_index = base_flow_of_current_flow->flow_index + parametrized_iterator;\n"
+            "      //char specialized_flow_name[64];\n"
+            //"      //sprintf(specialized_flow_name, \"%s_%s_%%d\", parametrized_iterator); // modifying the name causes find_target_flow to fail!\n"
+            "      //specialization_array_of_current_flow[parametrized_iterator].name = strdup(specialized_flow_name);\n"
+        );
+        
+        coutput("    }\n");
+
+        coutput(
+            "\n"
+        );
+
+    
+        coutput(
+            "    // Insert the new flows in the task class\n"
+            "    for(int flow_in_out=0;flow_in_out<2;++flow_in_out) {\n"
+            "      bool pivot_reached = false;\n"
+            "      int parametrized_iterator = 0;\n"
+            "      for(i = 0; i < MAX_DATAFLOWS_PER_TASK && parametrized_iterator < nb_specializations_of_current_flow; i++) {\n"
+            "        parsec_flow_t *flow = (parsec_flow_t*)(flow_in_out?tc->out[i]:tc->in[i]);\n"
+            "        if(!flow && !pivot_reached) {\n"
+            "          break;\n"
+            "        }\n"
+            "        if(flow == base_flow_of_current_flow) {\n"
+            "          pivot_reached = true;\n"
+            "          // Update the goal of the task class\n"
+            "          if(flow_in_out == 0)\n"
+            "          {\n"
+            "            // If is input, shift the proper values in the goal\n"
+            "            // Idea: 00abcxyz -> abcccxyz (if shift=2 (i.e. nb_specializations=3) and pivot index = 3)\n"
+            "            int shift = nb_specializations_of_current_flow-1;\n"
+            "            parsec_dependency_t unshifted_values = tc->dependencies_goal & ((1<<i)-1);\n"
+            "            parsec_dependency_t shifted_values = (tc->dependencies_goal >> (i + 1)) << (i + 1 + shift);\n"
+            "            parsec_dependency_t in_between = ((1<<(shift+1))-1) << i;\n"
+            "            tc->dependencies_goal = unshifted_values | shifted_values | in_between;\n"
+            "          }\n"
+            "          assert(i+nb_specializations_of_current_flow < MAX_DATAFLOWS_PER_TASK);\n"
+            "        }\n"
+            "        if(pivot_reached)\n"
+            "        {\n"
+            "          // Insert the new specialized flow\n"
+            "          //(flow_in_out?tc->out:tc->in)[i] = &specialization_array_of_current_flow[base_flow_of_current_flow.flow_index+parametrized_iterator];\n"
+            "          (flow_in_out?tc->out:tc->in)[i] = &specialization_array_of_current_flow[parametrized_iterator];\n"
+            "          ++parametrized_iterator;\n"
+            "        }\n"
+            "      }\n"
+            "      assert(pivot_reached);\n"
+            "    }\n"
+            "    // Update nb_flows\n"
+            "    tc->nb_flows += nb_specializations_of_current_flow-1;\n"
+        );
+        // coutput(
+        //     // "    // Update the mask of each flow\n"
+        //     // "    for(i = 0; i < MAX_DATAFLOWS_PER_TASK; i++) {\n"
+        //     // "      parsec_flow_t *flow = tc->out[i];\n"
+        //     // "      if(!flow) {\n"
+        //     // "        break;\n"
+        //     // "      }\n"
+        //     // "      flow->flow_datatype_mask = 1 << flow->flow_index; // TODO verify (related to in/out)\n"
+        //     // "    }\n"
+        //     "    // Update nb_flows\n"
+        //     "    tc->nb_flows += nb_specializations_of_current_flow-1;\n"
+        // );
+
+
+        coutput("  }\n");
+
+        /*for( jdf_function_entry_t* f = jdf->functions; NULL != f; f = f->next ) {
             for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
                 if( FLOW_IS_PARAMETRIZED(df) ) {
                     coutput("  {\n");
@@ -5810,7 +5942,7 @@ static void jdf_generate_new_function( const jdf_t* jdf )
                         "\n",
                         jdf_basename, f->fname, df->varname,
                         jdf_basename, f->fname, df->varname
-                    );//GET_PARAMETRIZED_FLOW_ITERATOR_NAME
+                    );
                     coutput(
                         "    // Unroll the parametrized flow to generate each specialized flow\n"
                     );
@@ -5862,7 +5994,6 @@ static void jdf_generate_new_function( const jdf_t* jdf )
                         "          {\n"
                         "            // If is input, shift the proper values in the goal\n"
                         "            // Idea: 00abcxyz -> abcccxyz (if shift=2 (i.e. nb_specializations=3) and pivot index = 3)\n"
-                        "            // (c=1 necessarily)\n"
                         "            int shift = nb_specializations_of_parametrized_flow_of_%s_%s_for_parametrized_%s-1;\n"
                         "            parsec_dependency_t unshifted_values = tc->dependencies_goal & ((1<<i)-1);\n"
                         "            parsec_dependency_t shifted_values = (tc->dependencies_goal >> (i + 1)) << (i + 1 + shift);\n"
@@ -5892,13 +6023,13 @@ static void jdf_generate_new_function( const jdf_t* jdf )
                     );
                     coutput(
                         "    // Update the mask of each flow\n"
-                        "    /*for(i = 0; i < MAX_DATAFLOWS_PER_TASK; i++) {\n"
-                        "      parsec_flow_t *flow = tc->out[i];\n"
-                        "      if(!flow) {\n"
-                        "        break;\n"
-                        "      }\n"
-                        "      flow->flow_datatype_mask = 1 << flow->flow_index; // TODO verify (related to in/out)\n"
-                        "    }*/\n"
+                        // "    for(i = 0; i < MAX_DATAFLOWS_PER_TASK; i++) {\n"
+                        // "      parsec_flow_t *flow = tc->out[i];\n"
+                        // "      if(!flow) {\n"
+                        // "        break;\n"
+                        // "      }\n"
+                        // "      flow->flow_datatype_mask = 1 << flow->flow_index; // TODO verify (related to in/out)\n"
+                        // "    }\n"
                         "    // Update nb_flows\n"
                         "    tc->nb_flows += nb_specializations_of_parametrized_flow_of_%s_%s_for_parametrized_%s-1;\n",
                         jdf_basename, f->fname, df->varname
@@ -5907,7 +6038,7 @@ static void jdf_generate_new_function( const jdf_t* jdf )
                     coutput("  }\n");
                 }
             }
-        }
+        }*/
 
         coutput("\n");
 
@@ -5942,6 +6073,7 @@ static void jdf_generate_new_function( const jdf_t* jdf )
                                         dep->dep_index, df->varname, f->fname);
                                 coutput("\n");
 
+                                coutput("    parsec_task_class_t *tc = __parsec_tp->super.super.task_classes_array[%d];\n\n", f->task_class_id);
                                 coutput("    parsec_dep_t *dep = &%s_dep%d_atline_%d%s;\n",
                                     JDF_OBJECT_ONAME(df), depid, JDF_OBJECT_LINENO(dep),
                                     // If ternary, add _iftrue or _iffalse
@@ -5999,7 +6131,7 @@ static void jdf_generate_new_function( const jdf_t* jdf )
 
                                 coutput(
                                     "    // Shift the deps that are after dep (which references the parametrized flow)\n"
-                                    "    parsec_shift_all_deps_after(flow, flow_in_out, dep, nb_specializations_of_parametrized_flow_of_%s_%s_for_parametrized_%s-1);\n\n",
+                                    "    parsec_shift_all_deps_after_and_update_tc(tc, flow, dep, nb_specializations_of_parametrized_flow_of_%s_%s_for_parametrized_%s-1);\n\n",
                                     jdf_basename, call->func_or_mem, call->var
                                 );
 
@@ -6043,13 +6175,16 @@ static void jdf_generate_new_function( const jdf_t* jdf )
                                     string_arena_get_string(sa_it_name)
                                 );
 
-                                if(FLOW_IS_PARAMETRIZED(df))
-                                {
-                                    coutput(
-                                        "      dep_specialization->belongs_to = &flow_of_%s_%s_for_parametrized_%s[%s];\n",
-                                        jdf_basename, f->fname, df->varname, string_arena_get_string(sa_it_name)
-                                    );
-                                }
+                                // if(FLOW_IS_PARAMETRIZED(df))
+                                // {
+                                //     coutput(
+                                //         "      dep_specialization->belongs_to = &flow_of_%s_%s_for_parametrized_%s[%s];\n",
+                                //         jdf_basename, f->fname, df->varname, string_arena_get_string(sa_it2_name)
+                                //     );
+                                // }
+                                coutput(
+                                    "      dep_specialization->belongs_to = flow;\n"
+                                );
 
                                 coutput(
                                     "      (flow_in_out?flow->dep_out:flow->dep_in)[depid+%s] = dep_specialization;\n",

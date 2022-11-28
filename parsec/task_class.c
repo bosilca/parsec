@@ -105,22 +105,112 @@ bool parsec_helper_flow_is_in_flow_array(const parsec_flow_t *flow, parsec_flow_
     return false;
 }
 
+bool parsec_helper_dep_is_in_flow_array(const parsec_dep_t *dep, parsec_dep_t *dep_array[], int dep_array_size)
+{
+    for (int i = 0; i < dep_array_size; i++)
+    {
+        if (dep == dep_array[i])
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 /** __parsec_LBM_shift_all_flow_reference_after
  *
  * Shift all the flows after "pivot_flow" by "shift"
+ * If in_out==0, shift the input flows, otherwise shift the output flows
  *
  */
-void parsec_shift_all_flows_after(parsec_task_class_t *tc, parsec_flow_t *pivot_flow, int shift)
+void parsec_shift_all_flows_after(parsec_task_class_t *tc, const parsec_flow_t *pivot_flow, int in_out, int shift)
 {
-    int i;
+    int i, j;
     int flow_in_out;
     int pivot_index;
+    int last_flow_index;
     parsec_flow_t *flow;
+    parsec_dep_t *dep;
 
     // use an array to keep track of the flows we already treated
     parsec_flow_t *treated_flows[MAX_DATAFLOWS_PER_TASK];
     int treated_flows_size = 0;
 
+    // Determine which array should be used (in or out) depending on in_out
+    //parsec_flow_t **flow_array = (parsec_flow_t **) ((in_out) ? (tc->out) : (tc->in));
+    const int max_dep_count = (in_out) ? MAX_DEP_OUT_COUNT : MAX_DEP_IN_COUNT;
+    parsec_dep_t **dep_array;
+
+    // find the pivot flow
+    for (i = 0; i < MAX_DATAFLOWS_PER_TASK; ++i)
+    {
+        if(pivot_flow == ((in_out) ? (tc->out) : (tc->in))[i])
+            break; // pivot flow found
+        if(!((in_out) ? (tc->out) : (tc->in))[i])
+            return; // pivot not found
+    }
+    if(pivot_flow == ((in_out) ? (tc->out) : (tc->in))[i])
+    {
+        pivot_index = i;
+
+        // - Update all the dep_index > pivot_index
+        // - find last_flow_index (needed for performing the actual shift at the end)
+        for (i = pivot_index + 1; i < MAX_DATAFLOWS_PER_TASK; i++)
+        {
+            flow = ((in_out) ? (tc->out) : (tc->in))[i];
+            if(!flow)
+                break; // end of the array
+
+            dep_array = (in_out) ? flow->dep_out : flow->dep_in;
+
+            for(j=0; j<max_dep_count; j++)
+            {
+                dep = dep_array[j];
+
+                if(!dep)
+                    break; // no more dep
+                if(dep->dep_index > pivot_index)
+                    dep->dep_index += shift*(i-pivot_index);
+            }
+            if(!flow)
+                break; // end of the array
+        }
+        last_flow_index = i - 1;
+
+        // - Shift the flows
+        // - Update the flow_index of the flows
+        for (i = last_flow_index; i >= pivot_index; i--)
+        {
+            flow = ((in_out) ? (tc->out) : (tc->in))[i];
+            ((in_out) ? (tc->out) : (tc->in))[i+shift] = flow;
+            flow->flow_index += shift;
+        }
+    }
+
+/*
+    for (i = 0; i < MAX_DATAFLOWS_PER_TASK; i++)
+    {
+        if(pivot_flow == tc->in[i])
+            break;
+    }
+    //if(i < MAX_DATAFLOWS_PER_TASK) {
+    for(;i<MAX_DATAFLOWS_PER_TASK;++i)
+    {
+        for(j=0;j<MAX_DEP_IN_COUNT;++j)
+        {
+            tc->in[i]->dep[j]->dep_index += shift;
+        }
+    }
+    //}
+*/
+
+
+
+
+
+
+
+/*
     // Increase the IDs of every flow that is greater than the ID of pivot_flow
     for (flow_in_out = 0; flow_in_out < 2; ++flow_in_out)
     {
@@ -154,7 +244,7 @@ void parsec_shift_all_flows_after(parsec_task_class_t *tc, parsec_flow_t *pivot_
      *
      * Note: We displace all the flows following the pivot flow in the in and out array
      * But this is just for convience, to get the parametrized subflows next to each other
-     */
+     *//*
     for (flow_in_out = 0; flow_in_out < 2; ++flow_in_out)
     {
 
@@ -206,11 +296,12 @@ void parsec_shift_all_flows_after(parsec_task_class_t *tc, parsec_flow_t *pivot_
             // Shift the flow
             (flow_in_out ? tc->out : tc->in)[i + shift] = flow;
         }
-    }
+    }*/
 }
 
-void parsec_shift_all_deps_after(parsec_flow_t *flow, int dep_in_out, parsec_dep_t *pivot_dep, int shift)
+void parsec_shift_all_deps_after_and_update_tc(parsec_task_class_t *tc, parsec_flow_t *flow, parsec_dep_t *pivot_dep, int shift)
 {
+    /*
     int pivot_dep_index;
 
     // Look for the pivot dep
@@ -267,6 +358,38 @@ void parsec_shift_all_deps_after(parsec_flow_t *flow, int dep_in_out, parsec_dep
         // Shift the dep
         (dep_in_out ? flow->dep_out : flow->dep_in)[i + shift] = dep;
     }
+*/
+
+
+    // keep track of the deps that have been treated
+    parsec_dep_t *treated_deps[MAX_DEP_IN_COUNT + MAX_DEP_OUT_COUNT];
+    int treated_deps_size = 0;
+
+    for(int in_out=0;in_out<2;++in_out)
+    {
+        for(int flid=0; flid<MAX_DATAFLOWS_PER_TASK; ++flid)
+        {
+            parsec_flow_t *fl = (parsec_flow_t *)(in_out ? tc->out[flid] : tc->in[flid]);
+            if(!fl)
+                break;
+
+            int pivot_dep_dep_index = pivot_dep->dep_index;
+            for (int depid = 0; depid < (in_out?MAX_DEP_OUT_COUNT:MAX_DEP_IN_COUNT); depid++)
+            {
+                parsec_dep_t *dep = (parsec_dep_t *)(in_out ? fl->dep_out[depid] : fl->dep_in[depid]);
+
+                if (!dep)
+                    break;
+
+                if (dep->dep_index > pivot_dep_dep_index && !parsec_helper_dep_is_in_flow_array(dep, treated_deps, treated_deps_size))
+                {
+                    dep->dep_index += shift;
+                    treated_deps[treated_deps_size++] = dep;
+                }
+            }
+        }
+    }
+
 
     /* // The datatype_mask should stay the same, as we do not add any datatype
     // Also shift the flow's flow_datatype_mask
@@ -331,7 +454,7 @@ void parsec_debug_dump_task_class_at_exec(parsec_task_class_t *tc)
                         }
                         else if (dep->flow)
                         {
-                            parsec_debug_verbose(1, parsec_debug_output, "    %s dep [%d] of flow %s is a dep that is linked to dep %d of flow %s (id=%d) of task class %d",
+                            parsec_debug_verbose(1, parsec_debug_output, "    %s dep [%d] of flow %s is has dep_id=%d and goes to flow %s (id=%d) of task class %d",
                                                  dep_in_out ? "->" : "<-", j, flow->name, dep->dep_index, dep->flow->name,
                                                  dep->flow->flow_index, dep->task_class_id);
                         }
@@ -380,6 +503,24 @@ void parsec_check_sanity_of_task_class(parsec_task_class_t *tc)
         }
     }
 
+    // for each flow and each dep, check that:
+    // - belongs_to and flow : != 0xdeadbeef and != NULL
+    for(int in_out=0; in_out<2; ++in_out) {
+        for (i = 0; i < MAX_DATAFLOWS_PER_TASK; i++)
+        {
+            parsec_flow_t *flow = (parsec_flow_t *)(in_out ? tc->out[i] : tc->in[i]);
+            if(!flow) continue;
+            for(int j=0;j<(in_out?MAX_DEP_OUT_COUNT:MAX_DEP_IN_COUNT);++j) {
+                dep = (parsec_dep_t *)(in_out ? flow->dep_out[j] : flow->dep_in[j]);
+                if(!dep) continue;
+                assert(dep->belongs_to != (void*)0xdeadbeef);
+                assert(dep->belongs_to != NULL);
+                assert(dep->flow != (void*)0xdeadbeef);
+                assert(dep->flow != NULL || dep->task_class_id == PARSEC_LOCAL_DATA_TASK_CLASS_ID);
+            }
+        }
+    }
+
     // Check the coherency of the flow flags
     for (i = 0; i < MAX_DATAFLOWS_PER_TASK; i++)
     {
@@ -407,7 +548,7 @@ void parsec_check_sanity_of_task_class(parsec_task_class_t *tc)
     assert(tc->nb_flows == treated_flows_size);
 }
 
-parsec_flow_t *parsec_helper_copy_flow(parsec_flow_t *flow_to, parsec_flow_t *flow_from)
+parsec_flow_t *parsec_helper_copy_flow(parsec_flow_t *flow_to, const parsec_flow_t *flow_from)
 {
     int flow_in_out;
 
@@ -438,7 +579,7 @@ parsec_flow_t *parsec_helper_copy_flow(parsec_flow_t *flow_to, parsec_flow_t *fl
     return flow_to;
 }
 
-parsec_dep_t *parsec_helper_copy_dep(parsec_dep_t * dep_to, parsec_dep_t * dep_from)
+parsec_dep_t *parsec_helper_copy_dep(parsec_dep_t * dep_to, const parsec_dep_t * dep_from)
 {
     //parsec_dep_t *new_dep = (parsec_dep_t *)malloc(sizeof(parsec_dep_t));
     assert(dep_to);
@@ -469,6 +610,7 @@ int parsec_helper_get_dep_index_in_flow(const parsec_flow_t *flow, const parsec_
             return i;
         }
     }
+    assert(0);
     return -1;
 }
 
