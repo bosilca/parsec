@@ -12,7 +12,7 @@
 #include "parsec_internal.h"
 
 // The shift functions creates spaces in the relevant arrays
-void parsec_shift_all_flows_after(parsec_task_class_t *tc, const parsec_flow_t *pivot_flow, int in_out, int shift);
+void parsec_shift_all_flows_after(parsec_task_class_t *tc, const parsec_flow_t *pivot_flow, int shift);
 void parsec_shift_all_deps_after_and_update_tc(parsec_task_class_t *tc, parsec_flow_t *flow, parsec_dep_t *pivot_dep, int dep_in_out, int shift);
 
 // in all flows fl (fl!=flow), increase deps by shift

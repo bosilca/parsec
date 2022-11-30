@@ -5893,8 +5893,7 @@ static void jdf_generate_new_function( const jdf_t* jdf )
         coutput("    const parsec_flow_t *base_flow_of_current_flow = base_flow_of_parametrized_flows[parametrized_flow_id];\n");
         coutput(
             "    // Shift the flows that are after the parametrized flow\n"
-            "    parsec_shift_all_flows_after(tc, base_flow_of_current_flow, 0, nb_specializations_of_current_flow-1); // in\n"
-            "    parsec_shift_all_flows_after(tc, base_flow_of_current_flow, 1, nb_specializations_of_current_flow-1); // out\n"
+            "    parsec_shift_all_flows_after(tc, base_flow_of_current_flow, nb_specializations_of_current_flow-1);\n"
             "\n"
         );
         coutput(

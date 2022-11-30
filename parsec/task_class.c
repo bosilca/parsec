@@ -123,7 +123,7 @@ bool parsec_helper_dep_is_in_flow_array(const parsec_dep_t *dep, parsec_dep_t *d
  * If in_out==0, shift the input flows, otherwise shift the output flows
  *
  */
-void parsec_shift_all_flows_after(parsec_task_class_t *tc, const parsec_flow_t *pivot_flow, int in_out, int shift)
+void parsec_shift_all_flows_after(parsec_task_class_t *tc, const parsec_flow_t *pivot_flow, int shift)
 {
     int i, j;
     int flow_in_out;
@@ -133,57 +133,66 @@ void parsec_shift_all_flows_after(parsec_task_class_t *tc, const parsec_flow_t *
     parsec_dep_t *dep;
 
     // use an array to keep track of the flows we already treated
-    parsec_flow_t *treated_flows[MAX_DATAFLOWS_PER_TASK];
-    int treated_flows_size = 0;
+    parsec_flow_t *shifted_flows[MAX_DATAFLOWS_PER_TASK];
+    int shifted_flows_size = 0;
 
     // Determine which array should be used (in or out) depending on in_out
     //parsec_flow_t **flow_array = (parsec_flow_t **) ((in_out) ? (tc->out) : (tc->in));
-    const int max_dep_count = (in_out) ? MAX_DEP_OUT_COUNT : MAX_DEP_IN_COUNT;
     parsec_dep_t **dep_array;
 
-    // find the pivot flow
-    for (i = 0; i < MAX_DATAFLOWS_PER_TASK; ++i)
-    {
-        if(pivot_flow == ((in_out) ? (tc->out) : (tc->in))[i])
-            break; // pivot flow found
-        if(!((in_out) ? (tc->out) : (tc->in))[i])
-            return; // pivot not found
-    }
-    if(pivot_flow == ((in_out) ? (tc->out) : (tc->in))[i])
-    {
-        pivot_index = i;
+    // The flows will be shifted both in th "in" and "out" arrays
+    for (int in_out = 0; in_out < 2; ++in_out) {
+        const int max_dep_count = (in_out) ? MAX_DEP_OUT_COUNT : MAX_DEP_IN_COUNT;
 
-        // - Update all the dep_index > pivot_index (MODIFICATION: DONT TO THIS)
-        // - find last_flow_index (needed for performing the actual shift at the end)
-        for (i = pivot_index + 1; i < MAX_DATAFLOWS_PER_TASK; i++)
+        // find the pivot flow
+        for (i = 0; i < MAX_DATAFLOWS_PER_TASK; ++i)
         {
-            flow = ((in_out) ? (tc->out) : (tc->in))[i];
-            if(!flow)
-                break; // end of the array
-
-            dep_array = (in_out) ? flow->dep_out : flow->dep_in;
-
-            for(j=0; j<max_dep_count; j++)
-            {
-                dep = dep_array[j];
-
-                if(!dep)
-                    break; // no more dep
-                // if(dep->dep_index > pivot_index) // MODIFICATION: DONT TO THIS
-                //     dep->dep_index += shift*(i-pivot_index);
-            }
-            if(!flow)
-                break; // end of the array
+            if(pivot_flow == ((in_out) ? (tc->out) : (tc->in))[i])
+                break; // pivot flow found
+            if(!((in_out) ? (tc->out) : (tc->in))[i])
+                return; // pivot not found
         }
-        last_flow_index = i - 1;
-
-        // - Shift the flows
-        // - Update the flow_index of the flows
-        for (i = last_flow_index; i > pivot_index; i--)
+        if(pivot_flow == ((in_out) ? (tc->out) : (tc->in))[i])
         {
-            flow = ((in_out) ? (tc->out) : (tc->in))[i];
-            ((in_out) ? (tc->out) : (tc->in))[i+shift] = flow;
-            flow->flow_index += shift;
+            pivot_index = i;
+
+            // - Update all the dep_index > pivot_index (MODIFICATION: DONT TO THIS)
+            // - find last_flow_index (needed for performing the actual shift at the end)
+            for (i = pivot_index + 1; i < MAX_DATAFLOWS_PER_TASK; i++)
+            {
+                flow = ((in_out) ? (tc->out) : (tc->in))[i];
+                if(!flow)
+                    break; // end of the array
+
+                dep_array = (in_out) ? flow->dep_out : flow->dep_in;
+
+                for(j=0; j<max_dep_count; j++)
+                {
+                    dep = dep_array[j];
+
+                    if(!dep)
+                        break; // no more dep
+                    // if(dep->dep_index > pivot_index) // MODIFICATION: DONT TO THIS
+                    //     dep->dep_index += shift*(i-pivot_index);
+                }
+                if(!flow)
+                    break; // end of the array
+            }
+            last_flow_index = i - 1;
+
+            // - Shift the flows
+            // - Update the flow_index of the flows
+            for (i = last_flow_index; i > pivot_index; i--)
+            {
+                flow = ((in_out) ? (tc->out) : (tc->in))[i];
+                ((in_out) ? (tc->out) : (tc->in))[i+shift] = flow;
+                if(!parsec_helper_flow_is_in_flow_array(flow, shifted_flows, shifted_flows_size))
+                {
+                    flow->flow_index += shift;
+                    shifted_flows[shifted_flows_size] = flow;
+                    shifted_flows_size++;
+                }
+            }
         }
     }
 
