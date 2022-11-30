@@ -1743,6 +1743,7 @@ static void jdf_generate_predeclarations( const jdf_t *jdf )
                 coutput("\ntypedef struct parsec_%s_%s_task_class_s {\n", jdf_basename, f->fname);
                 coutput("  parsec_task_class_t super;\n");
 
+/*
                 // Masks:
                 // If any flow/dep is parametrized/referrer, all the action masks have to be dynamically computed
                 coutput("  // Action masks of %s\n", f->fname);
@@ -1759,6 +1760,7 @@ static void jdf_generate_predeclarations( const jdf_t *jdf )
                                             depid, JDF_OBJECT_LINENO(dep));
                     }
                 }
+*/
 
                 // Parametrized flows:
                 coutput("  // Local parametrized flows of %s\n#if defined(PARSEC_DEBUG_NOISIER)\n", f->fname);
@@ -5042,6 +5044,7 @@ static void jdf_generate_one_function( const jdf_t *jdf, jdf_function_entry_t *f
         string_arena_add_string(sa, "static parsec_%s_task_class_t spec_%s = {\n", JDF_OBJECT_ONAME(f), JDF_OBJECT_ONAME(f));
         string_arena_add_string(sa, "  .super = %s\n", JDF_OBJECT_ONAME(f));
 
+/*
         // Masks:
         // If any flow/dep is parametrized/referrer, all the action masks have to be dynamically computed
         string_arena_add_string(sa, "  // Action masks of %s\n", f->fname);
@@ -5058,6 +5061,7 @@ static void jdf_generate_one_function( const jdf_t *jdf, jdf_function_entry_t *f
                                     depid, JDF_OBJECT_LINENO(dep));
             }
         }
+*/
 
         // Parametrized flows:
         string_arena_add_string(sa, "  // Local parametrized flows of %s\n", f->fname);
@@ -6634,6 +6638,7 @@ static void jdf_generate_new_function( const jdf_t* jdf )
             }
         }
 
+/* // Apparently it's not output dep_index that needs a mask, but the input flow
         coutput("  // Update masks for task classes that need them\n");
         for( jdf_function_entry_t* f = jdf->functions; NULL != f; f = f->next ) {
             if( TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED_OR_REFERRER(f)) {
@@ -6708,6 +6713,7 @@ static void jdf_generate_new_function( const jdf_t* jdf )
                 }
             }
         }
+*/
 
         coutput("\n");
 
@@ -10455,6 +10461,21 @@ jdf_generate_code_iterate_successors_or_predecessors(const jdf_t *jdf,
                 }
             }
             
+
+/*
+// Get iterator strings
+string_arena_t *sa_action_mask = string_arena_new(16); // second iterator in case of referrer inside a parametrized flow
+string_arena_add_string(sa_action_mask, "0x%x", (1U << dl->dep_index));
+if(FLOW_IS_PARAMETRIZED(df))
+{
+    string_arena_add_string(sa_it2_name, "%s", df->local_variables->alias);
+    if(strcmp(string_arena_get_string(sa_it_name), string_arena_get_string(sa_it2_name)) == 0) {
+        string_arena_add_string(sa_it2_name, "_2"); // avoid name clash
+    }
+}
+*/
+
+
             switch( dl->guard->guard_type ) {
             case JDF_GUARD_UNCONDITIONAL:
                 if( NULL != dl->guard->calltrue->var) {
