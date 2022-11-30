@@ -1743,7 +1743,24 @@ static void jdf_generate_predeclarations( const jdf_t *jdf )
                 coutput("\ntypedef struct parsec_%s_%s_task_class_s {\n", jdf_basename, f->fname);
                 coutput("  parsec_task_class_t super;\n");
 
-                // First parametrized flows:
+                // Masks:
+                // If any flow/dep is parametrized/referrer, all the action masks have to be dynamically computed
+                coutput("  // Action masks of %s\n", f->fname);
+                for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
+                    int depid=1;
+                    for( jdf_dep_t *dep = df->deps; NULL != dep; dep = dep->next, depid++ ) {
+                        if((dep->dep_flags & JDF_DEP_FLOW_OUT) == 0)
+                        { // We only need the out indices
+                            continue;
+                        }
+                        
+                        coutput("  uint32_t action_mask_of_flow_of_%s_%s_for_%s_dep%d_atline_%d;\n",
+                                            jdf_basename, f->fname, df->varname,
+                                            depid, JDF_OBJECT_LINENO(dep));
+                    }
+                }
+
+                // Parametrized flows:
                 coutput("  // Local parametrized flows of %s\n#if defined(PARSEC_DEBUG_NOISIER)\n", f->fname);
                 for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
                     if( FLOW_IS_PARAMETRIZED(df) ) {
@@ -1759,7 +1776,7 @@ static void jdf_generate_predeclarations( const jdf_t *jdf )
                     }
                 }
 
-                // Then the referrers
+                // Referrers
                 coutput("  // Local referrers of %s\n", f->fname);
                 for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
                     int depid=1;
@@ -5025,7 +5042,24 @@ static void jdf_generate_one_function( const jdf_t *jdf, jdf_function_entry_t *f
         string_arena_add_string(sa, "static parsec_%s_task_class_t spec_%s = {\n", JDF_OBJECT_ONAME(f), JDF_OBJECT_ONAME(f));
         string_arena_add_string(sa, "  .super = %s\n", JDF_OBJECT_ONAME(f));
 
-        // First parametrized flows:
+        // Masks:
+        // If any flow/dep is parametrized/referrer, all the action masks have to be dynamically computed
+        string_arena_add_string(sa, "  // Action masks of %s\n", f->fname);
+        for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
+            int depid=1;
+            for( jdf_dep_t *dep = df->deps; NULL != dep; dep = dep->next, depid++ ) {
+                if((dep->dep_flags & JDF_DEP_FLOW_OUT) == 0)
+                { // We only need the out indices
+                    continue;
+                }
+                
+                string_arena_add_string(sa, "  , .action_mask_of_flow_of_%s_%s_for_%s_dep%d_atline_%d = 0x0\n",
+                                    jdf_basename, f->fname, df->varname,
+                                    depid, JDF_OBJECT_LINENO(dep));
+            }
+        }
+
+        // Parametrized flows:
         string_arena_add_string(sa, "  // Local parametrized flows of %s\n", f->fname);
         string_arena_add_string(sa, "#if defined(PARSEC_DEBUG_NOISIER)\n");
         for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
@@ -5043,7 +5077,7 @@ static void jdf_generate_one_function( const jdf_t *jdf, jdf_function_entry_t *f
             }
         }
 
-        // Then the referrers
+        // Referrers
         string_arena_add_string(sa, "  // Local referrers of %s\n", f->fname);
         for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
             int depid=1;
