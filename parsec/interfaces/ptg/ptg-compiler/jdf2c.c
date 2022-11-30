@@ -6550,6 +6550,11 @@ static void jdf_generate_new_function( const jdf_t* jdf )
             for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
                 depid=1;
                 for( jdf_dep_t *dep = df->deps; NULL != dep; dep = dep->next, depid++ ) {
+                    if((dep->dep_flags & JDF_DEP_FLOW_OUT) == 0)
+                    { // We only need the out indices
+                        continue;
+                    }
+                    
                     for( int target_call=0; target_call<2; ++target_call ) {
                         assert(dep->guard->guard_type==JDF_GUARD_UNCONDITIONAL || dep->guard->guard_type==JDF_GUARD_BINARY || dep->guard->guard_type==JDF_GUARD_TERNARY);
                         if(dep->guard->guard_type!=JDF_GUARD_TERNARY && target_call==1)
@@ -6558,11 +6563,6 @@ static void jdf_generate_new_function( const jdf_t* jdf )
                         }
                         jdf_call_t *call = target_call?dep->guard->callfalse:dep->guard->calltrue;
                         assert(call);
-
-                        if((dep->dep_flags & JDF_DEP_FLOW_OUT) == 0)
-                        { // We only need the out indices
-                            continue;
-                        }
 
                         if( NULL != call->parametrized_offset )
                         {
@@ -6629,6 +6629,81 @@ static void jdf_generate_new_function( const jdf_t* jdf )
                                 (dep->guard->guard_type==JDF_GUARD_TERNARY) ? ((target_call)?"_iffalse":"_iftrue") : "");
                             coutput("  }\n");
                         }
+                    }
+                }
+            }
+        }
+
+        coutput("  // Update masks for task classes that need them\n");
+        for( jdf_function_entry_t* f = jdf->functions; NULL != f; f = f->next ) {
+            if( TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED_OR_REFERRER(f)) {
+                for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
+                    depid=1;
+                    for( jdf_dep_t *dep = df->deps; NULL != dep; dep = dep->next, depid++ ) {
+                        if((dep->dep_flags & JDF_DEP_FLOW_OUT) == 0)
+                        { // We only need the out indices
+                            continue;
+                        }
+
+                        coutput("  { // Output dep %d of %s_%s\n", depid, f->fname, df->varname);
+                        coutput("    parsec_dep_t *dep;\n");
+                        coutput("    int specializations_number;\n");
+                        for( int target_call=0; target_call<2; ++target_call ) {
+                            assert(dep->guard->guard_type==JDF_GUARD_UNCONDITIONAL || dep->guard->guard_type==JDF_GUARD_BINARY || dep->guard->guard_type==JDF_GUARD_TERNARY);
+                            if(dep->guard->guard_type!=JDF_GUARD_TERNARY && target_call==1)
+                            { // callfalse is only relevant for JDF_GUARD_UNCONDITIONAL and JDF_GUARD_BINARY
+                                continue;
+                            }
+                            jdf_call_t *call = target_call?dep->guard->callfalse:dep->guard->calltrue;
+                            assert(call);
+
+                            if(dep->guard->guard_type==JDF_GUARD_TERNARY) {
+                                coutput("    // call%s\n", target_call?"false":"true");
+                            }
+
+                            if( NULL != call->parametrized_offset )
+                            {
+                                jdf_function_entry_t *targetf = find_target_function(jdf, call->func_or_mem);
+                                jdf_dataflow_t *target_flow = find_target_flow(jdf, targetf, call->var);
+                                assert(targetf && target_flow);
+                                if(FLOW_IS_PARAMETRIZED(df) && !FLOW_IS_PARAMETRIZED(target_flow))
+                                {
+                                    coutput("    dep = &flow_of_%s_%s_for_%s_dep%d_atline_%d%s;\n",
+                                                jdf_basename, f->fname, df->varname,
+                                                depid, JDF_OBJECT_LINENO(dep),
+                                                // If ternary, add _iftrue or _iffalse
+                                                (dep->guard->guard_type==JDF_GUARD_TERNARY) ? ((target_call)?"_iffalse":"_iftrue") : "");
+                                }
+                                else
+                                {
+                                    coutput("    dep = &%s_referrer_dep%d_atline_%d%s[0];\n",
+                                            JDF_OBJECT_ONAME(df), depid, JDF_OBJECT_LINENO(dep),
+                                            // If ternary, add _iftrue or _iffalse
+                                            (dep->guard->guard_type==JDF_GUARD_TERNARY) ? ((target_call)?"_iffalse":"_iftrue") : "");
+                                }
+
+                                coutput("    specializations_number = nb_specializations_of_parametrized_flow_of_%s_%s_for_parametrized_%s;\n",
+                                    jdf_basename, targetf->fname, target_flow->varname);
+
+                                coutput("    // Parametrized call: multiple set bits\n");
+                                coutput("    spec_%s.action_mask_of_flow_of_%s_%s_for_%s_dep%d_atline_%d |= ((1<<(specializations_number+1))-1)<<(dep->dep_index);\n",
+                                                    JDF_OBJECT_ONAME(f),
+                                                    jdf_basename, f->fname, df->varname,
+                                                    depid, JDF_OBJECT_LINENO(dep));
+                            }
+                            else
+                            {
+                                coutput("    dep = &%s_dep%d_atline_%d%s;\n",
+                                    JDF_OBJECT_ONAME(df), depid, JDF_OBJECT_LINENO(dep),
+                                    // If ternary, add _iftrue or _iffalse
+                                    (dep->guard->guard_type==JDF_GUARD_TERNARY) ? ((target_call)?"_iffalse":"_iftrue") : "");
+                                coutput("    spec_%s.action_mask_of_flow_of_%s_%s_for_%s_dep%d_atline_%d |= 1<<(dep->dep_index);\n",
+                                                    JDF_OBJECT_ONAME(f),
+                                                    jdf_basename, f->fname, df->varname,
+                                                    depid, JDF_OBJECT_LINENO(dep));
+                            }
+                        }
+                        coutput("  }\n");
                     }
                 }
             }
