@@ -179,7 +179,7 @@ void parsec_shift_all_flows_after(parsec_task_class_t *tc, const parsec_flow_t *
 
         // - Shift the flows
         // - Update the flow_index of the flows
-        for (i = last_flow_index; i >= pivot_index; i--)
+        for (i = last_flow_index; i > pivot_index; i--)
         {
             flow = ((in_out) ? (tc->out) : (tc->in))[i];
             ((in_out) ? (tc->out) : (tc->in))[i+shift] = flow;
