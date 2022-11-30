@@ -153,7 +153,7 @@ void parsec_shift_all_flows_after(parsec_task_class_t *tc, const parsec_flow_t *
     {
         pivot_index = i;
 
-        // - Update all the dep_index > pivot_index
+        // - Update all the dep_index > pivot_index (MODIFICATION: DONT TO THIS)
         // - find last_flow_index (needed for performing the actual shift at the end)
         for (i = pivot_index + 1; i < MAX_DATAFLOWS_PER_TASK; i++)
         {
@@ -169,8 +169,8 @@ void parsec_shift_all_flows_after(parsec_task_class_t *tc, const parsec_flow_t *
 
                 if(!dep)
                     break; // no more dep
-                if(dep->dep_index > pivot_index)
-                    dep->dep_index += shift*(i-pivot_index);
+                // if(dep->dep_index > pivot_index) // MODIFICATION: DONT TO THIS
+                //     dep->dep_index += shift*(i-pivot_index);
             }
             if(!flow)
                 break; // end of the array
@@ -299,9 +299,8 @@ void parsec_shift_all_flows_after(parsec_task_class_t *tc, const parsec_flow_t *
     }*/
 }
 
-void parsec_shift_all_deps_after_and_update_tc(parsec_task_class_t *tc, parsec_flow_t *flow, parsec_dep_t *pivot_dep, int shift)
+void parsec_shift_all_deps_after_and_update_tc(parsec_task_class_t *tc, parsec_flow_t *flow, parsec_dep_t *pivot_dep, int dep_in_out, int shift)
 {
-    /*
     int pivot_dep_index;
 
     // Look for the pivot dep
@@ -358,9 +357,9 @@ void parsec_shift_all_deps_after_and_update_tc(parsec_task_class_t *tc, parsec_f
         // Shift the dep
         (dep_in_out ? flow->dep_out : flow->dep_in)[i + shift] = dep;
     }
-*/
 
 
+/*
     // keep track of the deps that have been treated
     parsec_dep_t *treated_deps[MAX_DEP_IN_COUNT + MAX_DEP_OUT_COUNT];
     int treated_deps_size = 0;
@@ -389,7 +388,7 @@ void parsec_shift_all_deps_after_and_update_tc(parsec_task_class_t *tc, parsec_f
             }
         }
     }
-
+*/
 
     /* // The datatype_mask should stay the same, as we do not add any datatype
     // Also shift the flow's flow_datatype_mask
@@ -449,13 +448,13 @@ void parsec_debug_dump_task_class_at_exec(parsec_task_class_t *tc)
 
                         if (PARSEC_LOCAL_DATA_TASK_CLASS_ID == dep->task_class_id)
                         {
-                            parsec_debug_verbose(1, parsec_debug_output, "    %s dep [%d] of flow %s linked with data collection",
-                                                 dep_in_out ? "->" : "<-", j, flow->name);
+                            parsec_debug_verbose(1, parsec_debug_output, "    %s dep [%d] (addr=%p) of flow %s linked with data collection",
+                                                 dep_in_out ? "->" : "<-", j, dep, flow->name);
                         }
                         else if (dep->flow)
                         {
-                            parsec_debug_verbose(1, parsec_debug_output, "    %s dep [%d] of flow %s is has dep_id=%d and goes to flow %s (id=%d) of task class %d",
-                                                 dep_in_out ? "->" : "<-", j, flow->name, dep->dep_index, dep->flow->name,
+                            parsec_debug_verbose(1, parsec_debug_output, "    %s dep [%d] (addr=%p) of flow %s is has dep_id=%d and goes to flow %s (id=%d) of task class %d",
+                                                 dep_in_out ? "->" : "<-", j, dep, flow->name, dep->dep_index, dep->flow->name,
                                                  dep->flow->flow_index, dep->task_class_id);
                         }
                         else

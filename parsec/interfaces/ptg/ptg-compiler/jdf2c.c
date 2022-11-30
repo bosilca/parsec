@@ -5866,6 +5866,21 @@ static void jdf_generate_new_function( const jdf_t* jdf )
             "      //char specialized_flow_name[64];\n"
             //"      //sprintf(specialized_flow_name, \"%s_%s_%%d\", parametrized_iterator); // modifying the name causes find_target_flow to fail!\n"
             "      //specialization_array_of_current_flow[parametrized_iterator].name = strdup(specialized_flow_name);\n"
+            "\n"
+            "      // Keep the dep_index of each dep of each specialized flow\n"
+            "      /*for( int j=0; j<MAX_DEP_IN_COUNT; ++j ) {\n"
+            "        parsec_dep_t *dep = specialization_array_of_current_flow[parametrized_iterator].dep_in[j];\n"
+            "        if(!dep) break;\n"
+            "        dep->dep_index += parametrized_iterator;\n"
+            "      }\n"
+            "      for( int j=0; j<MAX_DEP_OUT_COUNT; ++j ) {\n"
+            "        if(specialization_array_of_current_flow[parametrized_iterator].flow_flags & PARSEC_FLOW_ACCESS_READ==0) {\n"
+            "          parsec_dep_t *dep = specialization_array_of_current_flow[parametrized_iterator].dep_out[j];\n"
+            "          if(!dep) break;\n"
+            "          // I.e. if the flow has an output but no input (avoids duplicates)\n"
+            "          dep->dep_index += parametrized_iterator;\n"
+            "        }\n"
+            "      }*/\n"
         );
         
         coutput("    }\n");
@@ -5928,6 +5943,21 @@ static void jdf_generate_new_function( const jdf_t* jdf )
 
 
         coutput("  }\n");
+
+        coutput(
+            "#if defined(PARSEC_DEBUG_PARANOID)\n"
+            "  // use parsec_debug_dump_task_class_at_exec(tc); on each task class\n"
+            "  parsec_debug_verbose(2, parsec_debug_output, \"##\");\n"
+            "  parsec_debug_verbose(2, parsec_debug_output, \"##\");\n"
+            "  parsec_debug_verbose(2, parsec_debug_output, \"############ Task classes after unrolling parametrized flows ############\");\n"
+            "  parsec_debug_verbose(2, parsec_debug_output, \"##\");\n"
+            "  for( int i = 0; i < __parsec_tp->super.super.nb_task_classes; i++ ) {\n"
+            "    parsec_task_class_t *tc = __parsec_tp->super.super.task_classes_array[i];\n"
+            "    parsec_debug_dump_task_class_at_exec(tc);\n"
+            "    parsec_check_sanity_of_task_class(tc);\n"
+            "  }\n"
+            "#endif\n"
+        );
 
         /*for( jdf_function_entry_t* f = jdf->functions; NULL != f; f = f->next ) {
             for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
@@ -6131,7 +6161,7 @@ static void jdf_generate_new_function( const jdf_t* jdf )
 
                                 coutput(
                                     "    // Shift the deps that are after dep (which references the parametrized flow)\n"
-                                    "    parsec_shift_all_deps_after_and_update_tc(tc, flow, dep, nb_specializations_of_parametrized_flow_of_%s_%s_for_parametrized_%s-1);\n\n",
+                                    "    parsec_shift_all_deps_after_and_update_tc(tc, flow, dep, flow_in_out, nb_specializations_of_parametrized_flow_of_%s_%s_for_parametrized_%s-1);\n\n",
                                     jdf_basename, call->func_or_mem, call->var
                                 );
 
@@ -6232,7 +6262,105 @@ static void jdf_generate_new_function( const jdf_t* jdf )
 
         coutput("\n");
 
-        coutput("  // Finally, set the correct indices for the parametrized flows and the referrers\n");
+        coutput(
+            "#if defined(PARSEC_DEBUG_PARANOID)\n"
+            "  // use parsec_debug_dump_task_class_at_exec(tc); on each task class\n"
+            "  parsec_debug_verbose(2, parsec_debug_output, \"##\");\n"
+            "  parsec_debug_verbose(2, parsec_debug_output, \"##\");\n"
+            "  parsec_debug_verbose(2, parsec_debug_output, \"############ Task classes after unrolling referrers ############\");\n"
+            "  parsec_debug_verbose(2, parsec_debug_output, \"##\");\n"
+            "  for( int i = 0; i < __parsec_tp->super.super.nb_task_classes; i++ ) {\n"
+            "    parsec_task_class_t *tc = __parsec_tp->super.super.task_classes_array[i];\n"
+            "    parsec_debug_dump_task_class_at_exec(tc);\n"
+            "    parsec_check_sanity_of_task_class(tc);\n"
+            "  }\n"
+            "#endif\n"
+        );
+
+
+        coutput("  // at this point, all the parametrized flows have been created, but the structure can have some incoherencies:\n");
+        coutput("  //  - when a parametrized flow is unrolled, the deps are not copied in memory\n");
+        coutput("  //  - the dep_index is not correct (there can be duplicates in a task class)\n");
+        coutput("  // The next block of code will fix these issues\n");
+        coutput("  {\n");
+
+
+        coutput("    // First, ensure that there is no duplicate pointer\n");
+
+        coutput("    for(int tcid = 0; tcid < __parsec_tp->super.super.nb_task_classes; tcid++) {\n");
+        coutput("      parsec_task_class_t *tc = __parsec_tp->super.super.task_classes_array[tcid];\n");
+        coutput("      parsec_dep_t *found_deps[MAX_DEP_IN_COUNT*MAX_DATAFLOWS_PER_TASK];\n");
+        coutput("      int found_deps_count = 0; // unique found input deps\n");
+        coutput("      for(int flow_id = 0; flow_id < tc->nb_flows && flow_id < MAX_DATAFLOWS_PER_TASK; flow_id++) {\n");
+        coutput("        parsec_flow_t *flow = tc->in[flow_id];\n");
+        coutput("        if(NULL == flow) break;\n");
+        coutput("        for(int depid = 0; depid < MAX_DEP_IN_COUNT; depid++) {\n");
+        coutput("          parsec_dep_t *dep = flow->dep_in[depid];\n");
+        coutput("          if(NULL == dep) break;\n");
+        coutput("          if(parsec_helper_dep_is_in_flow_array(dep, found_deps, found_deps_count)) {\n");
+        coutput("            // duplicate: create a new dep and copy the content\n");
+        coutput("            dep = parsec_helper_copy_dep(malloc(sizeof(parsec_dep_t)), dep);\n");
+        coutput("            flow->dep_in[depid] = dep;\n");
+        coutput("          }\n");
+        coutput("          assert(found_deps_count < MAX_DEP_IN_COUNT*MAX_DATAFLOWS_PER_TASK);\n");
+        coutput("          found_deps[found_deps_count++] = dep;\n");
+        coutput("        }\n");
+        coutput("      }\n");
+        coutput("      found_deps_count = 0; // unique found output deps\n");
+        coutput("      for(int flow_id = 0; flow_id < tc->nb_flows && flow_id < MAX_DATAFLOWS_PER_TASK; flow_id++) {\n");
+        coutput("        parsec_flow_t *flow = tc->out[flow_id];\n");
+        coutput("        if(NULL == flow) break;\n");
+        coutput("        for(int depid = 0; depid < MAX_DEP_OUT_COUNT; depid++) {\n");
+        coutput("          parsec_dep_t *dep = flow->dep_out[depid];\n");
+        coutput("          if(NULL == dep) break;\n");
+        coutput("          if(parsec_helper_dep_is_in_flow_array(dep, found_deps, found_deps_count)) {\n");
+        coutput("            // duplicate: create a new dep and copy the content\n");
+        coutput("            dep = parsec_helper_copy_dep(malloc(sizeof(parsec_dep_t)), dep);\n");
+        coutput("            flow->dep_out[depid] = dep;\n");
+        coutput("          }\n");
+        coutput("          assert(found_deps_count < MAX_DEP_OUT_COUNT*MAX_DATAFLOWS_PER_TASK);\n");
+        coutput("          found_deps[found_deps_count++] = dep;\n");
+        coutput("        }\n");
+        coutput("      }\n");
+        coutput("    }\n");
+
+        coutput("    // Second, fix the dep_indexes\n");
+        coutput("    // We know that the dep_indexes are ascending inside a flow and between flows, which make removing duplicates easier\n");
+
+        coutput("    for(int int_out = 0; int_out < 2; int_out++) {\n");
+        coutput("      for(int tcid = 0; tcid < __parsec_tp->super.super.nb_task_classes; tcid++) {\n");
+        coutput("        parsec_task_class_t *tc = __parsec_tp->super.super.task_classes_array[tcid];\n");
+        coutput("        int current_max_dep_id = 0; // Max dep_id of this task_class\n");
+        coutput("        for(int flow_id = 0; flow_id < tc->nb_flows && flow_id < MAX_DATAFLOWS_PER_TASK; flow_id++, ++current_max_dep_id) {\n");
+        coutput("          parsec_flow_t *flow = (int_out?tc->out:tc->in)[flow_id];\n");
+        coutput("          if(NULL == flow) break;\n");
+        coutput("          for(int depid = 0; depid < (int_out?MAX_DEP_OUT_COUNT:MAX_DEP_IN_COUNT); depid++) {\n");
+        coutput("            parsec_dep_t *dep = (int_out?flow->dep_out:flow->dep_in)[depid];\n");
+        coutput("            if(NULL == dep) break;\n");
+        coutput("            int current_dep_index = dep->dep_index;\n");
+        coutput("            if(current_dep_index < current_max_dep_id) {\n");
+        coutput("              // dep_index is not correct: set all the corresponding dep_index to current_max_dep_id\n");
+        coutput("              for(; dep && dep->dep_index == current_dep_index; ++depid, dep = (int_out?flow->dep_out:flow->dep_in)[depid]) {\n");
+        coutput("                dep->dep_index = current_max_dep_id;\n");
+        coutput("              }\n");
+        coutput("              --depid; // we went one step too far\n");
+        coutput("              ++current_max_dep_id;\n");
+        coutput("            }\n");
+        coutput("            else {\n");
+        coutput("              current_max_dep_id = current_dep_index;\n");
+        coutput("            }\n");
+        coutput("          }\n");
+        coutput("        }\n");
+        coutput("      }\n");
+        coutput("    }\n");
+
+
+        //coutput("    for(int tcid = 0; tcid < __parsec_tp->super.super.nb_task_classes; tcid++) {\n");
+
+        coutput("  }\n");
+
+
+        coutput("  // Finally, retrieve the correct indices for the parametrized flows and the referrers\n");
         for( jdf_function_entry_t* f = jdf->functions; NULL != f; f = f->next ) {
             if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f))
             {
@@ -6477,10 +6605,10 @@ static void jdf_generate_new_function( const jdf_t* jdf )
         coutput(
             "#if defined(PARSEC_DEBUG_PARANOID)\n"
             "  // use parsec_debug_dump_task_class_at_exec(tc); on each task class\n"
-            "  parsec_debug_verbose(10, parsec_debug_output, \"##\");\n"
-            "  parsec_debug_verbose(10, parsec_debug_output, \"##\");\n"
-            "  parsec_debug_verbose(10, parsec_debug_output, \"############ Task classes after update ############\");\n"
-            "  parsec_debug_verbose(10, parsec_debug_output, \"##\");\n"
+            "  parsec_debug_verbose(2, parsec_debug_output, \"##\");\n"
+            "  parsec_debug_verbose(2, parsec_debug_output, \"##\");\n"
+            "  parsec_debug_verbose(2, parsec_debug_output, \"############ Task classes after update ############\");\n"
+            "  parsec_debug_verbose(2, parsec_debug_output, \"##\");\n"
             "  for( int i = 0; i < __parsec_tp->super.super.nb_task_classes; i++ ) {\n"
             "    parsec_task_class_t *tc = __parsec_tp->super.super.task_classes_array[i];\n"
             "    parsec_debug_dump_task_class_at_exec(tc);\n"
