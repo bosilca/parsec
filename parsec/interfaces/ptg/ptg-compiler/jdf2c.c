@@ -3680,7 +3680,7 @@ static void jdf_generate_startup_tasks(const jdf_t *jdf, const jdf_function_entr
 
 
                 if( FLOW_IS_PARAMETRIZED(dataflow) ) {
-                    expr_info_t expr_info = EMPTY_EXPR_INFO;coutput("coucou\n");
+                    expr_info_t expr_info = EMPTY_EXPR_INFO;
                     expr_info.sa = string_arena_new(32);
                     expr_info.prefix = "";
                     expr_info.suffix = "";
@@ -9891,8 +9891,15 @@ static char *jdf_dump_context_assignment(string_arena_t *sa_open,
                 dep_ld = jdf_expr_lv_next(dep->local_defs, dep_ld);
                 continue; /* This local define was already issued as part of the dep */
             }
-            string_arena_add_string(sa_open, "%s%s  int %s;\n", prefix, indent(nbopen), ld->alias);
-            if(JDF_RANGE == ld->op || JDF_PARAMETRIZED_FLOW_RANGE == ld->op) {
+            if(JDF_PARAMETRIZED_FLOW_RANGE != ld->op)
+            {  // The range is handled in an upper-level loop in iterate_successors
+                string_arena_add_string(sa_open, "%s%s  int %s;\n", prefix, indent(nbopen), ld->alias);
+            }
+            else
+            {
+                string_arena_add_string(sa_open, "%s%s  // do not declare %s, it is a parametrized flow range\n", prefix, indent(nbopen), ld->alias);
+            }
+            if(JDF_RANGE == ld->op/* || JDF_PARAMETRIZED_FLOW_RANGE == ld->op*/) {
                 string_arena_add_string(sa_open,
                                         "%s%sfor( %s = %s;",
                                         prefix, indent(nbopen), ld->alias, dump_expr((void**)ld->jdf_ta1, &local_info));
@@ -9904,9 +9911,19 @@ static char *jdf_dump_context_assignment(string_arena_t *sa_open,
                                         prefix, indent(nbopen), ld->ldef_index, ld->alias);
                 nbopen++;
             } else {
-                string_arena_add_string(sa_open,
+                if(JDF_PARAMETRIZED_FLOW_RANGE == ld->op) 
+                {
+                    // We do not iterate over the parametrized flow because it is already being looped on in iterate_successors
+                    string_arena_add_string(sa_open,
+                                        "%s%s  "JDF2C_NAMESPACE"_tmp_locals.ldef[%d].value = %s;\n",
+                                        prefix, indent(nbopen), ld->ldef_index, ld->alias);
+                }
+                else
+                {
+                    string_arena_add_string(sa_open,
                                         "%s%s  "JDF2C_NAMESPACE"_tmp_locals.ldef[%d].value = %s = %s;\n",
                                         prefix, indent(nbopen), ld->ldef_index, ld->alias, dump_expr((void**)ld, &local_info));
+                }
             }
         }
     }
