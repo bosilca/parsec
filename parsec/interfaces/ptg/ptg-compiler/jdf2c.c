@@ -6740,7 +6740,7 @@ static void jdf_generate_new_function( const jdf_t* jdf )
                                 jdf_basename, f->fname, df->varname);
                         coutput("      int specializations_number = nb_specializations_of_parametrized_flow_of_%s_%s_for_parametrized_%s;\n",
                                 jdf_basename, f->fname, df->varname);
-                        coutput("      spec_%s.action_mask_of_flow_of_%s_%s_for_%s = ((1<<(specializations_number+1))-1)<<flow->flow_index;\n",
+                        coutput("      spec_%s.action_mask_of_flow_of_%s_%s_for_%s = ((1<<(specializations_number))-1)<<flow->flow_index;\n",
                             JDF_OBJECT_ONAME(f),
                             jdf_basename, f->fname, df->varname);
                     }
