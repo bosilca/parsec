@@ -6328,11 +6328,11 @@ static void jdf_generate_new_function( const jdf_t* jdf )
 
 
         coutput("    // First, ensure that there is no duplicate pointer\n");
-
+        coutput("#if defined(PARSEC_DEBUG_PARANOID)\n");
         coutput("    for(int tcid = 0; tcid < __parsec_tp->super.super.nb_task_classes; tcid++) {\n");
         coutput("      parsec_task_class_t *tc = __parsec_tp->super.super.task_classes_array[tcid];\n");
         coutput("      parsec_dep_t *found_deps[MAX_DEP_IN_COUNT*MAX_DATAFLOWS_PER_TASK];\n");
-        coutput("      int found_deps_count = 0; // unique found input deps\n");
+        coutput("      int found_deps_count = 0; // unique found INPUT deps\n");
         coutput("      for(int flow_id = 0; flow_id < tc->nb_flows && flow_id < MAX_DATAFLOWS_PER_TASK; flow_id++) {\n");
         coutput("        parsec_flow_t *flow = tc->in[flow_id];\n");
         coutput("        if(NULL == flow) break;\n");
@@ -6348,7 +6348,7 @@ static void jdf_generate_new_function( const jdf_t* jdf )
         coutput("          found_deps[found_deps_count++] = dep;\n");
         coutput("        }\n");
         coutput("      }\n");
-        coutput("      found_deps_count = 0; // unique found output deps\n");
+        coutput("      found_deps_count = 0; // unique found OUTPUT deps\n");
         coutput("      for(int flow_id = 0; flow_id < tc->nb_flows && flow_id < MAX_DATAFLOWS_PER_TASK; flow_id++) {\n");
         coutput("        parsec_flow_t *flow = tc->out[flow_id];\n");
         coutput("        if(NULL == flow) break;\n");
@@ -6365,15 +6365,16 @@ static void jdf_generate_new_function( const jdf_t* jdf )
         coutput("        }\n");
         coutput("      }\n");
         coutput("    }\n");
+        coutput("#endif\n");
 
+        coutput("\n");
         coutput("    // Second, fix the dep_indexes\n");
-        coutput("    // We know that the dep_indexes are ascending inside a flow and between flows, which make removing duplicates easier\n");
-
+        coutput("    // We want to make sure that the dep_indexes are unique per task class\n");
         coutput("    for(int int_out = 0; int_out < 2; int_out++) {\n");
         coutput("      for(int tcid = 0; tcid < __parsec_tp->super.super.nb_task_classes; tcid++) {\n");
         coutput("        parsec_task_class_t *tc = __parsec_tp->super.super.task_classes_array[tcid];\n");
         coutput("        int current_max_dep_id = 0; // Max dep_id of this task_class\n");
-        coutput("        for(int flow_id = 0; flow_id < tc->nb_flows && flow_id < MAX_DATAFLOWS_PER_TASK; flow_id++, ++current_max_dep_id) {\n");
+        coutput("        for(int flow_id = 0; flow_id < tc->nb_flows && flow_id < MAX_DATAFLOWS_PER_TASK; flow_id++) {\n");
         coutput("          parsec_flow_t *flow = (int_out?tc->out:tc->in)[flow_id];\n");
         coutput("          if(NULL == flow) break;\n");
         coutput("          for(int depid = 0; depid < (int_out?MAX_DEP_OUT_COUNT:MAX_DEP_IN_COUNT); depid++) {\n");
@@ -6381,14 +6382,12 @@ static void jdf_generate_new_function( const jdf_t* jdf )
         coutput("            if(NULL == dep) break;\n");
         coutput("            int current_dep_index = dep->dep_index;\n");
         coutput("            if(current_dep_index < current_max_dep_id) {\n");
-        coutput("              // dep_index is not correct: set all the corresponding dep_index to current_max_dep_id\n");
-        coutput("              for(; dep && dep->dep_index == current_dep_index; ++depid, dep = (int_out?flow->dep_out:flow->dep_in)[depid]) {\n");
+        coutput("              // dep_index is not unique: set all the corresponding dep_index to current_max_dep_id + 1\n");
+        coutput("              current_max_dep_id++;\n");
+        coutput("              for(; dep && dep->dep_index == current_dep_index; dep = (int_out?flow->dep_out:flow->dep_in)[depid]) {\n");
         coutput("                dep->dep_index = current_max_dep_id;\n");
         coutput("              }\n");
-        coutput("              --depid; // we went one step too far\n");
-        coutput("              ++current_max_dep_id;\n");
-        coutput("            }\n");
-        coutput("            else {\n");
+        coutput("            } else {\n");
         coutput("              current_max_dep_id = current_dep_index;\n");
         coutput("            }\n");
         coutput("          }\n");

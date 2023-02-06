@@ -462,7 +462,7 @@ void parsec_debug_dump_task_class_at_exec(parsec_task_class_t *tc)
                         }
                         else if (dep->flow)
                         {
-                            parsec_debug_verbose(1, parsec_debug_output, "    %s dep [%d] (addr=%p) of flow %s is has dep_id=%d and goes to flow %s (id=%d) of task class %d",
+                            parsec_debug_verbose(1, parsec_debug_output, "    %s dep [%d] (addr=%p) of flow %s has dep_id=%d and goes to flow %s (id=%d) of task class %d",
                                                  dep_in_out ? "->" : "<-", j, dep, flow->name, dep->dep_index, dep->flow->name,
                                                  dep->flow->flow_index, dep->task_class_id);
                         }
