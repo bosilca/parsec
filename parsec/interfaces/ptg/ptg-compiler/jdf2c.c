@@ -1763,6 +1763,9 @@ static void jdf_generate_predeclarations( const jdf_t *jdf )
                     coutput("  uint32_t action_mask_of_flow_of_%s_%s_for_%s;\n",
                                         jdf_basename, f->fname, df->varname);
                 }
+                // action_mask for the entire task class
+                coutput("  uint32_t action_mask_of_flow_of_%s_%s;\n",
+                            jdf_basename, f->fname);
 
                 // Parametrized flows:
                 coutput("  // Local parametrized flows of %s\n#if defined(PARSEC_DEBUG_NOISIER)\n", f->fname);
@@ -5066,6 +5069,8 @@ static void jdf_generate_one_function( const jdf_t *jdf, jdf_function_entry_t *f
             string_arena_add_string(sa, "  , .action_mask_of_flow_of_%s_%s_for_%s = 0x0\n",
                                 jdf_basename, f->fname, df->varname);
         }
+        string_arena_add_string(sa, "  , .action_mask_of_flow_of_%s_%s = 0x0\n",
+                        jdf_basename, f->fname);
 
 
         // Parametrized flows:
@@ -6730,6 +6735,9 @@ static void jdf_generate_new_function( const jdf_t* jdf )
         for( jdf_function_entry_t* f = jdf->functions; NULL != f; f = f->next ) {
             if( TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED_OR_REFERRER(f)) {
                 coutput("  { // task class %s\n", f->fname);
+
+                coutput("    // spec_%s.action_mask_of_flow_of_%s_%s = 0; // should already be set to 0\n",
+                            JDF_OBJECT_ONAME(f), jdf_basename, f->fname);
                 for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
                     coutput("    { // Flow %s of task class %s\n", df->varname, f->fname);
                     
@@ -6752,8 +6760,12 @@ static void jdf_generate_new_function( const jdf_t* jdf )
                             JDF_OBJECT_ONAME(f),
                             jdf_basename, f->fname, df->varname);
                     }
+                    coutput("      spec_%s.action_mask_of_flow_of_%s_%s |= spec_%s.action_mask_of_flow_of_%s_%s_for_%s; // should already be set to 0\n",
+                            JDF_OBJECT_ONAME(f), jdf_basename, f->fname,
+                            JDF_OBJECT_ONAME(f), jdf_basename, f->fname, df->varname);
                     coutput("    }\n");
                 }
+                
                 coutput("  }\n");
             }
         }
@@ -8293,17 +8305,31 @@ static void jdf_generate_code_call_release_dependencies(const jdf_t *jdf,
     jdf_dataflow_t* dl;
     (void)jdf;
 
+    char complete_mask_str[92];
+
     for( dl = function->dataflow; dl != NULL; dl = dl->next ) {
         complete_mask |= dl->flow_dep_mask_out;
     }
+
+    // if the task class has any parametrized flow is referrer, the mask can not be computed at compile time
+    if(0)//TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED_OR_REFERRER(function))
+    {
+        snprintf(complete_mask_str, 92, "spec_%s.action_mask_of_flow_of_%s_%s",
+                    JDF_OBJECT_ONAME(function), jdf_basename, function->fname);
+    }
+    else
+    {
+        snprintf(complete_mask_str, 92, "0x%x", complete_mask);
+    }
+
     coutput("  release_deps_of_%s_%s(es, %s,\n"
             "      PARSEC_ACTION_RELEASE_REMOTE_DEPS |\n"
             "      PARSEC_ACTION_RELEASE_LOCAL_DEPS |\n"
             "      PARSEC_ACTION_RELEASE_LOCAL_REFS |\n"
             "      PARSEC_ACTION_RESHAPE_ON_RELEASE |\n"
-            "      0x%x,  /* mask of all dep_index */ \n"
+            "      %s,  /* mask of all dep_index */ \n"
             "      NULL);\n",
-            jdf_basename, function->fname, context_name, complete_mask);
+            jdf_basename, function->fname, context_name, complete_mask_str);
 }
 
 /**
