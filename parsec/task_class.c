@@ -485,7 +485,7 @@ void parsec_debug_dump_task_class_at_exec(parsec_task_class_t *tc)
 
 /* Checks if the task class is valid (for debugging purposes)
  */
-void parsec_check_sanity_of_task_class(parsec_task_class_t *tc)
+void parsec_check_sanity_of_task_class(parsec_task_class_t *tc, bool check_dep_index)
 {
     int i, j;
     int flow_in_out, dep_in_out;
@@ -530,26 +530,30 @@ void parsec_check_sanity_of_task_class(parsec_task_class_t *tc)
     }
 
     // Check the coherency of the flow flags
-    for (i = 0; i < MAX_DATAFLOWS_PER_TASK; i++)
+    if(check_dep_index)
     {
-        const parsec_flow_t *flow = tc->out[i];
-
-        if (!flow)
+        for (i = 0; i < MAX_DATAFLOWS_PER_TASK; i++)
         {
-            break;
-        }
+            const parsec_flow_t *flow = tc->out[i];
 
-        // For each output dep of the flow ...
-        for (j = 0; j < (dep_in_out ? MAX_DEP_OUT_COUNT : MAX_DEP_IN_COUNT); j++)
-        {
-            dep = flow->dep_out[j];
-            if (!dep)
+            if (!flow)
             {
                 break;
             }
 
-            // All out dependencies should be in the flow datatype mask
-            assert((1 << dep->dep_datatype_index) & flow->flow_datatype_mask);
+            // For each output dep of the flow ...
+            for (j = 0; j < (dep_in_out ? MAX_DEP_OUT_COUNT : MAX_DEP_IN_COUNT); j++)
+            {
+                dep = flow->dep_out[j];
+                if (!dep)
+                {
+                    break;
+                }
+
+                // All out dependencies should be in the flow datatype mask
+                assert((1 << dep->dep_datatype_index) & flow->flow_datatype_mask);
+                //assert((1 << dep->dep_index) & flow->flow_datatype_mask);
+            }
         }
     }
 
