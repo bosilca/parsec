@@ -5893,6 +5893,7 @@ static void jdf_generate_new_function( const jdf_t* jdf )
             "        parsec_dep_t *dep = specialization_array_of_current_flow[parametrized_iterator].dep_in[j];\n"
             "        if(!dep) break;\n"
             "        dep->dep_index += parametrized_iterator;\n"
+            "        dep->dep_datatype_index += parametrized_iterator;\n"
             "      }\n"
             "      for( int j=0; j<MAX_DEP_OUT_COUNT; ++j ) {\n"
             "        if(specialization_array_of_current_flow[parametrized_iterator].flow_flags & PARSEC_FLOW_ACCESS_READ==0) {\n"
@@ -5900,6 +5901,7 @@ static void jdf_generate_new_function( const jdf_t* jdf )
             "          if(!dep) break;\n"
             "          // I.e. if the flow has an output but no input (avoids duplicates)\n"
             "          dep->dep_index += parametrized_iterator;\n"
+            "          dep->dep_datatype_index += parametrized_iterator;\n"
             "        }\n"
             "      }*/\n"
         );
@@ -6374,8 +6376,8 @@ static void jdf_generate_new_function( const jdf_t* jdf )
         coutput("        int current_max_dep_id_task_class = 0; // Max dep_id of this task class\n");
         coutput("        for(int flow_id = 0; flow_id < tc->nb_flows && flow_id < MAX_DATAFLOWS_PER_TASK; flow_id++) {\n");
         coutput("          parsec_flow_t *flow = (in_out?tc->out:tc->in)[flow_id];\n");
-        coutput("          //if(in_out == 1)\n");
-        coutput("          //  flow->flow_datatype_mask = 0;\n");
+        coutput("          if(in_out == 1)\n");
+        coutput("            flow->flow_datatype_mask = 0;\n");
         coutput("          // We look for the min and max, because we need them to compute the exact lifting\n");
         coutput("          int current_min_dep_id_flow = INT_MAX; // Min dep_id of this flow\n");
         coutput("          int current_max_dep_id_flow = 0; // Max dep_id of this flow\n\n");
@@ -6397,8 +6399,9 @@ static void jdf_generate_new_function( const jdf_t* jdf )
         coutput("            parsec_dep_t *dep = (in_out?flow->dep_out:flow->dep_in)[depid];\n");
         coutput("            if(NULL == dep) break;\n");
         coutput("            dep->dep_index += current_max_dep_id_task_class - current_min_dep_id_flow;\n");
-        coutput("            //if(in_out==1)\n");
-        coutput("            //  flow->flow_datatype_mask |= 1<<dep->dep_index; // keep the flow_datatype_mask up-to-date\n");
+        coutput("            dep->dep_datatype_index += current_max_dep_id_task_class - current_min_dep_id_flow;\n");
+        coutput("            if(in_out==1)\n");
+        coutput("              flow->flow_datatype_mask |= 1<<dep->dep_index; // keep the flow_datatype_mask up-to-date\n");
         coutput("          }\n");
         coutput("          current_max_dep_id_task_class += current_max_dep_id_flow-current_min_dep_id_flow+1;\n");
         coutput("        }\n");
@@ -8457,7 +8460,7 @@ jdf_generate_code_datatype_lookup(const jdf_t *jdf,
             }
 
             /* update the mask before the next dump */
-            current_mask |= (type == JDF_DEP_FLOW_OUT ? (1U << dl->dep_index) : (1U << fl->flow_index));
+            current_mask |= (type == JDF_DEP_FLOW_OUT ? (1U << dl->dep_index) : (1U << fl->flow_index)); // TODO
 
             if( !continue_dependencies ) break;
         }
