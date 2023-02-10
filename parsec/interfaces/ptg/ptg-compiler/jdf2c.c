@@ -7665,6 +7665,13 @@ jdf_generate_code_call_initialization(const jdf_t *jdf, const jdf_call_t *call,
                 spaces,
                 spaces);
 
+        if(CALL_IS_PARAMETRIZED(call))
+        {
+            // output the value of the iterator
+            coutput("%s  const int %s = %s; (void)%s;\n",
+                    spaces, call->parametrized_offset->alias, dump_expr((void**)call->parametrized_offset, &info), call->parametrized_offset->alias);
+        }
+
         /* Code to fulfill a reshape promise set up by predecessor if there's one */
         jdf_generate_code_consume_predecessor_setup(jdf, call,
                                                     f, flow,
