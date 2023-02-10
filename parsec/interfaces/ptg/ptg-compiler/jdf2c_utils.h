@@ -103,10 +103,10 @@ static inline char *util_dump_flow_id_variable(string_arena_t *sa, const char *j
     string_arena_init(sa);
 
     if( FLOW_IS_PARAMETRIZED(flow) ) {
-        string_arena_add_string(sa, "(spec_%s.dep_mask_out_of_flow_of_%s_%s_for_%s+%s)",
+        string_arena_add_string(sa, "(spec_%s.out_flow_offset_of_parametrized_flow_of_%s_%s_for_%s + %s)",
                     JDF_OBJECT_ONAME(function), jdf_basename, function->fname, flow->varname, get_parametrized_flow_iterator_name(flow));
     } else {
-        string_arena_add_string(sa, "(spec_%s.dep_mask_out_of_flow_of_%s_%s_for_%s)",
+        string_arena_add_string(sa, "(spec_%s.flow_id_of_flow_of_%s_%s_for_%s)",
                     JDF_OBJECT_ONAME(function), jdf_basename, function->fname, flow->varname);
     }
 
@@ -160,6 +160,23 @@ static inline int jdf_any_flow_is_parametrized_util(const jdf_t *jdf)
 }
 
 /**
+ * CALL_IS_PARAMETRIZED:
+ * 
+ * Tells whether a call is parametrized or not.
+ * 
+ * @param [IN] call:          the call to test.
+ * 
+ * @return a boolean value.
+ */
+#define CALL_IS_PARAMETRIZED(call) \
+    call_is_parametrized_util(call)
+
+static inline int call_is_parametrized_util(const jdf_call_t *call)
+{
+    return NULL != call->parametrized_offset;
+}
+
+/**
  * FLOW_ANY_DEP_IS_REFERRER
  * 
  * Tells whether any dependency of a flow is a referrer.
@@ -183,7 +200,7 @@ static inline int flow_any_dep_is_referrer_util(const jdf_dataflow_t *flow)
             jdf_call_t *call = target_call?dep->guard->callfalse:dep->guard->calltrue;
             assert(call);
 
-            if( NULL != call->parametrized_offset )
+            if( CALL_IS_PARAMETRIZED(call) )
             {
                 return 1;
             }

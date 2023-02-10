@@ -1749,10 +1749,16 @@ static void jdf_generate_predeclarations( const jdf_t *jdf )
                 for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
                     coutput("  uint32_t dep_mask_out_of_flow_of_%s_%s_for_%s;\n",
                                         jdf_basename, f->fname, df->varname);
+                    if(!FLOW_IS_PARAMETRIZED(df))
+                    {
+                        coutput("  uint8_t flow_id_of_flow_of_%s_%s_for_%s;\n",
+                                            jdf_basename, f->fname, df->varname);
+                    }
                 }
                 // action_mask for the entire task class
                 coutput("  uint32_t dep_mask_out_of_flow_of_%s_%s;\n",
                             jdf_basename, f->fname);
+                            
 
                 // Parametrized flows:
                 coutput("  // Local parametrized flows of %s\n#if defined(PARSEC_DEBUG_NOISIER)\n", f->fname);
@@ -5042,6 +5048,11 @@ static void jdf_generate_one_function( const jdf_t *jdf, jdf_function_entry_t *f
         for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
             string_arena_add_string(sa, "  , .dep_mask_out_of_flow_of_%s_%s_for_%s = 0x0\n",
                                 jdf_basename, f->fname, df->varname);
+            if(!FLOW_IS_PARAMETRIZED(df))
+            {
+                string_arena_add_string(sa, "  , .flow_id_of_flow_of_%s_%s_for_%s = %d\n",
+                                    jdf_basename, f->fname, df->varname, df->flow_index);
+            }
         }
         string_arena_add_string(sa, "  , .dep_mask_out_of_flow_of_%s_%s = 0x0\n",
                         jdf_basename, f->fname);
@@ -6563,6 +6574,16 @@ static void jdf_generate_new_function( const jdf_t* jdf )
 
                         coutput("  }\n");
                     }
+                    else
+                    {
+                        coutput("  { // Non-parametrized flow %s of task class %s\n", df->varname, f->fname);
+
+                        coutput("    spec_%s.flow_id_of_flow_of_%s_%s_for_%s = parsec_helper_get_flow_index(tc, &flow_of_%s_%s_for_%s, 0);\n",
+                                JDF_OBJECT_ONAME(f), jdf_basename, f->fname, df->varname,
+                                jdf_basename, f->fname, df->varname);
+
+                        coutput("  }\n");
+                    }
                 }
             }
         }
@@ -6868,25 +6889,25 @@ char *malloc_and_dump_jdf_expr_list(const jdf_expr_t *el)
 /** Code Generators */
 
 static char *jdf_create_code_assignments_calls(string_arena_t *sa, int spaces,
-                                               const jdf_t *jdf, const char *name, const jdf_call_t *call)
+                                               const jdf_t *jdf, const char *name, const jdf_call_t *source_call)
 {
   const jdf_expr_t *el;
   expr_info_t infodst = EMPTY_EXPR_INFO, infosrc = EMPTY_EXPR_INFO;
   string_arena_t *sa2;
-  jdf_expr_t *params = call->parameters;
+  jdf_expr_t *params = source_call->parameters;
   jdf_variable_list_t *vl;
   jdf_param_list_t *pl;
-  const jdf_function_entry_t *f;
+  const jdf_function_entry_t *targetf;
 
-  f = find_target_function(jdf, call->func_or_mem);
+  targetf = find_target_function(jdf, source_call->func_or_mem);
 
-  assert(f != NULL);
+  assert(targetf != NULL);
 
   string_arena_init(sa);
   sa2 = string_arena_new(64);
 
   infodst.sa = sa2;
-  infodst.prefix = f->fname;
+  infodst.prefix = targetf->fname;
   infodst.suffix = "";
   infodst.assignments = (char*)name;
   infosrc.sa = sa2;
@@ -6894,10 +6915,10 @@ static char *jdf_create_code_assignments_calls(string_arena_t *sa, int spaces,
   infosrc.suffix = "";
   infosrc.assignments = "&this_task->locals";
 
-  for(vl = f->locals; vl != NULL; vl = vl->next) {
+  for(vl = targetf->locals; vl != NULL; vl = vl->next) {
       /* Is this definition a parameter or a value? */
       /* If it is a parameter, find the corresponding param in the call */
-      for(el = params, pl = f->parameters; pl != NULL; el = el->next, pl = pl->next) {
+      for(el = params, pl = targetf->parameters; pl != NULL; el = el->next, pl = pl->next) {
           if( NULL == el ) {  /* Badly formulated call */
               string_arena_t *sa_caller, *sa_callee;
               expr_info_t caller = EMPTY_EXPR_INFO;
@@ -6911,7 +6932,7 @@ static char *jdf_create_code_assignments_calls(string_arena_t *sa, int spaces,
               caller.assignments = "";
 
               string_arena_init(sa);
-              UTIL_DUMP_LIST_FIELD(sa_callee, f->parameters, next, name,
+              UTIL_DUMP_LIST_FIELD(sa_callee, targetf->parameters, next, name,
                                    dump_string, sa,
                                    "(", "", ", ", ")");
               string_arena_init(sa);
@@ -6919,14 +6940,14 @@ static char *jdf_create_code_assignments_calls(string_arena_t *sa, int spaces,
                              dump_expr, (void*)&caller,
                              "(", "", ", ", ")");
               fprintf(stderr, "%s.jdf:%d Badly formulated call %s%s instead of %s%s\n",
-                      jdf_basename, call->super.lineno,
-                      f->fname, string_arena_get_string(sa_caller),
-                      f->fname, string_arena_get_string(sa_callee));
+                      jdf_basename, source_call->super.lineno,
+                      targetf->fname, string_arena_get_string(sa_caller),
+                      targetf->fname, string_arena_get_string(sa_callee));
               exit(-1);
           }
           assert( el != NULL );
           if(!strcmp(pl->name, vl->name))
-              break;
+            break;
       }
       string_arena_init(sa2);
       /**
@@ -6936,17 +6957,18 @@ static char *jdf_create_code_assignments_calls(string_arena_t *sa, int spaces,
        * assignment context, including target locals, or the usage of %inline
        * will be broken.
        */
+      //name_to_dump = (char*)vl->name;
       if( NULL == pl ) {
           /* It is a value. Let's dump it's expression in the destination context */
           string_arena_add_string(sa,
                                   "%sconst int %s%s = %s->%s.value = %s; (void)%s%s;\n",
-                                  indent(spaces), f->fname, vl->name, name, vl->name, dump_expr((void**)vl->expr, &infodst), f->fname, vl->name);
+                                  indent(spaces), targetf->fname, vl->name, name, vl->name, dump_expr((void**)vl->expr, &infodst), targetf->fname, vl->name);
       } else {
           /* It is a parameter. Let's dump it's expression in the source context */
           assert(el != NULL);
           string_arena_add_string(sa,
                                   "%sconst int %s%s = %s->%s.value = %s; (void)%s%s;\n",
-                                  indent(spaces), f->fname, vl->name, name, vl->name, dump_expr((void**)el, &infosrc), f->fname, vl->name);
+                                  indent(spaces), targetf->fname, vl->name, name, vl->name, dump_expr((void**)el, &infosrc), targetf->fname, vl->name);
       }
   }
 
@@ -7365,6 +7387,8 @@ jdf_generate_code_consume_predecessor_setup(const jdf_t *jdf, const jdf_call_t *
     (void)pred_var;
     /*final_check = case predecessor has set up stuff on our data */
 
+    expr_info_t expr_info = EMPTY_EXPR_INFO;
+
     string_arena_t *osa = string_arena_new(64);
     string_arena_t *sa_consumed_flow_index = string_arena_new(256);
     string_arena_t *sa_pred_consumed_flow_index = string_arena_new(256);
@@ -7389,6 +7413,17 @@ jdf_generate_code_consume_predecessor_setup(const jdf_t *jdf, const jdf_call_t *
     {
         string_arena_add_string(sa_consumed_flow_index, "%d", flow->flow_index);
     }
+
+//     if(FLOW_IS_PARAMETRIZED(f_pred))
+//     { // If the target is parametrized, we need to set the flow index according to the expression
+//         for(jdf_variable_list_t *vl = pred_f->locals; vl != NULL; vl = vl->next) {
+//             coutput("#define %s %s%s\n", vl->name, pred_f->fname, vl->name);
+//         }
+// #error remove // TODO
+//         coutput("%s    %s = %s;\n",
+//                 spaces, pred_f->local_defs->alias,
+//                 dump_expr((void**)pred_f->parametrized_offset, &expr_info));
+//     }
 
     if( final_check ){
 
@@ -7446,6 +7481,14 @@ jdf_generate_code_consume_predecessor_setup(const jdf_t *jdf, const jdf_call_t *
                 spaces, string_arena_get_string(sa_pred_consumed_flow_index),
                 spaces);
     }
+
+    // if(FLOW_IS_PARAMETRIZED(f_pred))
+    // { // If the target is parametrized, we need to set the flow index according to the expression
+    //     for(jdf_variable_list_t *vl = pred_f->locals; vl != NULL; vl = vl->next) {
+    //         coutput("#undef %s\n", vl->name);
+    //     }
+    // }
+
 
     string_arena_free(osa);
     string_arena_free(sa_consumed_flow_index);
@@ -7525,6 +7568,13 @@ jdf_generate_code_call_initialization(const jdf_t *jdf, const jdf_call_t *call,
         coutput("%s *target_locals = (%s*)&generic_locals;\n",
                 parsec_get_name(jdf, targetf, "parsec_assignment_t"), parsec_get_name(jdf, targetf, "parsec_assignment_t"));
         coutput("%s", jdf_create_code_assignments_calls(sa, strlen(spaces)+1, jdf, "target_locals", call));
+
+        if(CALL_IS_PARAMETRIZED(call))
+        {
+            // output the value of the iterator
+            coutput("%s  const int %s = %s; (void)%s;\n",
+                    spaces, call->parametrized_offset->alias, dump_expr((void**)call->parametrized_offset, &info), call->parametrized_offset->alias);
+        }
 
         /* Code to fulfill a reshape promise set up by predecessor if there's one */
         jdf_generate_code_consume_predecessor_setup(jdf, call,
@@ -8570,75 +8620,77 @@ static void jdf_generate_check_for_one_call_to_call_link(const jdf_t *jdf, const
     coutput("%s  // call%s of dep %d of flow %s of task class %s\n", spaces, is_calltrue?"true":"false", dep_index, target_flow->varname, targetf->fname);
     coutput("%s  {\n", spaces);
 
-    string_arena_init(sa);
-    coutput("%s    %s *target_locals = (%s*)&generic_locals;\n",
-    spaces, parsec_get_name(jdf, targetf, "parsec_assignment_t"), parsec_get_name(jdf, targetf, "parsec_assignment_t"));
-    //coutput("%s", jdf_create_code_assignments_calls(sa, strlen(spaces)+1, jdf, "target_locals", call));
-    for(jdf_variable_list_t *vl = targetf->locals; vl != NULL; vl = vl->next) {
-        // Get the function parameter if it is one
-        const jdf_expr_t *el;
-        jdf_expr_t *params = source_call->parameters;
-        jdf_param_list_t *pl;
-        for(el = params, pl = targetf->parameters; pl != NULL; el = el->next, pl = pl->next) {
-            if( NULL == el ) {  /* Badly formulated call */
-                string_arena_t *sa_caller, *sa_callee;
-                expr_info_t caller = EMPTY_EXPR_INFO;
-
-                sa_caller = string_arena_new(64);
-                sa_callee = string_arena_new(64);
-
-                caller.sa = sa;
-                caller.prefix = "";
-                caller.suffix = "";
-                caller.assignments = "";
-
-                string_arena_init(sa);
-                UTIL_DUMP_LIST_FIELD(sa_callee, targetf->parameters, next, name,
-                                    dump_string, sa,
-                                    "(", "", ", ", ")");
-                string_arena_init(sa);
-                UTIL_DUMP_LIST(sa_caller, params, next,
-                                dump_expr, (void*)&caller,
-                                "(", "", ", ", ")");
-                fprintf(stderr, "%s.jdf:%d Badly formulated call %s%s instead of %s%s\n",
-                        jdf_basename, source_call->super.lineno,
-                        targetf->fname, string_arena_get_string(sa_caller),
-                        targetf->fname, string_arena_get_string(sa_callee));
-                exit(-1);
-            }
-            assert( el != NULL );
-            if(!strcmp(pl->name, vl->name))
-                break;
-        }
-
-        expr_info_t infodst;
-        infodst.sa = sa;
-        infodst.prefix = targetf->fname;
-        infodst.suffix = "";
-        infodst.assignments = "target_locals";
-        expr_info_t infosrc;
-        infosrc.sa = sa;
-        infosrc.prefix = "";
-        infosrc.suffix = "";
-        infosrc.assignments = "&this_task->locals";
-
-        if( NULL == pl ) {
-            /* It is a value. Let's dump it's expression in the destination context */
-            string_arena_init(sa);
-            coutput("    %sconst int %s%s = %s; (void)%s%s;\n",
-                    (spaces), targetf->fname, vl->name, dump_expr((void**)vl->expr, &infodst), targetf->fname, vl->name);
-        } else {
-            /* It is a parameter. Let's dump it's expression in the source context */
-            assert(el != NULL);
-            string_arena_init(sa);
-            coutput("    %sconst int %s%s = %s; (void)%s%s;\n",
-                    (spaces), targetf->fname, vl->name, dump_expr((void**)el, &infosrc), targetf->fname, vl->name);
-        }
-    }
-
     int nb_opened_call_locals = 0;
     int any_local_is_ranged = 0;
 
+    string_arena_init(sa);
+    coutput("%s    %s *target_locals = (%s*)&generic_locals;\n",
+    spaces, parsec_get_name(jdf, targetf, "parsec_assignment_t"), parsec_get_name(jdf, targetf, "parsec_assignment_t"));
+    coutput("%s", jdf_create_code_assignments_calls(sa, strlen(spaces)+1, jdf, "target_locals", source_call));
+    // for(jdf_variable_list_t *vl = targetf->locals; vl != NULL; vl = vl->next) {
+    //     // Get the function parameter if it is one
+    //     const jdf_expr_t *el;
+    //     jdf_expr_t *params = source_call->parameters;
+    //     jdf_param_list_t *pl;
+    //     for(el = params, pl = targetf->parameters; pl != NULL; el = el->next, pl = pl->next) {
+    //         if( NULL == el ) {  /* Badly formulated call */
+    //             string_arena_t *sa_caller, *sa_callee;
+    //             expr_info_t caller = EMPTY_EXPR_INFO;
+
+    //             sa_caller = string_arena_new(64);
+    //             sa_callee = string_arena_new(64);
+
+    //             caller.sa = sa;
+    //             caller.prefix = "";
+    //             caller.suffix = "";
+    //             caller.assignments = "";
+
+    //             string_arena_init(sa);
+    //             UTIL_DUMP_LIST_FIELD(sa_callee, targetf->parameters, next, name,
+    //                                 dump_string, sa,
+    //                                 "(", "", ", ", ")");
+    //             string_arena_init(sa);
+    //             UTIL_DUMP_LIST(sa_caller, params, next,
+    //                             dump_expr, (void*)&caller,
+    //                             "(", "", ", ", ")");
+    //             fprintf(stderr, "%s.jdf:%d Badly formulated call %s%s instead of %s%s\n",
+    //                     jdf_basename, source_call->super.lineno,
+    //                     targetf->fname, string_arena_get_string(sa_caller),
+    //                     targetf->fname, string_arena_get_string(sa_callee));
+    //             exit(-1);
+    //         }
+    //         assert( el != NULL );
+    //         if(!strcmp(pl->name, vl->name))
+    //             break;
+    //     }
+
+    //     expr_info_t infodst;
+    //     infodst.sa = sa;
+    //     infodst.prefix = targetf->fname;
+    //     infodst.suffix = "";
+    //     infodst.assignments = "target_locals";
+    //     expr_info_t infosrc;
+    //     infosrc.sa = sa;
+    //     infosrc.prefix = "";
+    //     infosrc.suffix = "";
+    //     infosrc.assignments = "&this_task->locals";
+
+    //     if( NULL == pl ) {
+    //         /* It is a value. Let's dump it's expression in the destination context */
+    //         string_arena_init(sa);
+    //         coutput("    %sconst int %s%s = %s; (void)%s%s;\n",
+    //                 (spaces), targetf->fname, vl->name, dump_expr((void**)vl->expr, &infodst), targetf->fname, vl->name);
+    //     } else {
+    //         /* It is a parameter. Let's dump it's expression in the source context */
+    //         assert(el != NULL);
+    //         string_arena_init(sa);
+    //         coutput("    %sconst int %s%s = %s; (void)%s%s;\n",
+    //                 (spaces), targetf->fname, vl->name, dump_expr((void**)el, &infosrc), targetf->fname, vl->name);
+    //     }
+    // }
+
+
+    // TODO looks like this is completely useless
     // add the relevant call variables:
     jdf_call_t *dl = target_call;
     if( NULL != dl->local_defs ) {
@@ -8671,12 +8723,12 @@ static void jdf_generate_check_for_one_call_to_call_link(const jdf_t *jdf, const
                                         spaces, ld->alias, dump_expr((void**)ld->jdf_ta1, &expr_info));
                 coutput("%s <= %s; %s+=",
                                         ld->alias, dump_expr((void**)ld->jdf_ta2, &expr_info), ld->alias);
-                coutput("%s) {\n",
+                coutput("%s) /* goes here*/ {\n",
                                         dump_expr((void**)ld->jdf_ta3, &expr_info));
                 ++nb_opened_call_locals;
             } else {
                 coutput(
-                                        "%s  %s = %s;\n",
+                                        "%s  %s = %s; /* goes there*/\n",
                                         spaces, ld->alias, dump_expr((void**)ld, &expr_info));
             }
         }
