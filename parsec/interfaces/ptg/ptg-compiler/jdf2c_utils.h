@@ -91,6 +91,28 @@ static inline char *util_dump_data_field_name_in_task(string_arena_t *sa, const 
     return string_arena_get_string(sa);
 }
 
+/**
+ * @brief Dumps the flow_id's variable (when the task class has a parametrized flow or a referrer)
+ * 
+ */
+#define DUMP_FLOW_ID_VARIABLE(sa, jdf_basename, function, flow)\
+    util_dump_flow_id_variable(sa, jdf_basename, function, flow)
+
+static inline char *util_dump_flow_id_variable(string_arena_t *sa, const char *jdf_basename, const jdf_function_entry_t *function, const jdf_dataflow_t *flow)
+{
+    string_arena_init(sa);
+
+    if( FLOW_IS_PARAMETRIZED(flow) ) {
+        string_arena_add_string(sa, "(spec_%s.dep_mask_out_of_flow_of_%s_%s_for_%s+%s)",
+                    JDF_OBJECT_ONAME(function), jdf_basename, function->fname, flow->varname, get_parametrized_flow_iterator_name(flow));
+    } else {
+        string_arena_add_string(sa, "(spec_%s.dep_mask_out_of_flow_of_%s_%s_for_%s)",
+                    JDF_OBJECT_ONAME(function), jdf_basename, function->fname, flow->varname);
+    }
+
+    return string_arena_get_string(sa);
+}
+
 /** 
  * VARIABLE_IS_FLOW_LEVEL
  *   Tells whether a variable is a flow level variable or not.

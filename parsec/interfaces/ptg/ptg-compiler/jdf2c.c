@@ -7365,9 +7365,30 @@ jdf_generate_code_consume_predecessor_setup(const jdf_t *jdf, const jdf_call_t *
     (void)pred_var;
     /*final_check = case predecessor has set up stuff on our data */
 
-    string_arena_t *osa;
-    osa = string_arena_new(64);
+    string_arena_t *osa = string_arena_new(64);
+    string_arena_t *sa_consumed_flow_index = string_arena_new(256);
+    string_arena_t *sa_pred_consumed_flow_index = string_arena_new(256);
     string_arena_init(osa);
+    string_arena_init(sa_consumed_flow_index);
+    string_arena_init(sa_pred_consumed_flow_index);
+
+
+    if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED_OR_REFERRER(f))
+    {
+        DUMP_FLOW_ID_VARIABLE(sa_pred_consumed_flow_index, jdf_basename, pred_f, pred_flow);
+    }
+    else
+    {
+        string_arena_add_string(sa_pred_consumed_flow_index, "%d", pred_flow->flow_index);
+    }
+    if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED_OR_REFERRER(f))
+    {
+        DUMP_FLOW_ID_VARIABLE(sa_consumed_flow_index, jdf_basename, f, flow);
+    }
+    else
+    {
+        string_arena_add_string(sa_consumed_flow_index, "%d", flow->flow_index);
+    }
 
     if( final_check ){
 
@@ -7379,54 +7400,56 @@ jdf_generate_code_consume_predecessor_setup(const jdf_t *jdf, const jdf_call_t *
                 spaces, DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow));
         /* Is this current task repo or predecessor repo? Different flow index */
 
-        coutput("%s    if( (reshape_entry != NULL) && (reshape_entry->data[%d] != NULL) ){\n"
+        coutput("%s    if( (reshape_entry != NULL) && (reshape_entry->data[%s] != NULL) ){\n"
                 "%s        /* Reshape promise set up on input by predecessor is on this task repo */\n"
-                "%s        consumed_flow_index = %d;\n",
-                spaces, flow->flow_index,
+                "%s        consumed_flow_index = %s;\n",
+                spaces, string_arena_get_string(sa_consumed_flow_index),
                 spaces,
-                spaces, flow->flow_index);
+                spaces, string_arena_get_string(sa_consumed_flow_index));
         coutput("%s        assert( (this_task->data.%s.source_repo == reshape_repo)\n"
                 "%s             && (this_task->data.%s.source_repo_entry == reshape_entry));\n",
                 spaces, DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow),
                 spaces, DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow));
         coutput("%s    }else{\n"
                 "%s        /* Reshape promise set up on input by predecessor is the predecesssor task repo */\n"
-                "%s        consumed_flow_index = %d;\n"
+                "%s        consumed_flow_index = %s;\n"
                 "%s    }\n",
                 spaces,
                 spaces,
-                spaces, pred_flow->flow_index,
+                spaces, string_arena_get_string(sa_pred_consumed_flow_index),
                 spaces);
     }else{
-        coutput("%s    if( (reshape_entry != NULL) && (reshape_entry->data[%d] != NULL) ){\n"
+        coutput("%s    if( (reshape_entry != NULL) && (reshape_entry->data[%s] != NULL) ){\n"
                 "%s        /* Reshape promise set up on this task repo by predecessor */\n"
                 "%s        consumed_repo = reshape_repo;\n"
                 "%s        consumed_entry = reshape_entry;\n"
                 "%s        consumed_entry_key = reshape_entry_key;\n"
-                "%s        consumed_flow_index = %d;\n",
-                spaces, flow->flow_index,
+                "%s        consumed_flow_index = %s;\n",
+                spaces, string_arena_get_string(sa_consumed_flow_index),
                 spaces,
                 spaces,
                 spaces,
                 spaces,
-                spaces, flow->flow_index);
+                spaces, string_arena_get_string(sa_consumed_flow_index));
         coutput("%s    }else{\n"
                 "%s        /* Consume from predecessor's repo */\n"
                 "%s        consumed_repo = %s_repo;\n"
                 "%s        consumed_entry_key = %s((const parsec_taskpool_t*)__parsec_tp, (const parsec_assignment_t*)target_locals) ;\n"
                 "%s        consumed_entry = data_repo_lookup_entry( consumed_repo, consumed_entry_key );\n"
-                "%s        consumed_flow_index = %d;\n"
+                "%s        consumed_flow_index = %s;\n"
                 "%s    }\n",
                 spaces,
                 spaces,
                 spaces, pred_name,
                 spaces, jdf_property_get_string(pred_f->properties, JDF_PROP_UD_MAKE_KEY_FN_NAME, NULL),
                 spaces,
-                spaces, pred_flow->flow_index,
+                spaces, string_arena_get_string(sa_pred_consumed_flow_index),
                 spaces);
     }
 
     string_arena_free(osa);
+    string_arena_free(sa_consumed_flow_index);
+    string_arena_free(sa_pred_consumed_flow_index);
 }
 
 static void
@@ -8266,12 +8289,12 @@ static void jdf_generate_code_call_release_dependencies(const jdf_t *jdf,
  * allows us to delay the code generation in order to merge together multiple deps
  * using the same datatype, count and displacement.
  */
-#define JDF_CODE_DATATYPE_DUMP(SA_WHERE, MASK, SA_COND, SA_DATATYPE, SKIP_COND)    \
+#define JDF_CODE_DATATYPE_DUMP(SA_WHERE, MASK, MASK_STR, SA_COND, SA_DATATYPE, SKIP_COND)    \
     do {                                                                \
         if( strlen(string_arena_get_string((SA_DATATYPE))) ) {          \
             string_arena_add_string((SA_WHERE),                         \
-                                    "    if( ((*flow_mask) & 0x%xU)",   \
-                                    (MASK));                            \
+                                    "    if( ((*flow_mask) & %s)",   \
+                                    (MASK_STR));                            \
             if( strlen(string_arena_get_string((SA_COND))) ) {          \
                 if( !(SKIP_COND) ) {                                    \
                     string_arena_add_string((SA_WHERE),                 \
@@ -8285,10 +8308,10 @@ static void jdf_generate_code_call_release_dependencies(const jdf_t *jdf,
             (SKIP_COND) = 0;                                            \
             string_arena_add_string((SA_WHERE),                         \
                                     "%s"                                \
-                                    "      (*flow_mask) &= ~0x%xU;\n"   \
+                                    "      (*flow_mask) &= ~%s;\n"   \
                                     "      return PARSEC_HOOK_RETURN_NEXT;\n", \
                                     string_arena_get_string((SA_DATATYPE)), \
-                                    (MASK));                            \
+                                    (MASK_STR));                            \
             string_arena_add_string((SA_WHERE), "    }\n");             \
             if( strlen(string_arena_get_string((SA_COND))) ) {          \
                 string_arena_init((SA_COND));                           \
@@ -8299,6 +8322,7 @@ static void jdf_generate_code_call_release_dependencies(const jdf_t *jdf,
     } while(0)
 
 
+// TODO: needs to be changed for parametrized flows (the masks won't work)
 static void
 jdf_generate_code_datatype_lookup(const jdf_t *jdf,
                                   const jdf_function_entry_t *f,
@@ -8308,19 +8332,20 @@ jdf_generate_code_datatype_lookup(const jdf_t *jdf,
     assignment_info_t ai;
     jdf_dataflow_t *fl;
     jdf_dep_t *dl;
-    string_arena_t *sa_coutput    = string_arena_new(1024);
-    string_arena_t *sa_deps       = string_arena_new(1024);
-    string_arena_t *sa_datatype   = string_arena_new(1024);
-    string_arena_t *sa_arena      = string_arena_new(256);
-    string_arena_t *sa_tmp_arena  = string_arena_new(256);
-    string_arena_t *sa_count      = string_arena_new(256);
-    string_arena_t *sa_tmp_count  = string_arena_new(256);
-    string_arena_t *sa_displ      = string_arena_new(256);
-    string_arena_t *sa_tmp_displ  = string_arena_new(256);
-    string_arena_t *sa_type       = string_arena_new(256);
-    string_arena_t *sa_tmp_type   = string_arena_new(256);
-    string_arena_t *sa_cond       = string_arena_new(256);
-    string_arena_t *sa_temp       = string_arena_new(256);
+    string_arena_t *sa_coutput      = string_arena_new(1024);
+    string_arena_t *sa_deps         = string_arena_new(1024);
+    string_arena_t *sa_datatype     = string_arena_new(1024);
+    string_arena_t *sa_arena        = string_arena_new(256);
+    string_arena_t *sa_tmp_arena    = string_arena_new(256);
+    string_arena_t *sa_count        = string_arena_new(256);
+    string_arena_t *sa_tmp_count    = string_arena_new(256);
+    string_arena_t *sa_displ        = string_arena_new(256);
+    string_arena_t *sa_tmp_displ    = string_arena_new(256);
+    string_arena_t *sa_type         = string_arena_new(256);
+    string_arena_t *sa_tmp_type     = string_arena_new(256);
+    string_arena_t *sa_cond         = string_arena_new(256);
+    string_arena_t *sa_temp         = string_arena_new(256);
+    string_arena_t *sa_current_mask = string_arena_new(256);
 
     int last_datatype_idx, continue_dependencies, type, skip_condition, generate_exit_label = 0;
     uint32_t current_mask = 0;
@@ -8399,13 +8424,16 @@ jdf_generate_code_datatype_lookup(const jdf_t *jdf,
         string_arena_init(sa_displ);
         string_arena_init(sa_type);
         string_arena_init(sa_cond);
+        string_arena_init(sa_current_mask);
 
         for(dl = fl->deps; NULL != dl; dl = dl->next) {
             if( !(dl->dep_flags & type) ) continue;
 
             /* Prepare the memory layout of the output dependency. */
             if( last_datatype_idx != dl->dep_datatype_index ) {
-                JDF_CODE_DATATYPE_DUMP(sa_coutput, current_mask, sa_cond, sa_datatype, skip_condition);
+                string_arena_init(sa_current_mask);
+                string_arena_add_string(sa_current_mask, "0x%xU", current_mask);
+                JDF_CODE_DATATYPE_DUMP(sa_coutput, current_mask, string_arena_get_string(sa_current_mask), sa_cond, sa_datatype, skip_condition);
                 /************************************/
                 /* REMOTE DATATYPE USED FOR RECV    */
                 /************************************/
@@ -8464,7 +8492,9 @@ jdf_generate_code_datatype_lookup(const jdf_t *jdf,
 
             if( !continue_dependencies ) break;
         }
-        JDF_CODE_DATATYPE_DUMP(sa_coutput, current_mask, sa_cond, sa_datatype, skip_condition);
+        string_arena_init(sa_current_mask);
+        string_arena_add_string(sa_current_mask, "0x%xU", current_mask);
+        JDF_CODE_DATATYPE_DUMP(sa_coutput, current_mask, string_arena_get_string(sa_current_mask), sa_cond, sa_datatype, skip_condition);
 
         dump_parametrized_flow_loop_end_if_parametrized(fl, "  ", sa_coutput);
 
@@ -8521,6 +8551,7 @@ jdf_generate_code_datatype_lookup(const jdf_t *jdf,
     string_arena_free(sa_tmp_displ);
     string_arena_free(sa_tmp_type);
     string_arena_free(sa_temp);
+    string_arena_free(sa_current_mask);
 }
 
 static void jdf_generate_check_for_one_call_to_call_link(const jdf_t *jdf, const jdf_function_entry_t *sourcef, const jdf_dataflow_t *source_flow, int dep_index, const jdf_call_t *source_call,
