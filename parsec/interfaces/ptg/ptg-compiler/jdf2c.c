@@ -9939,6 +9939,14 @@ static char *jdf_dump_context_assignment(string_arena_t *sa_open,
     string_arena_add_string(sa_open, "%s%s%s.task_class = __parsec_tp->super.super.task_classes_array[%s_%s.task_class_id];\n",
                             prefix, indent(nbopen), var, jdf_basename, targetf->fname);
 
+    if(FLOW_IS_PARAMETRIZED(flow)) {
+        // set the iterator
+        string_arena_add_string(sa_open, "%s%sncc->locals.ldef[%d].value = %s;\n",
+                                prefix, indent(nbopen),
+                                flow->local_variables->ldef_index,
+                                get_parametrized_flow_iterator_name(flow));
+    }
+
     nbparam_given = 0;
     for(el = call->parameters; el != NULL; el = el->next) {
         nbparam_given++;
@@ -10766,14 +10774,17 @@ jdf_generate_code_iterate_successors_or_predecessors(const jdf_t *jdf,
             depnb++;
             
             /* Dump the previous dependencies */
-            if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED_OR_REFERRER(f))
+            if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f))
             {
                 // Get the action mask for this flow as a string
                 string_arena_t *sa_action_mask = string_arena_new(128);
                 
-                string_arena_add_string(sa_action_mask, "spec_%s.dep_mask_out_of_flow_of_%s_%s_for_%s",
-                            JDF_OBJECT_ONAME(f),
-                            jdf_basename, f->fname, fl->varname);
+                // The specific bit is 1<<(dynamic flow id)<<(specialization id)
+
+                string_arena_add_string(sa_action_mask, "(1<<(spec_%s_%s.flow_id_of_flow_of_%s_%s_for_%s+%s))",
+                            jdf_basename, f->fname, jdf_basename, f->fname, fl->varname,
+                            FLOW_IS_PARAMETRIZED(fl)?get_parametrized_flow_iterator_name(fl):"0"
+                            );
                                 
 
                 OUTPUT_PREV_DEPS_PARAMETRIZED(string_arena_get_string(sa_action_mask), sa_datatype, sa_deps);
