@@ -6852,11 +6852,27 @@ static void jdf_generate_hashfunction_for(const jdf_t *jdf, const jdf_function_e
                 idx++;
             }
 
+            if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f)) {
+                for(int ldef_index=0;ldef_index<f->nb_max_local_def;++ldef_index) {
+                    coutput("  const int ldef_%d = assignment->ldef[%d].value;\n",
+                            ldef_index, ldef_index);
+                    coutput(" assert( ldef_%d >= 0 );\n", ldef_index);
+                }
+            }
+
             string_arena_init(sa_range_multiplier);
             for(vl = f->locals; vl != NULL; vl = vl->next) {
                 if( local_is_parameter(f, vl) != NULL ) {
                     coutput("  __parsec_id += (%s - %s%s_min)%s;\n", vl->name, JDF2C_NAMESPACE, vl->name, string_arena_get_string(sa_range_multiplier));
                     string_arena_add_string(sa_range_multiplier, " * __parsec_tp->%s_%s_range", f->fname, vl->name);
+                }
+            }
+
+            // TODO verify that this is optimized away when not needed
+            if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f)) {
+                for(int ldef_index=0;ldef_index<f->nb_max_local_def;++ldef_index) {
+                    coutput("  __parsec_id += ldef_%d%s;\n", ldef_index, string_arena_get_string(sa_range_multiplier));
+                    string_arena_add_string(sa_range_multiplier, " * %d", MAX_DATAFLOWS_PER_TASK); // TODO get the true range, MAX_DATAFLOWS_PER_TASK is the maximum possible
                 }
             }
 
@@ -9939,12 +9955,21 @@ static char *jdf_dump_context_assignment(string_arena_t *sa_open,
     string_arena_add_string(sa_open, "%s%s%s.task_class = __parsec_tp->super.super.task_classes_array[%s_%s.task_class_id];\n",
                             prefix, indent(nbopen), var, jdf_basename, targetf->fname);
 
-    if(FLOW_IS_PARAMETRIZED(flow)) {
-        // set the iterator
-        string_arena_add_string(sa_open, "%s%sncc->locals.ldef[%d].value = %s;\n",
-                                prefix, indent(nbopen),
-                                flow->local_variables->ldef_index,
-                                get_parametrized_flow_iterator_name(flow));
+    // If any flow in this task class is parametrized, we set all the ldef's so that make_key can function even if there is no parametrized offset
+
+    if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(targetf))
+    {
+        for(int ldef_index=0;ldef_index<targetf->nb_max_local_def;++ldef_index) {
+            string_arena_add_string(sa_open, "%s%sncc->locals.ldef[%d].value = 0;\n",
+                                    prefix, indent(nbopen), ldef_index);
+        }
+        if(FLOW_IS_PARAMETRIZED(flow)) {
+            // set the iterator
+            string_arena_add_string(sa_open, "%s%sncc->locals.ldef[%d].value = %s;\n",
+                                    prefix, indent(nbopen),
+                                    flow->local_variables->ldef_index,
+                                    get_parametrized_flow_iterator_name(flow));
+        }
     }
 
     nbparam_given = 0;
