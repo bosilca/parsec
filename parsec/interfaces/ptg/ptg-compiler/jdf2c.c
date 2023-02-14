@@ -9959,19 +9959,27 @@ static char *jdf_dump_context_assignment(string_arena_t *sa_open,
 
     // If any flow in this task class is parametrized, we set all the ldef's so that make_key can function even if there is no parametrized offset
 
-    if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(targetf))
-    {
-        for(int ldef_index=0;ldef_index<targetf->nb_max_local_def;++ldef_index) {
-            string_arena_add_string(sa_open, "%s%sncc->locals.ldef[%d].value = 0;\n",
-                                    prefix, indent(nbopen), ldef_index);
-        }
-        if(FLOW_IS_PARAMETRIZED(flow)) {
-            // set the iterator
-            string_arena_add_string(sa_open, "%s%sncc->locals.ldef[%d].value = %s;\n",
-                                    prefix, indent(nbopen),
-                                    flow->local_variables->ldef_index,
-                                    get_parametrized_flow_iterator_name(flow));
-        }
+    // rubish
+    // if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(targetf))
+    // {
+    //     for(int ldef_index=0;ldef_index<targetf->nb_max_local_def;++ldef_index) {
+    //         string_arena_add_string(sa_open, "%s%sncc->locals.ldef[%d].value = 0;\n",
+    //                                 prefix, indent(nbopen), ldef_index);
+    //     }
+    //     if(FLOW_IS_PARAMETRIZED(flow)) {
+    //         // set the iterator
+    //         string_arena_add_string(sa_open, "%s%sncc->locals.ldef[%d].value = %s;\n",
+    //                                 prefix, indent(nbopen),
+    //                                 flow->local_variables->ldef_index,
+    //                                 get_parametrized_flow_iterator_name(flow));
+    //     }
+    // }
+    if(FLOW_IS_PARAMETRIZED(flow)) {
+        // set the iterator
+        string_arena_add_string(sa_open, "%s%sncc->locals.ldef[%d].value = %s;\n",
+                                prefix, indent(nbopen),
+                                flow->local_variables->ldef_index,
+                                get_parametrized_flow_iterator_name(flow));
     }
 
     nbparam_given = 0;
