@@ -106,8 +106,8 @@ static inline char *util_dump_flow_id_variable(string_arena_t *sa, const char *j
     //     string_arena_add_string(sa, "(spec_%s.out_flow_offset_of_parametrized_flow_of_%s_%s_for_%s + %s)",
     //                 JDF_OBJECT_ONAME(function), jdf_basename, function->fname, flow->varname, get_parametrized_flow_iterator_name(flow));
     // } else {
-        string_arena_add_string(sa, "(spec_%s.flow_id_of_flow_of_%s_%s_for_%s)",
-                    JDF_OBJECT_ONAME(function), jdf_basename, function->fname, flow->varname);
+        string_arena_add_string(sa, "(spec_%s.flow_id_of_flow_of_%s_%s_for_%s + %s)",
+                    JDF_OBJECT_ONAME(function), jdf_basename, function->fname, flow->varname, get_parametrized_flow_iterator_name(flow));
     // }
 
     return string_arena_get_string(sa);

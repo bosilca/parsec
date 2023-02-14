@@ -6852,13 +6852,14 @@ static void jdf_generate_hashfunction_for(const jdf_t *jdf, const jdf_function_e
                 idx++;
             }
 
-            if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f)) {
-                for(int ldef_index=0;ldef_index<f->nb_max_local_def;++ldef_index) {
-                    coutput("  const int ldef_%d = assignment->ldef[%d].value;\n",
-                            ldef_index, ldef_index);
-                    coutput(" assert( ldef_%d >= 0 );\n", ldef_index);
-                }
-            }
+            // rubish
+            // if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f)) {
+            //     for(int ldef_index=0;ldef_index<f->nb_max_local_def;++ldef_index) {
+            //         coutput("  const int ldef_%d = assignment->ldef[%d].value;\n",
+            //                 ldef_index, ldef_index);
+            //         coutput(" assert( ldef_%d >= 0 );\n", ldef_index);
+            //     }
+            // }
 
             string_arena_init(sa_range_multiplier);
             for(vl = f->locals; vl != NULL; vl = vl->next) {
@@ -6868,13 +6869,14 @@ static void jdf_generate_hashfunction_for(const jdf_t *jdf, const jdf_function_e
                 }
             }
 
-            // TODO verify that this is optimized away when not needed
-            if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f)) {
-                for(int ldef_index=0;ldef_index<f->nb_max_local_def;++ldef_index) {
-                    coutput("  __parsec_id += ldef_%d%s;\n", ldef_index, string_arena_get_string(sa_range_multiplier));
-                    string_arena_add_string(sa_range_multiplier, " * %d", MAX_DATAFLOWS_PER_TASK); // TODO get the true range, MAX_DATAFLOWS_PER_TASK is the maximum possible
-                }
-            }
+            // rubish
+            // // TODO verify that this is optimized away when not needed
+            // if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f)) {
+            //     for(int ldef_index=0;ldef_index<f->nb_max_local_def;++ldef_index) {
+            //         coutput("  __parsec_id += ldef_%d%s;\n", ldef_index, string_arena_get_string(sa_range_multiplier));
+            //         string_arena_add_string(sa_range_multiplier, " * %d", MAX_DATAFLOWS_PER_TASK); // TODO get the true range, MAX_DATAFLOWS_PER_TASK is the maximum possible
+            //     }
+            // }
 
             coutput("  (void)__parsec_tp;\n"
                     "  return (parsec_key_t)__parsec_id;\n"
@@ -8764,12 +8766,12 @@ static void jdf_generate_check_for_one_call_to_call_link(const jdf_t *jdf, const
                                         spaces, ld->alias, dump_expr((void**)ld->jdf_ta1, &expr_info));
                 coutput("%s <= %s; %s+=",
                                         ld->alias, dump_expr((void**)ld->jdf_ta2, &expr_info), ld->alias);
-                coutput("%s) /* goes here*/ {\n",
+                coutput("%s) {\n",
                                         dump_expr((void**)ld->jdf_ta3, &expr_info));
                 ++nb_opened_call_locals;
             } else {
                 coutput(
-                                        "%s  %s = %s; /* goes there*/\n",
+                                        "%s  %s = %s;\n",
                                         spaces, ld->alias, dump_expr((void**)ld, &expr_info));
             }
         }
@@ -10009,7 +10011,7 @@ static char *jdf_dump_context_assignment(string_arena_t *sa_open,
             }
             else
             {
-                string_arena_add_string(sa_open, "%s%s  // do not declare %s, it is a parametrized flow range\n", prefix, indent(nbopen), ld->alias);
+                string_arena_add_string(sa_open, "%s%s  // do not declare '%s', it is a parametrized flow range\n", prefix, indent(nbopen), ld->alias);
             }
             if(JDF_RANGE == ld->op/* || JDF_PARAMETRIZED_FLOW_RANGE == ld->op*/) {
                 string_arena_add_string(sa_open,
