@@ -7260,6 +7260,8 @@ jdf_generate_code_reshape_input_from_desc(const jdf_t *jdf,
             spaces,
             spaces);
 
+    string_arena_free(sa_flow_index);
+
     string_arena_free(sa);
     string_arena_free(sa2);
 
@@ -7417,6 +7419,8 @@ jdf_generate_code_reshape_input_from_dep(const jdf_t *jdf,
             spaces, string_arena_get_string(sa_flow_index), //flow->flow_index,
             spaces,
             spaces);
+    
+    string_arena_free(sa_flow_index);
 
     string_arena_free(sa);
     string_arena_free(sa2);
@@ -8011,19 +8015,23 @@ static void jdf_generate_code_flow_initialization(const jdf_t *jdf,
                 "%s       */\n",
                 INDENTATION_IF_PARAMETRIZED(flow), DUMP_DATA_FIELD_NAME_IN_TASK(osa, flow),
                 INDENTATION_IF_PARAMETRIZED(flow), INDENTATION_IF_PARAMETRIZED(flow), INDENTATION_IF_PARAMETRIZED(flow));
-        if(!TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f))
-        { // If no flow is parametrized, the flow index will not be altered
-            coutput("%s      this_task->repo_entry->data[%d] = NULL;\n", INDENTATION_IF_PARAMETRIZED(flow), 
-                    flow->flow_index);
-                    // TODO this seems wrong, this_task->repo_entry->data has a size of 1, but flow->flow_index can be > 1
+        
+        // Get the flow id as a string
+        string_arena_t *sa_flow_index = string_arena_new(128);
+        if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f))
+        {
+            DUMP_FLOW_ID_VARIABLE(sa_flow_index, jdf_basename, f, flow);
         }
         else
         {
-            // It is also definitely wrong if the flow is parametrized, since the flow index can change at runtime
-            coutput("%s      // this_task->repo_entry->data[%d] = NULL;\n", INDENTATION_IF_PARAMETRIZED(flow), 
-                    flow->flow_index);
-            coutput("%s      assert(0);\n", INDENTATION_IF_PARAMETRIZED(flow));
+            string_arena_add_string(sa_flow_index, "%d", flow->flow_index);
         }
+
+        coutput("%s      this_task->repo_entry->data[%s] = NULL;\n", INDENTATION_IF_PARAMETRIZED(flow), 
+                string_arena_get_string(sa_flow_index));
+        
+        string_arena_free(sa_flow_index);
+
         coutput("%s    }\n",
                 INDENTATION_IF_PARAMETRIZED(flow));
     }
