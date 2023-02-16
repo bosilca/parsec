@@ -4463,15 +4463,27 @@ static void jdf_generate_internal_init(const jdf_t *jdf, const jdf_function_entr
         }
     }
 
+    string_arena_t *sa_item_num = string_arena_new(128);
+    if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f))
+    {
+        DUMP_NUMBER_OF_FLOWS_IN_TASK_CLASS(sa_item_num, jdf_basename, f);
+    }
+    else
+    {
+        string_arena_add_string(sa_item_num, "%d", idx);
+    }
+
     /* Generate the repo for all tasks classes, they can be used when:
      * - a predecessor sets up a reshape promised for a datacopy
      * - the own tasks use it when reshaping a datacopy directly read from desc
      * No longer only when if( !(f->flags & JDF_FUNCTION_FLAG_NO_SUCCESSORS) )
      */
-    coutput("  __parsec_tp->repositories[%d] = data_repo_create_nothreadsafe(%s, %s, (parsec_taskpool_t*)__parsec_tp, %d);\n",
+    coutput("  __parsec_tp->repositories[%d] = data_repo_create_nothreadsafe(%s, %s, (parsec_taskpool_t*)__parsec_tp, %s);\n",
             f->task_class_id, need_to_count_tasks ? "nb_tasks" : "PARSEC_DEFAULT_DATAREPO_HASH_LENGTH",
             jdf_property_get_string(f->properties, JDF_PROP_UD_HASH_STRUCT_NAME, NULL),
-            idx );
+            string_arena_get_string(sa_item_num) );
+    
+    string_arena_free(sa_item_num);
 
     coutput("%s"
             "  %s (void)__parsec_tp; (void)es;\n",

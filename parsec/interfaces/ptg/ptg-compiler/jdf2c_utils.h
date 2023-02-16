@@ -113,6 +113,34 @@ static inline char *util_dump_flow_id_variable(string_arena_t *sa, const char *j
     return string_arena_get_string(sa);
 }
 
+/**
+ * @brief Dumps an expression that gives the number of flows in a task class, including each specialization of a parametrized flow
+ * 
+ */
+#define DUMP_NUMBER_OF_FLOWS_IN_TASK_CLASS(sa, jdf_basename, function)\
+    util_dump_number_of_flows_in_task_class(sa, jdf_basename, function)
+
+static inline char *util_dump_number_of_flows_in_task_class(string_arena_t *sa, const char *jdf_basename, const jdf_function_entry_t *function)
+{
+    string_arena_init(sa);
+
+    string_arena_add_string(sa, "(");
+
+    // For each flow
+    for(jdf_dataflow_t *flow = function->dataflow; flow != NULL; flow = flow->next) {
+        if( FLOW_IS_PARAMETRIZED(flow) ) {
+            string_arena_add_string(sa, " + spec_%s.nb_specializations_of_parametrized_flow_of_%s_%s_for_%s",
+                        JDF_OBJECT_ONAME(function), jdf_basename, function->fname, flow->varname);
+        } else {
+            string_arena_add_string(sa, " + 1");
+        }
+    }
+
+    string_arena_add_string(sa, ")");
+
+    return string_arena_get_string(sa);
+}
+
 /** 
  * VARIABLE_IS_FLOW_LEVEL
  *   Tells whether a variable is a flow level variable or not.
