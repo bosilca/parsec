@@ -7240,12 +7240,23 @@ jdf_generate_code_reshape_input_from_desc(const jdf_t *jdf,
                                        ".", "local", 1);
     coutput("%s    %s", spaces, string_arena_get_string(sa_datatype));
 
+    // Get the flow id as a string
+    string_arena_t *sa_flow_index = string_arena_new(128);
+    if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f))
+    {
+        DUMP_FLOW_ID_VARIABLE(sa_flow_index, jdf_basename, f, flow);
+    }
+    else
+    {
+        string_arena_add_string(sa_flow_index, "%d", flow->flow_index);
+    }
+
     /*INLINE RESHAPING WHEN READING FROM MATRIX NEW COPY EACH THREAD*/
     coutput("%s    data.data_future   = NULL;\n", spaces);
-    coutput("%s    if( (ret = parsec_get_copy_reshape_from_desc(es, this_task->taskpool, (parsec_task_t *)this_task, %d, reshape_repo, reshape_entry_key, &data, &chunk)) < 0){\n"
+    coutput("%s    if( (ret = parsec_get_copy_reshape_from_desc(es, this_task->taskpool, (parsec_task_t *)this_task, %s, reshape_repo, reshape_entry_key, &data, &chunk)) < 0){\n"
             "%s        return ret;\n"
             "%s    }\n",
-            spaces, flow->flow_index,
+            spaces, string_arena_get_string(sa_flow_index),//flow->flow_index,
             spaces,
             spaces);
 
