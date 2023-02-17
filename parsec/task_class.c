@@ -544,15 +544,23 @@ void parsec_check_sanity_of_task_class(parsec_task_class_t *tc, bool check_dep_i
             // For each output dep of the flow ...
             for (j = 0; j < (dep_in_out ? MAX_DEP_OUT_COUNT : MAX_DEP_IN_COUNT); j++)
             {
-                dep = flow->dep_out[j];
+                dep = (parsec_dep_t *)(dep_in_out ? flow->dep_out[j] : flow->dep_in[j]);
                 if (!dep)
                 {
                     break;
                 }
 
-                // All out dependencies should be in the flow datatype mask
-                assert((1 << dep->dep_datatype_index) & flow->flow_datatype_mask);
-                //assert((1 << dep->dep_index) & flow->flow_datatype_mask);
+                if(dep_in_out == 1)
+                {
+                    // All out dependencies should be in the flow datatype mask
+                    assert((1 << dep->dep_datatype_index) & flow->flow_datatype_mask);
+                    //assert((1 << dep->dep_index) & flow->flow_datatype_mask);
+
+                    // All out dependencies should be mappable in the flow datatype mask
+                    assert(dep->dep_datatype_index < sizeof(flow->flow_datatype_mask) * 8);
+                }
+
+                assert(dep->dep_index < (dep_in_out ? MAX_DEP_OUT_COUNT : MAX_DEP_IN_COUNT));
             }
         }
     }
@@ -669,6 +677,14 @@ int parsec_helper_get_flow_index_that_contains_dep(const parsec_task_class_t *tc
     return -1;
 }
 
+int parsec_helper_get_flow_index_in_or_out(const parsec_task_class_t *tc, const parsec_flow_t *flow)
+{
+    int i = parsec_helper_get_flow_index(tc, flow, 1);
+    i =  ((i == -1) ? parsec_helper_get_flow_index(tc, flow, 0) : i);
+    assert(i != -1);
+    return i;
+}
+
 int parsec_helper_get_flow_index(const parsec_task_class_t *tc, const parsec_flow_t *flow, int in_out)
 {
     int i;
@@ -687,5 +703,6 @@ int parsec_helper_get_flow_index(const parsec_task_class_t *tc, const parsec_flo
         }
     }
 
+    //assert(0);
     return -1;
 }

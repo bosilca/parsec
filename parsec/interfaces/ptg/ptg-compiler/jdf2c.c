@@ -5981,7 +5981,7 @@ static void jdf_generate_new_function( const jdf_t* jdf )
             "          ++parametrized_iterator;\n"
             "        }\n"
             "      }\n"
-            "      // assert(pivot_reached); // Actually, the pivot is not reached if READ/WRITE-only\n"
+            "      assert(pivot_reached); // Actually, the pivot is not reached if READ/WRITE-only\n"
             "    }\n"
             "    // Update nb_flows\n"
             "    tc->nb_flows += nb_specializations_of_current_flow-1;\n"
@@ -6436,6 +6436,12 @@ static void jdf_generate_new_function( const jdf_t* jdf )
         coutput("            if(NULL == dep) break;\n");
         coutput("            dep->dep_index += current_max_dep_id_task_class - current_min_dep_id_flow;\n");
         coutput("            dep->dep_datatype_index += current_max_dep_id_task_class - current_min_dep_id_flow;\n");
+        coutput("#if defined(PARSEC_DEBUG_PARANOID)\n");
+        coutput("            assert(dep->dep_index >= 0);\n");
+        coutput("            assert(dep->dep_datatype_index >= 0);\n");
+        coutput("            assert(dep->dep_index < (in_out?MAX_DEP_OUT_COUNT:MAX_DEP_IN_COUNT));\n");
+        coutput("            assert(dep->dep_datatype_index < (in_out?MAX_DEP_OUT_COUNT:MAX_DEP_IN_COUNT));\n");
+        coutput("#endif\n");
         coutput("            if(in_out==1)\n");
         coutput("              flow->flow_datatype_mask |= 1<<dep->dep_index; // keep the flow_datatype_mask up-to-date\n");
         coutput("          }\n");
@@ -6613,11 +6619,11 @@ static void jdf_generate_new_function( const jdf_t* jdf )
                         {
                             coutput("    // dynamic flow id of flow %s of task class %s\n", df->varname, f->fname);
 
-                            coutput("    spec_%s.flow_id_of_flow_of_%s_%s_for_%s = parsec_helper_get_flow_index(tc, &flow_of_%s_%s_for_parametrized_%s[0], 1);\n",
+                            coutput("    spec_%s.flow_id_of_flow_of_%s_%s_for_%s = parsec_helper_get_flow_index_in_or_out(tc, &flow_of_%s_%s_for_parametrized_%s[0]);\n",
                                     JDF_OBJECT_ONAME(f), jdf_basename, f->fname, df->varname,
                                     jdf_basename, f->fname, df->varname);
 
-                            coutput("    assert(spec_%s.flow_id_of_flow_of_%s_%s_for_%s >= 0);\n",
+                            coutput("    assert(spec_%s.flow_id_of_flow_of_%s_%s_for_%s >= 0); // nonesense because uint\n",
                                     JDF_OBJECT_ONAME(f), jdf_basename, f->fname, df->varname);
                         }
 
@@ -6629,11 +6635,11 @@ static void jdf_generate_new_function( const jdf_t* jdf )
 
                         coutput("    // dynamic flow id of flow %s of task class %s\n", df->varname, f->fname);
 
-                        coutput("    spec_%s.flow_id_of_flow_of_%s_%s_for_%s = parsec_helper_get_flow_index(tc, &flow_of_%s_%s_for_parametrized_%s[0], 1);\n",
+                        coutput("    spec_%s.flow_id_of_flow_of_%s_%s_for_%s = parsec_helper_get_flow_index_in_or_out(tc, &flow_of_%s_%s_for_parametrized_%s[0]);\n",
                                 JDF_OBJECT_ONAME(f), jdf_basename, f->fname, df->varname,
                                 jdf_basename, f->fname, df->varname);
                         
-                        coutput("    assert(spec_%s.flow_id_of_flow_of_%s_%s_for_%s >= 0);\n",
+                        coutput("    assert(spec_%s.flow_id_of_flow_of_%s_%s_for_%s >= 0); // nonesense because uint\n",
                                 JDF_OBJECT_ONAME(f), jdf_basename, f->fname, df->varname);
 
                         coutput("  }\n");
@@ -10881,7 +10887,7 @@ jdf_generate_code_iterate_successors_or_predecessors(const jdf_t *jdf,
                 string_arena_t *sa_action_mask = string_arena_new(128);
                 
                 // The specific bit is 1<<(dynamic flow id)<<(specialization id)
-                string_arena_add_string(sa_action_mask, "(1<<(spec_%s_%s.data_dynamic_offset_of_parametrized_%s_%s_for_%s+%s))",
+                string_arena_add_string(sa_action_mask, "(1<<(spec_%s_%s.flow_id_of_flow_of_%s_%s_for_%s + %s))",
                             jdf_basename, f->fname, jdf_basename, f->fname, fl->varname,
                             FLOW_IS_PARAMETRIZED(fl)?get_parametrized_flow_iterator_name(fl):"0"
                             );
