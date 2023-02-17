@@ -150,7 +150,7 @@ void parsec_shift_all_flows_after(parsec_task_class_t *tc, const parsec_flow_t *
             if(pivot_flow == ((in_out) ? (tc->out) : (tc->in))[i])
                 break; // pivot flow found
             if(!((in_out) ? (tc->out) : (tc->in))[i])
-                return; // pivot not found
+                break; // pivot not found
         }
         if(pivot_flow == ((in_out) ? (tc->out) : (tc->in))[i])
         {
@@ -687,6 +687,5 @@ int parsec_helper_get_flow_index(const parsec_task_class_t *tc, const parsec_flo
         }
     }
 
-    assert(0);
     return -1;
 }
