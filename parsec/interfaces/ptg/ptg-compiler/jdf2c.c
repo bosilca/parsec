@@ -5960,7 +5960,7 @@ static void jdf_generate_new_function( const jdf_t* jdf )
             "        }\n"
             "        if(flow == base_flow_of_current_flow) {\n"
             "          pivot_reached = true;\n"
-            "          // Update the goal of the task class\n"
+            "          /*// Update the goal of the task class\n"
             "          if(flow_in_out == 0)\n"
             "          {\n"
             "            // If is input, shift the proper values in the goal\n"
@@ -5970,7 +5970,7 @@ static void jdf_generate_new_function( const jdf_t* jdf )
             "            parsec_dependency_t shifted_values = (tc->dependencies_goal >> (i + 1)) << (i + 1 + shift);\n"
             "            parsec_dependency_t in_between = ((1<<(shift+1))-1) << i;\n"
             "            tc->dependencies_goal = unshifted_values | shifted_values | in_between;\n"
-            "          }\n"
+            "          }*/\n"
             "          assert(i+nb_specializations_of_current_flow < MAX_DATAFLOWS_PER_TASK);\n"
             "        }\n"
             "        if(pivot_reached)\n"
@@ -5981,7 +5981,7 @@ static void jdf_generate_new_function( const jdf_t* jdf )
             "          ++parametrized_iterator;\n"
             "        }\n"
             "      }\n"
-            "      assert(pivot_reached); // Actually, the pivot is not reached if READ/WRITE-only\n"
+            "      // assert(pivot_reached); // Actually, the pivot is not reached if READ/WRITE-only\n"
             "    }\n"
             "    // Update nb_flows\n"
             "    tc->nb_flows += nb_specializations_of_current_flow-1;\n"
@@ -6339,6 +6339,7 @@ static void jdf_generate_new_function( const jdf_t* jdf )
         coutput("  // at this point, all the parametrized flows have been created, but the structure can have some incoherencies:\n");
         coutput("  //  - when a parametrized flow is unrolled, the deps are not copied in memory\n");
         coutput("  //  - the dep_index is not correct (there can be duplicates in a task class)\n");
+        coutput("  //  - the goal masks are not correct (dependencies_goal and flow_datatype_mask)\n");
         coutput("  // The next block of code will fix these issues\n");
         coutput("  {\n");
 
@@ -6384,22 +6385,6 @@ static void jdf_generate_new_function( const jdf_t* jdf )
         coutput("#endif\n");
 
         coutput("\n");
-        coutput("    /*// (set the flow_datatype_mask's of out flows to zero)\n");
-        for( jdf_function_entry_t* f = jdf->functions; NULL != f; f = f->next )
-        {
-            if( TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED_OR_REFERRER(f))
-            {
-                coutput("    { // %s\n", f->fname);
-                coutput("      parsec_task_class_t *tc = __parsec_tp->super.super.task_classes_array[%d];\n", f->task_class_id);
-                coutput("      for(int flow_id = 0; flow_id < tc->nb_flows && flow_id < MAX_DATAFLOWS_PER_TASK; flow_id++) {\n");
-                coutput("        parsec_flow_t *flow = tc->out[flow_id];\n");
-                coutput("        if(NULL == flow) break;\n");
-                coutput("        flow->flow_datatype_mask = 0;\n");
-                coutput("      }\n");
-                coutput("    }\n");
-            }
-        }
-        coutput("*/\n");
 
 
         coutput("    // Second, fix the dep_indexes\n");
@@ -6454,6 +6439,21 @@ static void jdf_generate_new_function( const jdf_t* jdf )
         //coutput("    for(int tcid = 0; tcid < __parsec_tp->super.super.nb_task_classes; tcid++) {\n");
 
         coutput("  }\n");
+
+
+        coutput("\n");
+        coutput("  // Set dependencies_goal to zero for task classes that have parametrized flows\n");
+        for( jdf_function_entry_t* f = jdf->functions; NULL != f; f = f->next )
+        {
+            if( TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f))
+            {
+                coutput("  { // %s\n", f->fname);
+                coutput("    parsec_task_class_t *tc = __parsec_tp->super.super.task_classes_array[%d];\n\n", f->task_class_id);
+                coutput("    tc->dependencies_goal = 0;\n");
+                coutput("  }\n");
+            }
+        }
+        coutput("\n");
 
 
         coutput("  // Finally, retrieve the correct indices for the parametrized flows and the referrers\n");
@@ -6741,6 +6741,7 @@ static void jdf_generate_new_function( const jdf_t* jdf )
             if( TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED_OR_REFERRER(f)) {
                 coutput("  { // task class %s\n", f->fname);
 
+                coutput("    parsec_task_class_t *tc = __parsec_tp->super.super.task_classes_array[%d];\n", f->task_class_id);
                 coutput("    // spec_%s.dep_mask_out_of_flow_of_%s_%s = 0; // should already be set to 0\n",
                             JDF_OBJECT_ONAME(f), jdf_basename, f->fname);
                 for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
@@ -6775,6 +6776,14 @@ static void jdf_generate_new_function( const jdf_t* jdf )
                             JDF_OBJECT_ONAME(f), jdf_basename, f->fname, df->varname);
                     coutput("    }\n");
                 }
+
+                coutput("\n");
+                coutput("    // Now, update the dependencies_goal of %s\n", f->fname);
+                coutput("    for(int i=0; i<MAX_DATAFLOWS_PER_TASK; i++) {\n");
+                coutput("      parsec_flow_t *flow = tc->in[i];\n");
+                coutput("      if( NULL == flow ) break;\n");
+                coutput("      tc->dependencies_goal |= flow->flow_datatype_mask;\n");
+                coutput("    }\n");
                 
                 coutput("  }\n");
             }
