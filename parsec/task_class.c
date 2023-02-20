@@ -573,35 +573,37 @@ void parsec_check_sanity_of_task_class(parsec_task_class_t *tc, bool check_dep_i
     // Check the coherency of the flow flags
     if(check_dep_index)
     {
-        for (i = 0; i < MAX_DATAFLOWS_PER_TASK; i++)
-        {
-            const parsec_flow_t *flow = tc->out[i];
-
-            if (!flow)
+        for(int in_out=0; in_out<2; ++in_out) {
+            for (i = 0; i < MAX_DATAFLOWS_PER_TASK; i++)
             {
-                break;
-            }
+                const parsec_flow_t *flow = tc->out[i];
 
-            // For each output dep of the flow ...
-            for (j = 0; j < (dep_in_out ? MAX_DEP_OUT_COUNT : MAX_DEP_IN_COUNT); j++)
-            {
-                dep = (parsec_dep_t *)(dep_in_out ? flow->dep_out[j] : flow->dep_in[j]);
-                if (!dep)
+                if (!flow)
                 {
                     break;
                 }
 
-                if(dep_in_out == 1)
+                // For each output dep of the flow ...
+                for (j = 0; j < (in_out ? MAX_DEP_OUT_COUNT : MAX_DEP_IN_COUNT); j++)
                 {
-                    // All out dependencies should be in the flow datatype mask
-                    assert((1 << dep->dep_datatype_index) & flow->flow_datatype_mask);
-                    //assert((1 << dep->dep_index) & flow->flow_datatype_mask);
+                    dep = (parsec_dep_t *)(in_out ? flow->dep_out[j] : flow->dep_in[j]);
+                    if (!dep)
+                    {
+                        break;
+                    }
 
-                    // All out dependencies should be mappable in the flow datatype mask
-                    assert(dep->dep_datatype_index < sizeof(flow->flow_datatype_mask) * 8);
+                    if(in_out == 1)
+                    {
+                        // All out dependencies should be in the flow datatype mask
+                        assert((1 << dep->dep_datatype_index) & flow->flow_datatype_mask);
+                        //assert((1 << dep->dep_index) & flow->flow_datatype_mask);
+
+                        // All out dependencies should be mappable in the flow datatype mask
+                        assert(dep->dep_datatype_index < sizeof(flow->flow_datatype_mask) * 8);
+                    }
+
+                    assert(dep->dep_index < (in_out ? MAX_DEP_OUT_COUNT : MAX_DEP_IN_COUNT));
                 }
-
-                assert(dep->dep_index < (dep_in_out ? MAX_DEP_OUT_COUNT : MAX_DEP_IN_COUNT));
             }
         }
     }
