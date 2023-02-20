@@ -7753,14 +7753,13 @@ jdf_generate_code_call_initialization(const jdf_t *jdf, const jdf_call_t *call,
     if( call->var != NULL ) {
         coutput("%s *target_locals = (%s*)&generic_locals;\n",
                 parsec_get_name(jdf, targetf, "parsec_assignment_t"), parsec_get_name(jdf, targetf, "parsec_assignment_t"));
-        coutput("%s", jdf_create_code_assignments_calls(sa, strlen(spaces)+1, jdf, "target_locals", call));
-
         if(CALL_IS_PARAMETRIZED(call))
         {
             // output the value of the iterator
             coutput("%s  const int %s = %s; (void)%s;\n",
                     spaces, call->parametrized_offset->alias, dump_expr((void**)call->parametrized_offset, &info), call->parametrized_offset->alias);
         }
+        coutput("%s", jdf_create_code_assignments_calls(sa, strlen(spaces)+1, jdf, "target_locals", call));
 
         /* Code to fulfill a reshape promise set up by predecessor if there's one */
         jdf_generate_code_consume_predecessor_setup(jdf, call,
@@ -8822,8 +8821,7 @@ static void jdf_generate_check_for_one_call_to_call_link(const jdf_t *jdf, const
 
     string_arena_init(sa);
     coutput("%s    %s *target_locals = (%s*)&generic_locals;\n",
-    spaces, parsec_get_name(jdf, targetf, "parsec_assignment_t"), parsec_get_name(jdf, targetf, "parsec_assignment_t"));
-    coutput("%s", jdf_create_code_assignments_calls(sa, strlen(spaces)+1, jdf, "target_locals", source_call));
+        spaces, parsec_get_name(jdf, targetf, "parsec_assignment_t"), parsec_get_name(jdf, targetf, "parsec_assignment_t"));
     // for(jdf_variable_list_t *vl = targetf->locals; vl != NULL; vl = vl->next) {
     //     // Get the function parameter if it is one
     //     const jdf_expr_t *el;
@@ -8930,6 +8928,7 @@ static void jdf_generate_check_for_one_call_to_call_link(const jdf_t *jdf, const
             }
         }
     }
+    coutput("%s", jdf_create_code_assignments_calls(sa, strlen(spaces)+1, jdf, "target_locals", source_call));
 
     for(jdf_variable_list_t *vl = targetf->locals; vl != NULL; vl = vl->next) {
         coutput("#define %s %s%s\n", vl->name, targetf->fname, vl->name);
