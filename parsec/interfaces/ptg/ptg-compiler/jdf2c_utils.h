@@ -302,6 +302,24 @@ static inline int task_class_any_flow_is_parametrized_util(const jdf_function_en
 }
 
 
+/**
+ * STRING_IS_IN:
+ * Tells whether a string is in a list of strings.
+ * 
+ */
+#define STRING_IS_IN(string, arr, arr_size) \
+    string_is_in_util(string, arr, arr_size)
+
+static inline int string_is_in_util(const char *string, const char **arr, int arr_size)
+{
+    for( int i=0; i<arr_size; ++i ) {
+        if( 0 == strcmp(string, arr[i]) ) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 
 /**
  * UTIL_DUMP_LIST_FIELD:

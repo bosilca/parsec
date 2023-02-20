@@ -2149,6 +2149,76 @@ jdf_generate_function_without_expression(const jdf_t *jdf,
                 UTIL_DUMP_LIST(sa2, f->locals, next, dump_local_assignments, &ai,
                                "", "  ", "\n", "\n"));
 
+        // Add parametrized iterators
+        char *dumped_iterator_lists[MAX_DATAFLOWS_PER_TASK];
+        int dumped_iterator_lists_count = 0;
+        for( jdf_dataflow_t *df = f->dataflow; NULL != df; df = df->next ) {
+            if( FLOW_IS_PARAMETRIZED(df) ) {
+                if(!STRING_IS_IN(get_parametrized_flow_iterator_name(df), dumped_iterator_lists, dumped_iterator_lists_count))
+                {
+                    dumped_iterator_lists[dumped_iterator_lists_count++] = get_parametrized_flow_iterator_name(df);
+
+                    coutput("  const int %s = locals->ldef[%d].value;\n",
+                            get_parametrized_flow_iterator_name(df), df->local_variables->ldef_index);
+                }
+                else
+                {
+                    coutput("  // Warning: %s already dumped, ldef_index might be ambiguous\n",
+                            get_parametrized_flow_iterator_name(df));
+
+                    // // output an error in stderr too
+                    fprintf(stderr, "Warning: %s already dumped, ldef_index might be ambiguous\n",
+                            get_parametrized_flow_iterator_name(df));
+                }
+            }
+        }
+
+
+        coutput("#if defined(PARSEC_DEBUG_PARANOID)\n");
+        coutput("  // Coherency test:\n");
+        dumped_iterator_lists_count = 0;
+        for( jdf_dataflow_t *df = f->dataflow; NULL != df; df = df->next ) {
+            if( FLOW_IS_PARAMETRIZED(df) ) {
+                if(!STRING_IS_IN(get_parametrized_flow_iterator_name(df), dumped_iterator_lists, dumped_iterator_lists_count))
+                {
+                    dumped_iterator_lists[dumped_iterator_lists_count++] = get_parametrized_flow_iterator_name(df);
+
+                    expr_info_t info = EMPTY_EXPR_INFO;
+                    info.sa = string_arena_new(8);
+                    info.prefix = "";
+                    info.suffix = "";
+                    info.assignments = "assignments";
+
+                    coutput("  if( %s < 0 || %s > %s ) {\n",
+                            get_parametrized_flow_iterator_name(df),
+                            get_parametrized_flow_iterator_name(df),
+                            dump_expr((void**)df->local_variables->jdf_ta2, &info));
+
+                    // Verify that the expression is the same for ALL the vlues from min to max
+                    coutput("    // The local variable is out of its range, this can be reasonable if it does not change the result of the expression\n");
+                    coutput("    for(int %s = 0; %s <= %s; %s++) {\n",
+                            get_parametrized_flow_iterator_name(df),
+                            get_parametrized_flow_iterator_name(df),
+                            dump_expr((void**)df->local_variables->jdf_ta2, &info),
+                            get_parametrized_flow_iterator_name(df));
+                    coutput("      const int current_%s = %s;\n",
+                            get_parametrized_flow_iterator_name(df),
+                            get_parametrized_flow_iterator_name(df));
+                    coutput("#define %s current_%s\n", get_parametrized_flow_iterator_name(df), get_parametrized_flow_iterator_name(df));
+                    coutput("      const int expr_if_iterator_equals_current = %s;\n", dump_expr((void**)e, &info));
+                    coutput("#undef %s\n", get_parametrized_flow_iterator_name(df));
+                    coutput("      assert(expr_if_iterator_equals_current == %s);\n",
+                            dump_expr((void**)e, &info));
+                    coutput("    }\n");
+                    coutput("  }\n");
+
+                    string_arena_free(info.sa);
+                }
+            }
+        }
+        coutput("#endif\n");
+
+
         ai.holder = "";
         coutput("%s\n",
                 UTIL_DUMP_LIST(sa2, f->locals, next, dump_local_used_in_expr, &ai,
@@ -10126,9 +10196,23 @@ static char *jdf_dump_context_assignment(string_arena_t *sa_open,
                 }
                 else
                 {
+                    // string_arena_add_string(sa_open,
+                    //                         "%s%sncc->locals.ldef[%d].value = %s = %s;\n",
+                    //             prefix, indent(nbopen),
+                    //             flow->local_variables->ldef_index,
+                    //             get_parametrized_flow_iterator_name(flow), dump_expr((void**)ld, &local_info));
                     string_arena_add_string(sa_open,
                                         "%s%s  "JDF2C_NAMESPACE"_tmp_locals.ldef[%d].value = %s = %s;\n",
                                         prefix, indent(nbopen), ld->ldef_index, ld->alias, dump_expr((void**)ld, &local_info));
+
+                    // If the call is a referrer, keep the ldef up-to-date
+                    if(CALL_IS_PARAMETRIZED(call) && !strcmp(call->parametrized_offset->alias, ld->alias))
+                    {
+                        string_arena_add_string(sa_open, "%s%sncc->locals.ldef[%d].value = %s;\n",
+                                            prefix, indent(nbopen),
+                                            ld->ldef_index,
+                                            ld->alias);
+                    }
                 }
             }
         }
