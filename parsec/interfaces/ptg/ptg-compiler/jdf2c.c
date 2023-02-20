@@ -6741,7 +6741,6 @@ static void jdf_generate_new_function( const jdf_t* jdf )
             if( TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED_OR_REFERRER(f)) {
                 coutput("  { // task class %s\n", f->fname);
 
-                coutput("    parsec_task_class_t *tc = __parsec_tp->super.super.task_classes_array[%d];\n", f->task_class_id);
                 coutput("    // spec_%s.dep_mask_out_of_flow_of_%s_%s = 0; // should already be set to 0\n",
                             JDF_OBJECT_ONAME(f), jdf_basename, f->fname);
                 for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
@@ -6776,20 +6775,24 @@ static void jdf_generate_new_function( const jdf_t* jdf )
                             JDF_OBJECT_ONAME(f), jdf_basename, f->fname, df->varname);
                     coutput("    }\n");
                 }
-
-                coutput("\n");
-                coutput("    // Now, update the dependencies_goal of %s\n", f->fname);
-                coutput("    for(int i=0; i<MAX_DATAFLOWS_PER_TASK; i++) {\n");
-                coutput("      parsec_flow_t *flow = tc->in[i];\n");
-                coutput("      if( NULL == flow ) break;\n");
-                coutput("      tc->dependencies_goal |= flow->flow_datatype_mask;\n");
-                coutput("    }\n");
-                
                 coutput("  }\n");
             }
         }
 
-
+        coutput("\n");
+        coutput("  // Update dependencies_goal for task classes that need them\n");
+        for( jdf_function_entry_t* f = jdf->functions; NULL != f; f = f->next ) {
+            if( TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f)) {
+                coutput("  { // task class %s\n", f->fname);
+                coutput("    parsec_task_class_t *tc = __parsec_tp->super.super.task_classes_array[%d];\n", f->task_class_id);
+                coutput("    for(int i=0; i<MAX_DATAFLOWS_PER_TASK; i++) {\n");
+                coutput("      parsec_flow_t *flow = tc->in[i];\n");
+                coutput("      if( NULL == flow ) break;\n");
+                coutput("      tc->dependencies_goal |= 1<<flow->flow_index;\n");
+                coutput("    }\n");
+                coutput("  }\n");
+            }
+        }
 
         coutput("\n");
 
