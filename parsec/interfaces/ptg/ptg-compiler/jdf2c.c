@@ -6826,21 +6826,31 @@ static void jdf_generate_new_function( const jdf_t* jdf )
                                 jdf_basename, f->fname, df->varname);
                         coutput("      int specializations_number = nb_specializations_of_parametrized_flow_of_%s_%s_for_parametrized_%s;\n",
                                 jdf_basename, f->fname, df->varname);
-                        coutput("      spec_%s.dep_mask_out_of_flow_of_%s_%s_for_%s = ((1<<(specializations_number))-1)<<flow->flow_index;\n",
+                        /*coutput("      spec_%s.dep_mask_out_of_flow_of_%s_%s_for_%s = ((1<<(specializations_number))-1)<<flow->flow_index;\n",
                             JDF_OBJECT_ONAME(f),
-                            jdf_basename, f->fname, df->varname);
-                        coutput("      //spec_%s.dep_mask_out_of_flow_of_%s_%s_for_%s = flow->flow_datatype_mask;\n",
-                            JDF_OBJECT_ONAME(f),
-                            jdf_basename, f->fname, df->varname);
+                            jdf_basename, f->fname, df->varname);*/
                     }
                     else
                     {
                         coutput("      parsec_flow_t *flow = &flow_of_%s_%s_for_%s;\n",
                             jdf_basename, f->fname, df->varname);
-                        coutput("      spec_%s.dep_mask_out_of_flow_of_%s_%s_for_%s = 1<<flow->flow_index;\n",
-                            JDF_OBJECT_ONAME(f),
-                            jdf_basename, f->fname, df->varname);
+                            
                     }
+
+                    coutput("      for(int idep=0;idep<MAX_DEP_IN_COUNT;idep++)\n");
+                    coutput("      {\n");
+                    coutput("        parsec_dep_t *dep = flow->dep_out[idep];\n");
+                    coutput("        if(NULL == dep) break;\n");
+                    coutput("        spec_%s.dep_mask_out_of_flow_of_%s_%s_for_%s |= 1<<dep->dep_index;\n",
+                        JDF_OBJECT_ONAME(f),
+                        jdf_basename, f->fname, df->varname);
+                    coutput("      }\n");
+
+                    coutput("      //spec_%s.dep_mask_out_of_flow_of_%s_%s_for_%s = flow->flow_datatype_mask;\n",
+                        JDF_OBJECT_ONAME(f),
+                        jdf_basename, f->fname, df->varname);
+
+
                     coutput("      spec_%s.dep_mask_out_of_flow_of_%s_%s |= spec_%s.dep_mask_out_of_flow_of_%s_%s_for_%s;\n",
                             JDF_OBJECT_ONAME(f), jdf_basename, f->fname,
                             JDF_OBJECT_ONAME(f), jdf_basename, f->fname, df->varname);
@@ -11018,8 +11028,9 @@ jdf_generate_code_iterate_successors_or_predecessors(const jdf_t *jdf,
             string_arena_t *sa_action_mask = string_arena_new(128);
             if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED_OR_REFERRER(f)) {
                 // dynamic masks if any flow/dep is parametrized
-                string_arena_add_string(sa_action_mask, "spec_%s.dep_mask_out_of_flow_of_%s_%s_for_%s",
+                string_arena_add_string(sa_action_mask, "spec_%s.dep_mask_%s_of_flow_of_%s_%s_for_%s",
                             JDF_OBJECT_ONAME(f),
+                            (flow_type & JDF_DEP_FLOW_OUT) ? "out" : "in",
                             jdf_basename, f->fname, fl->varname);
             }
             else
