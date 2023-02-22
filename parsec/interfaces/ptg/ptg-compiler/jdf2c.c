@@ -1876,7 +1876,10 @@ static void jdf_generate_predeclarations( const jdf_t *jdf )
     if(JDF_ANY_FLOW_IS_PARAMETRIZED(jdf)) {
         coutput("/** Predeclarations of the parametrized spec_TASK_TYPES */\n");
         for(f = jdf->functions; f != NULL; f = f->next) {
-            coutput("static parsec_%s_task_class_t spec_%s;\n", JDF_OBJECT_ONAME(f), JDF_OBJECT_ONAME(f));
+            if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED_OR_REFERRER(f))
+            {
+                coutput("static parsec_%s_task_class_t spec_%s;\n", JDF_OBJECT_ONAME(f), JDF_OBJECT_ONAME(f));
+            }
         }
     }
 
@@ -6530,6 +6533,8 @@ static void jdf_generate_new_function( const jdf_t* jdf )
         for( jdf_function_entry_t* f = jdf->functions; NULL != f; f = f->next ) {
             if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f))
             {
+                coutput("    parsec_task_class_t *tc = __parsec_tp->super.super.task_classes_array[%d];\n\n", f->task_class_id);
+
                 coutput("  int current_data_offset_for_%s_%s = 0;\n", jdf_basename, f->fname);
                 for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
                     if( FLOW_IS_PARAMETRIZED(df) ) {
@@ -6538,8 +6543,6 @@ static void jdf_generate_new_function( const jdf_t* jdf )
                         //coutput("    parsec_flow_t *flow = &flow_of_%s_%s_for_parametrized_%s[0];\n", jdf_basename, f->fname, df->varname);
                         //coutput("    spec_%s.out_offset_flow_of_%s_%s_for_%s = parsec_helper_get_flow_index_that_contains_dep(parsec_task_class_t *tc, parsec_dep_t *dep, int in_out);\n"
                         //    JDF_OBJECT_ONAME(f), jdf_basename, f->fname, df->varname,);
-
-                        coutput("    parsec_task_class_t *tc = __parsec_tp->super.super.task_classes_array[%d];\n\n", f->task_class_id);
 
                         coutput("#if defined(PARSEC_DEBUG_NOISIER)\n");
                         coutput("    spec_%s.nb_specializations_of_parametrized_flow_of_%s_%s_for_%s = nb_specializations_of_parametrized_flow_of_%s_%s_for_parametrized_%s;\n",
@@ -6699,17 +6702,17 @@ static void jdf_generate_new_function( const jdf_t* jdf )
 
                         coutput("  }\n");
                     }
-                    else if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f))
+                    else// if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f)) // we already know that TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED
                     {
                         coutput("  { // flow %s of task class %s\n", df->varname, f->fname);
 
                         coutput("    // dynamic flow id of flow %s of task class %s\n", df->varname, f->fname);
 
-                        coutput("    spec_%s.flow_id_of_flow_of_%s_%s_for_%s = parsec_helper_get_flow_index_in_or_out(tc, &flow_of_%s_%s_for_parametrized_%s[0]);\n",
+                        coutput("    spec_%s.flow_id_of_flow_of_%s_%s_for_%s = parsec_helper_get_flow_index_in_or_out(tc, &flow_of_%s_%s_for_%s);\n",
                                 JDF_OBJECT_ONAME(f), jdf_basename, f->fname, df->varname,
                                 jdf_basename, f->fname, df->varname);
                         
-                        coutput("    assert(spec_%s.flow_id_of_flow_of_%s_%s_for_%s >= 0); // nonesense because uint\n",
+                        coutput("    // assert(spec_%s.flow_id_of_flow_of_%s_%s_for_%s >= 0); // nonesense because uint\n",
                                 JDF_OBJECT_ONAME(f), jdf_basename, f->fname, df->varname);
 
                         coutput("  }\n");
@@ -7528,7 +7531,7 @@ jdf_generate_code_reshape_input_from_dep(const jdf_t *jdf,
 
     // Get the flow id as a string
     string_arena_t *sa_flow_index = string_arena_new(128);
-    if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f))
+    if(FLOW_IS_PARAMETRIZED(flow))
     {
         DUMP_FLOW_ID_VARIABLE(sa_flow_index, jdf_basename, f, flow);
     }
@@ -7583,7 +7586,7 @@ jdf_generate_code_consume_predecessor_setup(const jdf_t *jdf, const jdf_call_t *
     string_arena_init(sa_pred_consumed_flow_index);
 
 
-    if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(pred_f))
+    if(FLOW_IS_PARAMETRIZED(pred_flow))
     {
         DUMP_FLOW_ID_VARIABLE(sa_pred_consumed_flow_index, jdf_basename, pred_f, pred_flow);
     }
@@ -7591,7 +7594,7 @@ jdf_generate_code_consume_predecessor_setup(const jdf_t *jdf, const jdf_call_t *
     {
         string_arena_add_string(sa_pred_consumed_flow_index, "%d", pred_flow->flow_index);
     }
-    if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f))
+    if(FLOW_IS_PARAMETRIZED(flow))
     {
         DUMP_FLOW_ID_VARIABLE(sa_consumed_flow_index, jdf_basename, f, flow);
     }
@@ -8141,7 +8144,7 @@ static void jdf_generate_code_flow_initialization(const jdf_t *jdf,
         
         // Get the flow id as a string
         string_arena_t *sa_flow_index = string_arena_new(128);
-        if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f))
+        if(FLOW_IS_PARAMETRIZED(flow))
         {
             DUMP_FLOW_ID_VARIABLE(sa_flow_index, jdf_basename, f, flow);
         }
@@ -9082,6 +9085,7 @@ jdf_generate_code_data_lookup(const jdf_t *jdf,
 
         coutput("  /* check the dependencies for %s */\n", flow->varname);
         coutput("#if defined(PARSEC_DEBUG_PARANOID)\n");
+        coutput("/* Commented because these checks are too restrictive\n");
         coutput("// All the referrers to the parametrized flow %s of task class %s:\n", flow->varname, f->fname);
         
         string_arena_t *sa_loop = string_arena_new(64);
@@ -9113,6 +9117,7 @@ jdf_generate_code_data_lookup(const jdf_t *jdf,
         coutput("%s", string_arena_get_string(sa_loop));
         string_arena_free(sa_loop);
         
+        coutput("*/\n");
         coutput("#endif // PARSEC_DEBUG_PARANOID\n\n");
     }
 
