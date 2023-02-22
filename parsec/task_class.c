@@ -724,6 +724,19 @@ int parsec_helper_get_flow_index_that_contains_dep(const parsec_task_class_t *tc
 
 int parsec_helper_get_flow_index_in_or_out(const parsec_task_class_t *tc, const parsec_flow_t *flow)
 {
+    /*int i = parsec_helper_get_flow_index(tc, flow, 1);
+    if(i != -1)
+    {
+        return i;
+    }
+    // If the flow was not found, it is a read-only flow, let's affect it a new index
+    i = parsec_helper_get_flow_index(tc, flow, 0);
+    assert(i != -1);
+    // Add the number of out flows to the index to make it unique
+    int nb_out_flows = parsec_helper_get_flow_index(tc, NULL, 1);
+    assert(nb_out_flows != -1);
+    i += nb_out_flows;
+    return i;*/
     int i = parsec_helper_get_flow_index(tc, flow, 1);
     i =  ((i == -1) ? parsec_helper_get_flow_index(tc, flow, 0) : i);
     assert(i != -1);
@@ -737,14 +750,14 @@ int parsec_helper_get_flow_index(const parsec_task_class_t *tc, const parsec_flo
     {
         const parsec_flow_t *_flow = (in_out ? tc->out[i] : tc->in[i]);
 
-        if (!flow)
-        {
-            break;
-        }
-
         if (flow == _flow)
         {
             return i;
+        }
+
+        if (!_flow)
+        {
+            break;
         }
     }
 
