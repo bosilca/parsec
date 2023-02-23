@@ -11012,10 +11012,14 @@ jdf_generate_code_iterate_successors_or_predecessors(const jdf_t *jdf,
                 OUTPUT_PREV_DEPS((1U << dl->dep_index), sa_datatype, sa_deps);
             }
 
-            while(nb_open_ldef > 0) {
+            while(nb_open_ldef > FLOW_IS_PARAMETRIZED(fl)?1:0) { // If the flow is parametrized, we need to keep the first { (corresponding to the parametrized flow iterator's loop)
                 string_arena_add_string(sa_coutput, "%s  }\n", indent(nb_open_ldef));
                 nb_open_ldef--;
             }
+            /*while(nb_open_ldef > 0) { // If the flow is parametrized, we need to keep the first { (corresponding to the parametrized flow iterator's loop)
+                string_arena_add_string(sa_coutput, "%s  }\n", indent(nb_open_ldef));
+                nb_open_ldef--;
+            }*/
         }
 
         if( (1 == flowempty) && (0 == flowtomem) ) {
@@ -11039,6 +11043,11 @@ jdf_generate_code_iterate_successors_or_predecessors(const jdf_t *jdf,
                 string_arena_add_string(sa_action_mask, "0x%xU", (flow_type & JDF_DEP_FLOW_OUT) ? fl->flow_dep_mask_out : fl->flow_dep_mask_in/*mask*/);
             }
 
+            if(FLOW_IS_PARAMETRIZED(fl)) {
+                string_arena_add_string(sa_coutput, "  } // end of parametrized flow %s\n", fl->varname);
+                nb_open_ldef--;
+            }
+            assert(0 == nb_open_ldef);
 
             /*if(FLOW_IS_PARAMETRIZED(fl)) {
                 
@@ -11059,6 +11068,7 @@ jdf_generate_code_iterate_successors_or_predecessors(const jdf_t *jdf,
             }*/
             string_arena_free(sa_action_mask);
         }
+        
     }
     coutput("  (void)data;(void)nc;(void)es;(void)ontask;(void)ontask_arg;(void)rank_dst;(void)action_mask;\n");
     coutput("}\n\n");
