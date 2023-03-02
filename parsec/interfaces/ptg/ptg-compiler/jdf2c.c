@@ -6533,6 +6533,7 @@ static void jdf_generate_new_function( const jdf_t* jdf )
         for( jdf_function_entry_t* f = jdf->functions; NULL != f; f = f->next ) {
             if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f))
             {
+                coutput("  { // task class %s\n", f->fname);
                 coutput("    parsec_task_class_t *tc = __parsec_tp->super.super.task_classes_array[%d];\n\n", f->task_class_id);
 
                 coutput("  int current_data_offset_for_%s_%s = 0;\n", jdf_basename, f->fname);
@@ -6718,6 +6719,7 @@ static void jdf_generate_new_function( const jdf_t* jdf )
                         coutput("  }\n");
                     }
                 }
+                coutput("  }\n");
             }
         }
         for( jdf_function_entry_t* f = jdf->functions; NULL != f; f = f->next ) {
@@ -8516,7 +8518,7 @@ static void jdf_generate_code_call_release_dependencies(const jdf_t *jdf,
     jdf_dataflow_t* dl;
     (void)jdf;
 
-    char complete_mask_str[92];
+    char complete_mask_str[256];
 
     for( dl = function->dataflow; dl != NULL; dl = dl->next ) {
         complete_mask |= dl->flow_dep_mask_out;
@@ -8525,12 +8527,12 @@ static void jdf_generate_code_call_release_dependencies(const jdf_t *jdf,
     // if the task class has any parametrized flow is referrer, the mask can not be computed at compile time
     if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED_OR_REFERRER(function))
     {
-        snprintf(complete_mask_str, 92, "spec_%s.dep_mask_out_of_flow_of_%s_%s",
+        snprintf(complete_mask_str, 256, "spec_%s.dep_mask_out_of_flow_of_%s_%s",
                     JDF_OBJECT_ONAME(function), jdf_basename, function->fname);
     }
     else
     {
-        snprintf(complete_mask_str, 92, "0x%x", complete_mask);
+        snprintf(complete_mask_str, 256, "0x%x", complete_mask);
     }
 
     coutput("  release_deps_of_%s_%s(es, %s,\n"
