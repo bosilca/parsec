@@ -2177,7 +2177,7 @@ jdf_generate_function_without_expression(const jdf_t *jdf,
         }
 
 
-        coutput("#if defined(PARSEC_DEBUG_PARANOID)\n");
+        coutput("/*\n  // Commented because it gives a lot of errors on valgrind\n  #if defined(PARSEC_DEBUG_PARANOID)\n");
         coutput("  // Coherency test:\n");
         dumped_iterator_lists_count = 0;
         for( jdf_dataflow_t *df = f->dataflow; NULL != df; df = df->next ) {
@@ -2219,7 +2219,7 @@ jdf_generate_function_without_expression(const jdf_t *jdf,
                 }
             }
         }
-        coutput("#endif\n");
+        coutput("#endif*/\n");
 
 
         ai.holder = "";
@@ -7598,7 +7598,7 @@ jdf_generate_code_consume_predecessor_setup(const jdf_t *jdf, const jdf_call_t *
     string_arena_init(sa_pred_consumed_flow_index);
 
 
-    if(FLOW_IS_PARAMETRIZED(pred_flow))
+    if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(pred_f))
     {
         DUMP_FLOW_ID_VARIABLE(sa_pred_consumed_flow_index, jdf_basename, pred_f, pred_flow);
     }
@@ -7606,7 +7606,7 @@ jdf_generate_code_consume_predecessor_setup(const jdf_t *jdf, const jdf_call_t *
     {
         string_arena_add_string(sa_pred_consumed_flow_index, "%d", pred_flow->flow_index);
     }
-    if(FLOW_IS_PARAMETRIZED(flow))
+    if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f))
     {
         DUMP_FLOW_ID_VARIABLE(sa_consumed_flow_index, jdf_basename, f, flow);
     }
@@ -9497,7 +9497,7 @@ static void jdf_generate_code_hook_cuda(const jdf_t *jdf,
 
         if( FLOW_IS_PARAMETRIZED(fl) ) {
             // If the flow is out (note: we use either in or out, this is our only way of getting a parametrized_flow)
-            if( JDF_FLOW_TYPE_READ & fl->flow_flags ) {
+            if( JDF_FLOW_TYPE_WRITE & fl->flow_flags ) {
                 coutput("%s  gpu_task->flow[%s] = this_task->task_class->out[spec_%s_%s.out_flow_offset_of_parametrized_%s + %s];\n",
                             INDENTATION_IF_PARAMETRIZED(fl), di_str,
                             jdf_basename, f->fname, JDF_OBJECT_ONAME(fl), get_parametrized_flow_iterator_name(fl));

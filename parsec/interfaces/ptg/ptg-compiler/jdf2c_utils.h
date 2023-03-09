@@ -102,15 +102,24 @@ static inline char *util_dump_flow_id_variable(string_arena_t *sa, const char *j
 {
     string_arena_init(sa);
 
-    // if(flow->flow_flags & JDF_FLOW_TYPE_WRITE)
-    // {
+    // // if(flow->flow_flags & JDF_FLOW_TYPE_WRITE)
+    // // {
+    //     string_arena_add_string(sa, "(spec_%s.flow_id_of_flow_of_%s_%s_for_%s + %s)",
+    //                 JDF_OBJECT_ONAME(function), jdf_basename, function->fname, flow->varname, get_parametrized_flow_iterator_name(flow));
+    // // }
+    // // else
+    // // {
+    // //     string_arena_add_string(sa, "DUNNO_HOW_TO_GET_ACTION_MASK_FOR_THIS_FLOW");
+    // // }
+
+    if( FLOW_IS_PARAMETRIZED(flow) ) {
         string_arena_add_string(sa, "(spec_%s.flow_id_of_flow_of_%s_%s_for_%s + %s)",
                     JDF_OBJECT_ONAME(function), jdf_basename, function->fname, flow->varname, get_parametrized_flow_iterator_name(flow));
-    // }
-    // else
-    // {
-    //     string_arena_add_string(sa, "DUNNO_HOW_TO_GET_ACTION_MASK_FOR_THIS_FLOW");
-    // }
+    }
+    else {
+        string_arena_add_string(sa, "spec_%s.flow_id_of_flow_of_%s_%s_for_%s",
+                    JDF_OBJECT_ONAME(function), jdf_basename, function->fname, flow->varname);
+    }
 
     return string_arena_get_string(sa);
 }
