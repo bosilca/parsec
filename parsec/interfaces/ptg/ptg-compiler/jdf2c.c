@@ -9463,27 +9463,35 @@ static void jdf_generate_code_hook_cuda(const jdf_t *jdf,
     /* Dump the dataflow */
     coutput("  gpu_task->pushout = 0;\n");
 
-    if(TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f)) {
-        // We need this variable if at least on flow is parametrized
-        coutput("  int current_flow_id=0;\n");
-    }
-
-    int parametrized_flow_has_been_encountered = 0;
-
     string_arena_t *sa_di = string_arena_new(64);
+    string_arena_t *sa_flow = string_arena_new(256);
     for(fl = f->dataflow, di = 0; fl != NULL; fl = fl->next, di++) {
         coutput("  // Dataflow %s\n", fl->varname);
 
-        if(FLOW_IS_PARAMETRIZED(fl)) {
-            // If this flow is parametrized, all the following ones will have a dynamic id
-            parametrized_flow_has_been_encountered = 1;
+        string_arena_init(sa_flow);
+        if( FLOW_IS_PARAMETRIZED(fl) ) {
+            if( JDF_FLOW_TYPE_WRITE & fl->flow_flags ) {
+                // If the flow is out (note: we use either in or out, this is our only way of getting a parametrized_flow)
+                string_arena_add_string(sa_flow, "this_task->task_class->out[spec_%s_%s.out_flow_offset_of_parametrized_%s + %s]",
+                                        jdf_basename, f->fname, JDF_OBJECT_ONAME(fl), get_parametrized_flow_iterator_name(fl));
+            }
+            else
+            {
+                string_arena_add_string(sa_flow, "this_task->task_class->in[spec_%s_%s.in_flow_offset_of_parametrized_%s + %s]",
+                                        jdf_basename, f->fname, JDF_OBJECT_ONAME(fl), get_parametrized_flow_iterator_name(fl));
+            }
         }
-
+        else
+        {
+            string_arena_add_string(sa_flow, "(&%s)", JDF_OBJECT_ONAME( fl ));
+        }
         string_arena_init(sa_di);
-        if( parametrized_flow_has_been_encountered ) {
-            // We use the current_flow_id variable because we cannot compute di at compile time
-            string_arena_add_string(sa_di, "current_flow_id");
+        if( FLOW_IS_PARAMETRIZED(fl) || TASK_CLASS_ANY_FLOW_IS_PARAMETRIZED(f)) {
+            // The flow is parametrized
+            string_arena_add_string(sa_di, "%s->flow_index",
+                                    string_arena_get_string(sa_flow));
         } else {
+            // No parametrized flow, we know di at compile time
             string_arena_add_string(sa_di, "%d", di);
         }
         const char *di_str = string_arena_get_string(sa_di);
@@ -9495,23 +9503,8 @@ static void jdf_generate_code_hook_cuda(const jdf_t *jdf,
             string_arena_free(sa);
         }
 
-        if( FLOW_IS_PARAMETRIZED(fl) ) {
-            // If the flow is out (note: we use either in or out, this is our only way of getting a parametrized_flow)
-            if( JDF_FLOW_TYPE_WRITE & fl->flow_flags ) {
-                coutput("%s  gpu_task->flow[%s] = this_task->task_class->out[spec_%s_%s.out_flow_offset_of_parametrized_%s + %s];\n",
-                            INDENTATION_IF_PARAMETRIZED(fl), di_str,
-                            jdf_basename, f->fname, JDF_OBJECT_ONAME(fl), get_parametrized_flow_iterator_name(fl));
-            }
-            else
-            {
-                coutput("%s  gpu_task->flow[%s] = this_task->task_class->in[spec_%s_%s.in_flow_offset_of_parametrized_%s + %s];\n",
-                            INDENTATION_IF_PARAMETRIZED(fl), di_str,
-                            jdf_basename, f->fname, JDF_OBJECT_ONAME(fl), get_parametrized_flow_iterator_name(fl));
-            }
-        }else{
-            coutput("%s  gpu_task->flow[%s]         = &%s;\n",
-                 INDENTATION_IF_PARAMETRIZED(fl), di_str, JDF_OBJECT_ONAME( fl ));
-        }
+        coutput("%s  gpu_task->flow[%s]         = %s;\n",
+                 INDENTATION_IF_PARAMETRIZED(fl), di_str, string_arena_get_string(sa_flow));
 
         sprintf(sa->ptr, "%s.dc", fl->varname);
         jdf_find_property(body->properties, sa->ptr, &desc_property);
@@ -9533,9 +9526,12 @@ static void jdf_generate_code_hook_cuda(const jdf_t *jdf,
                 exit(-1);
             }
             coutput("%s  gpu_task->flow_nb_elts[%s] = 0;\n", INDENTATION_IF_PARAMETRIZED(fl), di_str);
+            coutput("%s  ++current_flow_id;\n", INDENTATION_IF_PARAMETRIZED(fl));
         }else{
             if(size_property == NULL){
-                coutput("%s  gpu_task->flow_nb_elts[%s] = gpu_task->ec->data[%s].data_in->original->nb_elts;\n", INDENTATION_IF_PARAMETRIZED(fl), di_str, di_str);
+                coutput("%s  // If gpu_task->ec->data[%s].data_in is NULL, then 0 elements\n", INDENTATION_IF_PARAMETRIZED(fl), di_str);
+                coutput("%s  gpu_task->flow_nb_elts[%s] = (gpu_task->ec->data[%s].data_in)?(gpu_task->ec->data[%s].data_in->original->nb_elts):0;\n",
+                        INDENTATION_IF_PARAMETRIZED(fl), di_str, di_str, di_str);
             }else{
                 coutput("%s  gpu_task->flow_nb_elts[%s] = %s;\n",
                         INDENTATION_IF_PARAMETRIZED(fl), di_str, dump_expr((void**)size_property->expr, &info));
@@ -9607,8 +9603,6 @@ static void jdf_generate_code_hook_cuda(const jdf_t *jdf,
         }
 
         if(FLOW_IS_PARAMETRIZED(fl)) {
-            coutput("    current_flow_id++;\n");
-
             string_arena_t *sa = string_arena_new(64);
             dump_parametrized_flow_loop_end_if_parametrized(fl, "  ", sa);
             coutput("%s", string_arena_get_string(sa));
