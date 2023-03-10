@@ -1583,12 +1583,12 @@ parsec_update_deps_with_counter(parsec_taskpool_t *tp,
     
     if( 0 == *deps ) {
         dep_new_value = parsec_check_IN_dependencies_with_counter(tp, task) - 1;
-        if( parsec_atomic_cas_int32( deps, 0, dep_new_value ) == 1 )
+        if( parsec_atomic_cas_int64( deps, 0, dep_new_value ) == 1 )
             dep_cur_value = dep_new_value;
         else
-            dep_cur_value = parsec_atomic_fetch_dec_int32( deps ) - 1;
+            dep_cur_value = parsec_atomic_fetch_dec_int64( deps ) - 1;
     } else {
-        dep_cur_value = parsec_atomic_fetch_dec_int32( deps ) - 1;
+        dep_cur_value = parsec_atomic_fetch_dec_int64( deps ) - 1;
     }
     PARSEC_DEBUG_VERBOSE(10, parsec_debug_output, "Activate counter dependency for %s leftover %d (excluding current)",
                          tmp, dep_cur_value);
@@ -1630,14 +1630,14 @@ parsec_update_deps_with_counter_count_task(parsec_taskpool_t *tp,
     
     if( 0 == *deps ) {
         dep_new_value = parsec_check_IN_dependencies_with_counter(tp, task) - 1;
-        if( parsec_atomic_cas_int32( deps, 0, dep_new_value ) == 1 ) {
+        if( parsec_atomic_cas_int64( deps, 0, dep_new_value ) == 1 ) {
             dep_cur_value = dep_new_value;
             tp->tdm.module->taskpool_addto_nb_tasks(tp, 1);
         } else {
-            dep_cur_value = parsec_atomic_fetch_dec_int32( deps ) - 1;
+            dep_cur_value = parsec_atomic_fetch_dec_int64( deps ) - 1;
         }
     } else {
-        dep_cur_value = parsec_atomic_fetch_dec_int32( deps ) - 1;
+        dep_cur_value = parsec_atomic_fetch_dec_int64( deps ) - 1;
     }
     PARSEC_DEBUG_VERBOSE(10, parsec_debug_output, "Activate counter dependency for %s leftover %d (excluding current)",
                          tmp, dep_cur_value);
@@ -1702,14 +1702,14 @@ parsec_update_deps_with_mask(parsec_taskpool_t *tp,
 #endif
     }
 
-    dep_cur_value = parsec_atomic_fetch_or_int32( deps, dep_new_value ) | dep_new_value;
+    dep_cur_value = parsec_atomic_fetch_or_int64( deps, dep_new_value ) | dep_new_value;
 
 #if defined(PARSEC_DEBUG_PARANOID)
     if( (dep_cur_value & tc->dependencies_goal) == tc->dependencies_goal ) {
         int success;
         parsec_dependency_t tmp_mask;
         tmp_mask = *deps;
-        success = parsec_atomic_cas_int32(deps,
+        success = parsec_atomic_cas_int64(deps,
                                           tmp_mask, (tmp_mask | PARSEC_DEPENDENCIES_TASK_DONE));
         if( !success || (tmp_mask & PARSEC_DEPENDENCIES_TASK_DONE) ) {
             parsec_fatal("Task %s scheduled twice (second time by %s)!!!",
@@ -1768,7 +1768,7 @@ parsec_update_deps_with_mask_count_task(parsec_taskpool_t *tp,
 #endif
     }
 
-    dep_cur_value = parsec_atomic_fetch_or_int32( deps, dep_new_value ) | dep_new_value;
+    dep_cur_value = parsec_atomic_fetch_or_int64( deps, dep_new_value ) | dep_new_value;
     if( (dep_cur_value & (~dep_new_value)) == 0 ) {
         tp->tdm.module->taskpool_addto_nb_tasks(tp, 1);
     } else {
@@ -1780,7 +1780,7 @@ parsec_update_deps_with_mask_count_task(parsec_taskpool_t *tp,
         int success;
         parsec_dependency_t tmp_mask;
         tmp_mask = *deps;
-        success = parsec_atomic_cas_int32(deps,
+        success = parsec_atomic_cas_int64(deps,
                                           tmp_mask, (tmp_mask | PARSEC_DEPENDENCIES_TASK_DONE));
         if( !success || (tmp_mask & PARSEC_DEPENDENCIES_TASK_DONE) ) {
             parsec_fatal("Task %s scheduled twice (second time by %s)!!!",

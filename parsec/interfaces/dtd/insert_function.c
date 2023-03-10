@@ -171,14 +171,14 @@ static int parsec_dtd_tile_new_dc_key_to_string(parsec_data_collection_t *d, par
 static void
 parsec_dtd_iterate_successors(parsec_execution_stream_t *es,
                               const parsec_task_t *this_task,
-                              uint32_t action_mask,
+                              parsec_dependency_t action_mask,
                               parsec_ontask_function_t *ontask,
                               void *ontask_arg);
 
 static int
 parsec_dtd_release_deps(parsec_execution_stream_t *,
                         parsec_task_t *,
-                        uint32_t, parsec_remote_deps_t *);
+                        parsec_dependency_t, parsec_remote_deps_t *);
 
 
 static parsec_hook_return_t
@@ -1729,7 +1729,7 @@ dtd_release_dep_fct(parsec_execution_stream_t *es,
 static void
 parsec_dtd_iterate_successors(parsec_execution_stream_t *es,
                               const parsec_task_t *this_task,
-                              uint32_t action_mask,
+                              parsec_dependency_t action_mask,
                               parsec_ontask_function_t *ontask,
                               void *ontask_arg)
 {
@@ -1765,7 +1765,7 @@ parsec_dtd_iterate_successors(parsec_execution_stream_t *es,
 static int
 parsec_dtd_release_deps(parsec_execution_stream_t *es,
                         parsec_task_t *this_task,
-                        uint32_t action_mask,
+                        parsec_dependency_t action_mask,
                         parsec_remote_deps_t *deps)
 {
     (void)deps;

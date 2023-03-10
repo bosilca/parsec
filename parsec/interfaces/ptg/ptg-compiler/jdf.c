@@ -1524,7 +1524,7 @@ void jdf_dump_function_flows(jdf_function_entry_t* function, int expanded)
             if( strlen(string_arena_get_string(sa1)) )
                 string_arena_add_string(sa2, "<%s>", string_arena_get_string(sa1));
 
-            printf("%s: %6s[%1s%1s idx %d, mask 0x%x/0x%x] %2s dep_index %8d dep_dt_index %8d %p <%s %s>\n", function->fname,
+            printf("%s: %6s[%1s%1s idx %d, mask 0x%lx/0x%lx] %2s dep_index %8d dep_dt_index %8d %p <%s %s>\n", function->fname,
                    flow->varname, (flow->flow_flags & JDF_FLOW_IS_IN ? "R" : " "),
                    (flow->flow_flags & JDF_FLOW_IS_OUT ? "W" : " "),
                    flow->flow_index, flow->flow_dep_mask_in, flow->flow_dep_mask_out,

@@ -126,7 +126,7 @@ bool parsec_helper_dep_is_in_flow_array(const parsec_dep_t *dep, parsec_dep_t *d
 void parsec_shift_all_flows_after(parsec_task_class_t *tc, const parsec_flow_t *pivot_flow, int shift)
 {
     int i, j;
-    int flow_in_out;
+    //int flow_in_out;
     int pivot_index_in, pivot_index_out;
     int last_flow_index_in, last_flow_index_out;
     int found_pivot_in=0, found_pivot_out=0;
@@ -352,6 +352,7 @@ void parsec_shift_all_flows_after(parsec_task_class_t *tc, const parsec_flow_t *
 void parsec_shift_all_deps_after_and_update_tc(parsec_task_class_t *tc, parsec_flow_t *flow, parsec_dep_t *pivot_dep, int dep_in_out, int shift)
 {
     int pivot_dep_index;
+    (void) tc;
 
     // Look for the pivot dep
     pivot_dep_index = -1;
@@ -531,7 +532,7 @@ void parsec_debug_dump_task_class_at_exec(parsec_task_class_t *tc)
 void parsec_check_sanity_of_task_class(parsec_task_class_t *tc, bool check_dep_index)
 {
     int i, j;
-    int flow_in_out, dep_in_out;
+    int flow_in_out;
     parsec_dep_t *dep;
 
     // flows can appear twice in a task class (if both in and out)

@@ -1747,11 +1747,11 @@ static void jdf_generate_predeclarations( const jdf_t *jdf )
                 // If any flow/dep is parametrized/referrer, all the action masks have to be dynamically computed
                 coutput("  // Action masks of %s\n", f->fname);
                 for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
-                    coutput("  uint32_t dep_mask_out_of_flow_of_%s_%s_for_%s;\n",
+                    coutput("  parsec_dependency_t dep_mask_out_of_flow_of_%s_%s_for_%s;\n",
                                         jdf_basename, f->fname, df->varname);
                 }
                 // action_mask for the entire task class
-                coutput("  uint32_t dep_mask_out_of_flow_of_%s_%s;\n",
+                coutput("  parsec_dependency_t dep_mask_out_of_flow_of_%s_%s;\n",
                             jdf_basename, f->fname);
                             
 
@@ -3217,7 +3217,7 @@ static int jdf_generate_dataflow( const jdf_t *jdf, const jdf_function_entry_t* 
     string_arena_t* flow_flags = string_arena_new(64);
     string_arena_t *psa;
     jdf_dep_t *dl;
-    uint32_t flow_datatype_mask = 0;
+    parsec_dependency_t flow_datatype_mask = 0;
     char sep_in[4], sep_out[4];  /* one char more to deal with '\n' special cases (Windows) */
 
     (void)jdf;
@@ -3333,7 +3333,7 @@ static int jdf_generate_dataflow( const jdf_t *jdf, const jdf_function_entry_t* 
                             "  .sym_type           = %s,\n"
                             "  .flow_flags         = %s,\n"
                             "  .flow_index         = %u,\n"
-                            "  .flow_datatype_mask = 0x%x,\n"
+                            "  .flow_datatype_mask = 0x%lx,\n"
                             "  .dep_in     = { %s },\n"
                             "  .dep_out    = { %s }\n"
                             "};\n\n",
@@ -8514,7 +8514,7 @@ static void jdf_generate_code_call_release_dependencies(const jdf_t *jdf,
                                                         const jdf_function_entry_t *function,
                                                         const char* context_name)
 {
-    uint32_t complete_mask = 0;
+    parsec_dependency_t complete_mask = 0;
     jdf_dataflow_t* dl;
     (void)jdf;
 
@@ -8532,7 +8532,7 @@ static void jdf_generate_code_call_release_dependencies(const jdf_t *jdf,
     }
     else
     {
-        snprintf(complete_mask_str, 256, "0x%x", complete_mask);
+        snprintf(complete_mask_str, 256, "0x%lx", complete_mask);
     }
 
     coutput("  release_deps_of_%s_%s(es, %s,\n"
@@ -8609,7 +8609,7 @@ jdf_generate_code_datatype_lookup(const jdf_t *jdf,
     string_arena_t *sa_current_mask = string_arena_new(256);
 
     int last_datatype_idx, continue_dependencies, type, skip_condition, generate_exit_label = 0;
-    uint32_t current_mask = 0;
+    parsec_dependency_t current_mask = 0;
     expr_info_t info = EMPTY_EXPR_INFO;
 
     sa  = string_arena_new(64);
@@ -8624,7 +8624,7 @@ jdf_generate_code_datatype_lookup(const jdf_t *jdf,
     ai.holder = "this_task->locals.";
     ai.expr = NULL;
     coutput("static int %s(parsec_execution_stream_t *es, const %s *this_task,\n"
-            "              uint32_t* flow_mask, parsec_dep_data_description_t* data)\n"
+            "              parsec_dependency_t* flow_mask, parsec_dep_data_description_t* data)\n"
             "{\n"
             "  const __parsec_%s_internal_taskpool_t *__parsec_tp = (__parsec_%s_internal_taskpool_t *)this_task->taskpool;\n"
             "  (void)__parsec_tp; (void)es; (void)this_task; (void)data;\n"
@@ -8668,7 +8668,7 @@ jdf_generate_code_datatype_lookup(const jdf_t *jdf,
         else
         {
             // static masks if no parametrization in this task class
-            string_arena_add_string(sa_action_mask, "0x%xU", (type == JDF_DEP_FLOW_OUT ? fl->flow_dep_mask_out : (1U << fl->flow_index)));
+            string_arena_add_string(sa_action_mask, "0x%lxU", (type == JDF_DEP_FLOW_OUT ? fl->flow_dep_mask_out : (1U << fl->flow_index)));
         }
 
         string_arena_add_string(sa_coutput, "if( (*flow_mask) & %s ) {  /* Flow %s */\n",
@@ -8693,7 +8693,7 @@ jdf_generate_code_datatype_lookup(const jdf_t *jdf,
             /* Prepare the memory layout of the output dependency. */
             if( last_datatype_idx != dl->dep_datatype_index ) {
                 string_arena_init(sa_current_mask);
-                string_arena_add_string(sa_current_mask, "0x%xU", current_mask);
+                string_arena_add_string(sa_current_mask, "0x%lxU", current_mask);
                 JDF_CODE_DATATYPE_DUMP(sa_coutput, current_mask, string_arena_get_string(sa_current_mask), sa_cond, sa_datatype, skip_condition);
                 /************************************/
                 /* REMOTE DATATYPE USED FOR RECV    */
@@ -8754,7 +8754,7 @@ jdf_generate_code_datatype_lookup(const jdf_t *jdf,
             if( !continue_dependencies ) break;
         }
         string_arena_init(sa_current_mask);
-        string_arena_add_string(sa_current_mask, "0x%xU", current_mask);
+        string_arena_add_string(sa_current_mask, "0x%lxU", current_mask);
         JDF_CODE_DATATYPE_DUMP(sa_coutput, current_mask, string_arena_get_string(sa_current_mask), sa_cond, sa_datatype, skip_condition);
 
         dump_parametrized_flow_loop_end_if_parametrized(fl, "  ", sa_coutput);
@@ -9966,7 +9966,7 @@ static void jdf_generate_code_free_hash_table_entry(const jdf_t *jdf, const jdf_
 
 static void jdf_generate_code_release_deps(const jdf_t *jdf, const jdf_function_entry_t *f, const char *name)
 {
-    coutput("static int %s(parsec_execution_stream_t *es, %s *this_task, uint32_t action_mask, parsec_remote_deps_t *deps)\n"
+    coutput("static int %s(parsec_execution_stream_t *es, %s *this_task, parsec_dependency_t action_mask, parsec_remote_deps_t *deps)\n"
             "{\n"
             "PARSEC_PINS(es, RELEASE_DEPS_BEGIN, (parsec_task_t *)this_task);"
             "{\n"
@@ -10588,7 +10588,7 @@ jdf_generate_code_iterate_successors_or_predecessors(const jdf_t *jdf,
     ai.expr = NULL;
     coutput("static void\n"
             "%s(parsec_execution_stream_t *es, const %s *this_task,\n"
-            "               uint32_t action_mask, parsec_ontask_function_t *ontask, void *ontask_arg)\n"
+            "               parsec_dependency_t action_mask, parsec_ontask_function_t *ontask, void *ontask_arg)\n"
             "{\n"
             "  const __parsec_%s_internal_taskpool_t *__parsec_tp = (const __parsec_%s_internal_taskpool_t*)this_task->taskpool;\n"
             "  parsec_task_t nc;  /* generic placeholder for locals */\n"
@@ -11036,7 +11036,7 @@ jdf_generate_code_iterate_successors_or_predecessors(const jdf_t *jdf,
             else
             {
                 // static masks if no parametrization in this task class
-                string_arena_add_string(sa_action_mask, "0x%xU", (flow_type & JDF_DEP_FLOW_OUT) ? fl->flow_dep_mask_out : fl->flow_dep_mask_in/*mask*/);
+                string_arena_add_string(sa_action_mask, "0x%lxU", (flow_type & JDF_DEP_FLOW_OUT) ? fl->flow_dep_mask_out : fl->flow_dep_mask_in/*mask*/);
             }
 
             if(FLOW_IS_PARAMETRIZED(fl)) {

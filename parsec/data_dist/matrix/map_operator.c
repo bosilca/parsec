@@ -199,7 +199,7 @@ add_task_to_list(parsec_execution_stream_t *es,
 
 static void iterate_successors(parsec_execution_stream_t *es,
                                const parsec_task_t *this_task,
-                               uint32_t action_mask,
+                               parsec_dependency_t action_mask,
                                parsec_ontask_function_t *ontask,
                                void *ontask_arg)
 {
@@ -245,7 +245,7 @@ static void iterate_successors(parsec_execution_stream_t *es,
 
 static int release_deps(parsec_execution_stream_t *es,
                         parsec_task_t *this_task,
-                        uint32_t action_mask,
+                        parsec_dependency_t action_mask,
                         parsec_remote_deps_t *deps)
 {
     parsec_task_t** ready_list;

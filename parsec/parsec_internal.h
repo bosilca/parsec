@@ -238,7 +238,7 @@ typedef enum  {
 
 typedef int (parsec_release_deps_t)(struct parsec_execution_stream_s*,
                                    parsec_task_t*,
-                                   uint32_t,
+                                   parsec_dependency_t,
                                    parsec_remote_deps_t*);
 #if defined(PARSEC_SIM)
 typedef int (parsec_sim_cost_fct_t)(const parsec_task_t *task);
@@ -260,7 +260,7 @@ typedef parsec_ontask_iterate_t (parsec_ontask_function_t)(struct parsec_executi
  */
 typedef void (parsec_traverse_function_t)(struct parsec_execution_stream_s *,
                                          const parsec_task_t *,
-                                         uint32_t,
+                                         parsec_dependency_t,
                                          parsec_ontask_function_t *,
                                          void *);
 
@@ -578,7 +578,7 @@ extern int device_delegate_begin, device_delegate_end;
  * Dependencies management.
  */
 typedef struct {
-    uint32_t                     action_mask;
+    parsec_dependency_t          action_mask;
     uint32_t                     output_usage;
     data_repo_entry_t           *output_entry; /* Current task repo entry */
     data_repo_t                 *output_repo;  /* Current task repo */

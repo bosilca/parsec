@@ -52,7 +52,7 @@ affinity_of_gpu_d2h_task( parsec_gpu_d2h_task_t* this_task,
 static void
 iterate_successors_of_gpu_d2h_task( parsec_execution_stream_t* es,
                                      const parsec_gpu_d2h_task_t* this_task,
-                                     uint32_t action_mask,
+                                     parsec_dependency_t action_mask,
                                      parsec_ontask_function_t * ontask, void *ontask_arg )
 {
     (void)es; (void)this_task; (void)action_mask; (void)ontask; (void)ontask_arg;
@@ -61,7 +61,7 @@ iterate_successors_of_gpu_d2h_task( parsec_execution_stream_t* es,
 static void
 iterate_predecessors_of_gpu_d2h_task( parsec_execution_stream_t* es,
                                        const parsec_gpu_d2h_task_t* this_task,
-                                       uint32_t action_mask,
+                                       parsec_dependency_t action_mask,
                                        parsec_ontask_function_t * ontask, void *ontask_arg )
 {
     (void)es; (void)this_task; (void)action_mask; (void)ontask; (void)ontask_arg;
@@ -70,7 +70,7 @@ iterate_predecessors_of_gpu_d2h_task( parsec_execution_stream_t* es,
 static int
 release_deps_of_gpu_d2h_task( parsec_execution_stream_t* es,
                                parsec_gpu_d2h_task_t* this_task,
-                               uint32_t action_mask,
+                               parsec_dependency_t action_mask,
                                parsec_remote_deps_t* deps )
 {
     (void)es; (void)this_task; (void)action_mask; (void)deps;

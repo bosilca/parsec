@@ -292,8 +292,8 @@ struct jdf_dataflow {
     char                     *varname;
     struct jdf_dep           *deps;
     uint8_t                   flow_index;
-    uint32_t                  flow_dep_mask_out;
-    uint32_t                  flow_dep_mask_in;
+    parsec_dependency_t       flow_dep_mask_out;
+    parsec_dependency_t       flow_dep_mask_in;
 };
 
 typedef uint16_t jdf_dep_flags_t;
