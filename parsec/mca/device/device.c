@@ -109,6 +109,7 @@ int parsec_get_best_device( parsec_task_t* this_task, double ratio )
         /* If we reach here, we cannot yet decide which device to run on based on the WRITE
          * constraints, so let's pick the data for a READ flow.
          */
+        if(!this_task->task_class->in[i]) break;
         data_index = this_task->task_class->in[i]->flow_index;
         if( this_task->data[data_index].data_in->original->preferred_device > 1 ) {
             prefer_index = this_task->data[data_index].data_in->original->preferred_device;

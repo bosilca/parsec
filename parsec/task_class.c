@@ -349,8 +349,10 @@ void parsec_shift_all_flows_after(parsec_task_class_t *tc, const parsec_flow_t *
     }*/
 }
 
-void parsec_shift_all_deps_after_and_update_tc(parsec_task_class_t *tc, parsec_flow_t *flow, parsec_dep_t *pivot_dep, int dep_in_out, int shift)
+void parsec_shift_all_deps_after(parsec_task_class_t *tc, parsec_flow_t *flow, parsec_dep_t *pivot_dep, int dep_in_out, int shift)
 {
+    // Should be rewritten like parsec_update_dep_index_after_dep
+
     int pivot_dep_index;
     (void) tc;
 
@@ -403,57 +405,32 @@ void parsec_shift_all_deps_after_and_update_tc(parsec_task_class_t *tc, parsec_f
         // assert(dep->dep_index == i); // The dep index can acutally be anything
         assert(i + shift < (dep_in_out?MAX_DEP_OUT_COUNT:MAX_DEP_IN_COUNT)); // We should not overflow the array
 
-        dep->dep_index += shift;
-
         // Shift the dep
         (dep_in_out ? flow->dep_out : flow->dep_in)[i + shift] = dep;
     }
+}
 
+void parsec_update_dep_index_after_dep(parsec_task_class_t *tc, parsec_flow_t *flow, int dep_in_out, parsec_dep_t *pivot_dep, int shift)
+{
+    // This function assumes that the dep_index increases
+    // parsec_shift_all_deps_after should be rewritten assuming this too
 
-/*
-    // keep track of the deps that have been treated
-    parsec_dep_t *treated_deps[MAX_DEP_IN_COUNT + MAX_DEP_OUT_COUNT];
-    int treated_deps_size = 0;
+    int i;
+    parsec_dep_t *dep;
 
-    for(int in_out=0;in_out<2;++in_out)
+    for (i = 0; i < (dep_in_out ? MAX_DEP_OUT_COUNT : MAX_DEP_IN_COUNT); i++)
     {
-        for(int flid=0; flid<MAX_DATAFLOWS_PER_TASK; ++flid)
+        dep = (parsec_dep_t *)(dep_in_out ? flow->dep_out[i] : flow->dep_in[i]);
+        if (!dep)
         {
-            parsec_flow_t *fl = (parsec_flow_t *)(in_out ? tc->out[flid] : tc->in[flid]);
-            if(!fl)
-                break;
+            break;
+        }
 
-            int pivot_dep_dep_index = pivot_dep->dep_index;
-            for (int depid = 0; depid < (in_out?MAX_DEP_OUT_COUNT:MAX_DEP_IN_COUNT); depid++)
-            {
-                parsec_dep_t *dep = (parsec_dep_t *)(in_out ? fl->dep_out[depid] : fl->dep_in[depid]);
-
-                if (!dep)
-                    break;
-
-                if (dep->dep_index > pivot_dep_dep_index && !parsec_helper_dep_is_in_flow_array(dep, treated_deps, treated_deps_size))
-                {
-                    dep->dep_index += shift;
-                    treated_deps[treated_deps_size++] = dep;
-                }
-            }
+        if (dep->dep_index > pivot_dep->dep_index)
+        {
+            dep->dep_index += shift;
         }
     }
-*/
-
-    /* // The datatype_mask should stay the same, as we do not add any datatype
-    // Also shift the flow's flow_datatype_mask
-    if(dep_in_out)
-    {
-        // If output dep
-        // Goal: 000xxxxx -> 0xxxx11x (if shift=1 and pivot_dep_index=1)
-        // (add 1's in between)
-        parsec_dependency_t unshifted_values = flow->flow_datatype_mask & ((1<<pivot_dep_index)-1);
-        parsec_dependency_t shifted_values = (flow->flow_datatype_mask >> (pivot_dep_index + 1)) << (pivot_dep_index + 1 + shift);
-        parsec_dependency_t in_between = ((1<<(shift+1))-1) << pivot_dep_index;
-        flow->flow_datatype_mask = unshifted_values | shifted_values | in_between;
-    }
-    */
 }
 
 /* Prints the task class information (for debugging purposes)

@@ -6264,7 +6264,22 @@ static void jdf_generate_new_function( const jdf_t* jdf )
                                     }
                                 }
                                 
-                                
+                                jdf_function_entry_t *targetf = find_target_function(jdf, call->func_or_mem);
+                                jdf_dataflow_t *target_flow = find_target_flow(jdf, targetf, call->var);
+                                assert(targetf && target_flow);
+
+                                //coutput("    parsec_update_dep_index_after_dep(tc, parsec_flow_t *flow, int dep_in_out, parsec_dep_t *pivot_dep, int shift)")
+                                if(FLOW_IS_PARAMETRIZED(df) && FLOW_IS_PARAMETRIZED(target_flow))
+                                {
+                                    coutput("    parsec_update_dep_index_after_dep(tc, &flow_of_%s_%s_for_parametrized_%s[0], flow_in_out, dep, nb_specializations_of_parametrized_flow_of_%s_%s_for_parametrized_%s);\n",
+                                        jdf_basename, f->fname, df->varname, jdf_basename, call->func_or_mem, call->var);
+                                }
+                                else
+                                {
+                                    coutput("    parsec_update_dep_index_after_dep(tc, &flow_of_%s_%s_for_%s, flow_in_out, dep, nb_specializations_of_parametrized_flow_of_%s_%s_for_parametrized_%s);\n",
+                                        jdf_basename, f->fname, df->varname, jdf_basename, call->func_or_mem, call->var);
+                                }
+
                                 if(FLOW_IS_PARAMETRIZED(df))
                                 {
                                     coutput("    for( int %s=0;%s<nb_specializations_of_parametrized_flow_of_%s_%s_for_parametrized_%s;++%s) {\n",
@@ -6275,9 +6290,6 @@ static void jdf_generate_new_function( const jdf_t* jdf )
                                     );
                                 }
 
-                                jdf_function_entry_t *targetf = find_target_function(jdf, call->func_or_mem);
-                                jdf_dataflow_t *target_flow = find_target_flow(jdf, targetf, call->var);
-                                assert(targetf && target_flow);
                                 if(FLOW_IS_PARAMETRIZED(df) && FLOW_IS_PARAMETRIZED(target_flow))
                                 {
                                     coutput("\n    parsec_flow_t *flow = &flow_of_%s_%s_for_parametrized_%s[%s];\n",
@@ -6292,7 +6304,7 @@ static void jdf_generate_new_function( const jdf_t* jdf )
 
                                 coutput(
                                     "    // Shift the deps that are after dep (which references the parametrized flow)\n"
-                                    "    parsec_shift_all_deps_after_and_update_tc(tc, flow, dep, flow_in_out, nb_specializations_of_parametrized_flow_of_%s_%s_for_parametrized_%s-1);\n\n",
+                                    "    parsec_shift_all_deps_after(tc, flow, dep, flow_in_out, nb_specializations_of_parametrized_flow_of_%s_%s_for_parametrized_%s-1);\n\n",
                                     jdf_basename, call->func_or_mem, call->var
                                 );
 
