@@ -6271,12 +6271,12 @@ static void jdf_generate_new_function( const jdf_t* jdf )
                                 //coutput("    parsec_update_dep_index_after_dep(tc, parsec_flow_t *flow, int dep_in_out, parsec_dep_t *pivot_dep, int shift)")
                                 if(FLOW_IS_PARAMETRIZED(df) && FLOW_IS_PARAMETRIZED(target_flow))
                                 {
-                                    coutput("    parsec_update_dep_index_after_dep(tc, &flow_of_%s_%s_for_parametrized_%s[0], flow_in_out, dep, nb_specializations_of_parametrized_flow_of_%s_%s_for_parametrized_%s);\n",
+                                    coutput("    parsec_update_dep_index_after_dep(tc, &flow_of_%s_%s_for_parametrized_%s[0], flow_in_out, dep, nb_specializations_of_parametrized_flow_of_%s_%s_for_parametrized_%s-1);\n",
                                         jdf_basename, f->fname, df->varname, jdf_basename, call->func_or_mem, call->var);
                                 }
                                 else
                                 {
-                                    coutput("    parsec_update_dep_index_after_dep(tc, &flow_of_%s_%s_for_%s, flow_in_out, dep, nb_specializations_of_parametrized_flow_of_%s_%s_for_parametrized_%s);\n",
+                                    coutput("    parsec_update_dep_index_after_dep(tc, &flow_of_%s_%s_for_%s, flow_in_out, dep, nb_specializations_of_parametrized_flow_of_%s_%s_for_parametrized_%s-1);\n",
                                         jdf_basename, f->fname, df->varname, jdf_basename, call->func_or_mem, call->var);
                                 }
 
