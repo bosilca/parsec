@@ -10814,7 +10814,7 @@ jdf_generate_code_iterate_successors_or_predecessors(const jdf_t *jdf,
                                         "->dep_out[%s]"
                                         ", &data, rank_src, rank_dst, vpid_dst,"
                                         " successor_repo, successor_repo_key, ontask_arg) )\n"
-                                        "  return; // here\n",
+                                        "  return;\n",
                                         dump_flow_offset_for_iterate_successors(sa_flow_offset, f, fl, call),
                                         dump_dep_offset_for_iterate_successors(sa_dep_offset, f, fl, call));
             }
@@ -10921,7 +10921,7 @@ jdf_generate_code_iterate_successors_or_predecessors(const jdf_t *jdf,
                                             "->dep_out[%s]"
                                             ", &data, rank_src, rank_dst, vpid_dst,"
                                             " successor_repo, successor_repo_key, ontask_arg) )\n"
-                                            "  return; // there\n",
+                                            "  return;\n",
                                             dump_flow_offset_for_iterate_successors(sa_flow_offset, f, fl, call),
                                             dump_dep_offset_for_iterate_successors(sa_dep_offset, f, fl, call));
                     }
@@ -10960,7 +10960,7 @@ jdf_generate_code_iterate_successors_or_predecessors(const jdf_t *jdf,
                                             "->dep_out[%s]"
                                             ", &data, rank_src, rank_dst, vpid_dst,"
                                             " successor_repo, successor_repo_key, ontask_arg) )\n"
-                                            "  return; // zhere\n",
+                                            "  return;\n",
                                             dump_flow_offset_for_iterate_successors(sa_flow_offset, f, fl, call),
                                             dump_dep_offset_for_iterate_successors(sa_dep_offset, f, fl, call));
                     }
