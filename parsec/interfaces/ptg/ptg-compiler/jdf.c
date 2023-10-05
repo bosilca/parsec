@@ -1524,7 +1524,7 @@ void jdf_dump_function_flows(jdf_function_entry_t* function, int expanded)
             if( strlen(string_arena_get_string(sa1)) )
                 string_arena_add_string(sa2, "<%s>", string_arena_get_string(sa1));
 
-            printf("%s: %6s[%1s%1s idx %d, mask 0x%x/0x%x] %2s dep_index %8d dep_dt_index %8d %p <%s %s>\n", function->fname,
+            printf("%s: %6s[%1s%1s idx %d, mask 0x%lx/0x%lx] %2s dep_index %8d dep_dt_index %8d %p <%s %s>\n", function->fname,
                    flow->varname, (flow->flow_flags & JDF_FLOW_IS_IN ? "R" : " "),
                    (flow->flow_flags & JDF_FLOW_IS_OUT ? "W" : " "),
                    flow->flow_index, flow->flow_dep_mask_in, flow->flow_dep_mask_out,
@@ -1733,7 +1733,7 @@ int jdf_function_property_is_keyword(const char *name)
 
 int jdf_assign_ldef_index(jdf_function_entry_t *f)
 {
-    int nb_ldef_for_locals, nb_ldef_for_deps, nb_ldef_for_calls = 0;
+    int nb_ldef_for_locals, nb_ldef_for_deps, nb_ldef_for_flows, nb_ldef_for_calls = 0;
     jdf_expr_t *ld;
     jdf_variable_list_t *vl;
     jdf_dataflow_t *fl;
@@ -1745,6 +1745,7 @@ int jdf_assign_ldef_index(jdf_function_entry_t *f)
      *  If they appear in the locals, they need to have a unique position
      *  If they appear in the dataflow, each dep can re-use the locals of another dep
      *                                  each call can re-use the locals of another call
+     * With parametrized flows, they can also appear in the dataflow.
      */
 
     DO_DEBUG_VERBOSE(2, ({fprintf(stderr, "Indexing task class %s\n", f->fname);}) );
@@ -1762,9 +1763,21 @@ int jdf_assign_ldef_index(jdf_function_entry_t *f)
 
     nb_ldef_for_locals = f->nb_max_local_def;
     for(fl = f->dataflow; NULL != fl; fl = fl->next) {
+
+
+        nb_ldef_for_flows = nb_ldef_for_locals;
+        for(ld = fl->local_variables; NULL != ld; ld = ld->next) {
+            assert(NULL != ld->alias);
+            if( ld->ldef_index == -1 ) {
+                ld->ldef_index = nb_ldef_for_flows;
+                nb_ldef_for_flows++;
+                DO_DEBUG_VERBOSE(2, ({ fprintf(stderr, "  Flow for %s, flow %p: ldef %s is at %d\n", fl->varname, fl, ld->alias, ld->ldef_index); }) );
+            }
+        }
+
         int depi = 0;
         for(dep = fl->deps; NULL != dep; dep = dep->next, depi++) {
-            nb_ldef_for_deps = nb_ldef_for_locals;
+            nb_ldef_for_deps = nb_ldef_for_flows;
             for(ld = dep->local_defs; NULL != ld; ld = ld->next) {
                 assert(NULL != ld->alias);
                 if( ld->ldef_index == -1 ) {
@@ -1773,10 +1786,11 @@ int jdf_assign_ldef_index(jdf_function_entry_t *f)
                     DO_DEBUG_VERBOSE(2, ({ fprintf(stderr, "  Flow for %s, dep %d: ldef %s is at %d\n", fl->varname, depi, ld->alias, ld->ldef_index); }) );
                 }
             }
+
+            nb_ldef_for_calls = nb_ldef_for_deps;
             switch( dep->guard->guard_type ) {
             case JDF_GUARD_UNCONDITIONAL:
             case JDF_GUARD_BINARY:
-                nb_ldef_for_calls = nb_ldef_for_deps;
                 for(ld = dep->guard->calltrue->local_defs; NULL != ld; ld = ld->next) {
                     assert(NULL != ld->alias);
                     if( ld->ldef_index == -1 ) {
@@ -1787,7 +1801,6 @@ int jdf_assign_ldef_index(jdf_function_entry_t *f)
                 }
                 break;
             case JDF_GUARD_TERNARY:
-                nb_ldef_for_calls = nb_ldef_for_deps;
                 for(ld = dep->guard->calltrue->local_defs; NULL != ld; ld = ld->next) {
                     assert(NULL != ld->alias);
                     if( ld->ldef_index == -1 ) {
@@ -1796,7 +1809,6 @@ int jdf_assign_ldef_index(jdf_function_entry_t *f)
                         DO_DEBUG_VERBOSE(2, ({ fprintf(stderr, "  Flow for %s, dep %d, calltrue: ldef %s is at %d\n", fl->varname, depi, ld->alias, ld->ldef_index); }) );
                     }
                 }
-                nb_ldef_for_calls = nb_ldef_for_deps;
                 for(ld = dep->guard->callfalse->local_defs; NULL != ld; ld = ld->next) {
                     assert(NULL != ld->alias);
                     if( ld->ldef_index == -1 ) {
@@ -1812,6 +1824,8 @@ int jdf_assign_ldef_index(jdf_function_entry_t *f)
             if( nb_ldef_for_calls > f->nb_max_local_def )
                 f->nb_max_local_def = nb_ldef_for_calls;
         }
+        if( nb_ldef_for_flows > f->nb_max_local_def )
+            f->nb_max_local_def = nb_ldef_for_flows;
     }
     return 0;
 }

@@ -144,23 +144,30 @@
 #endif
 
 #if defined(PARSEC_SCHED_DEPS_MASK)
-typedef int32_t parsec_dependency_t;
+//typedef int32_t parsec_dependency_t;
+typedef int64_t parsec_dependency_t;
 #else
 /**
  * Should be large enough to support MAX_PARAM_COUNT values.
  */
-typedef int32_t parsec_dependency_t;
+//typedef int32_t parsec_dependency_t;
+typedef uint64_t parsec_dependency_t;
 #endif
 
 /*
  * A set of constants defining the capabilities of the underlying
  * runtime.
  */
+
+#define MAX_DATAFLOWS_PER_TASK  64
+
 #define MAX_LOCAL_COUNT  20
 #define MAX_PARAM_COUNT  20
 
-#define MAX_DEP_IN_COUNT  10
-#define MAX_DEP_OUT_COUNT 10
+// #define MAX_DEP_IN_COUNT  21
+// #define MAX_DEP_OUT_COUNT 21
+#define MAX_DEP_IN_COUNT  52
+#define MAX_DEP_OUT_COUNT 52
 
 #define MAX_TASK_STRLEN 128
 

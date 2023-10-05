@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2009-2019 The University of Tennessee and The University
+ * Copyright (c) 2009-2022 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  */
@@ -211,12 +211,8 @@ int __parsec_execute( parsec_execution_stream_t* es,
  */
 int parsec_taskpool_update_runtime_nbtask(parsec_taskpool_t *tp, int32_t nb_tasks)
 {
-    int remaining;
-
-    assert( tp->nb_pending_actions != 0 );
-    remaining = tp->update_nb_runtime_task( tp, nb_tasks );
-    assert( 0 <= remaining );
-    return parsec_check_complete_cb(tp, tp->context, remaining);
+    tp->tdm.module->taskpool_addto_runtime_actions(tp, nb_tasks);
+    return 0;
 }
 
 static inline int all_tasks_done(parsec_context_t* context)
@@ -224,20 +220,13 @@ static inline int all_tasks_done(parsec_context_t* context)
     return (context->active_taskpools == 0);
 }
 
-int parsec_check_complete_cb(parsec_taskpool_t *tp, parsec_context_t *context, int remaining)
+void parsec_taskpool_termination_detected(parsec_taskpool_t *tp)
 {
-    if( 0 == remaining ) {
-        /* A parsec taskpool has been completed. Call the attached callback if
-         * necessary, then update the main engine.
-         */
-        if( NULL != tp->on_complete ) {
-            (void)tp->on_complete( tp, tp->on_complete_data );
-        }
-        (void)parsec_atomic_fetch_dec_int32( &context->active_taskpools );
-        PARSEC_PINS_TASKPOOL_FINI(tp);
-        return 1;
+    if( NULL != tp->on_complete ) {
+        (void)tp->on_complete( tp, tp->on_complete_data );
     }
-    return 0;
+    (void)parsec_atomic_fetch_dec_int32( &(tp->context->active_taskpools) );
+    PARSEC_PINS_TASKPOOL_FINI(tp);
 }
 
 parsec_sched_module_t *parsec_current_scheduler           = NULL;
@@ -283,15 +272,20 @@ int parsec_set_scheduler( parsec_context_t *parsec )
 }
 
 /*
- * This is where we end up after the release_dep_fct is called and generates a
- * readylist.
+ * Dispatch a ring of tasks to the requested execution stream, using the provided
+ * distance. This function provides little benefit by itself, but it allows to
+ * have a common place where tasks can be seen before being delivered to the
+ * scheduler.
+ *
+ * In general, this is where we end up after the release_dep_fct is called and
+ * generates a readylist.
  */
-int __parsec_schedule(parsec_execution_stream_t* es,
-                      parsec_task_t* tasks_ring,
-                      int32_t distance)
+inline int
+__parsec_schedule(parsec_execution_stream_t* es,
+                  parsec_task_t* tasks_ring,
+                  int32_t distance)
 {
     int ret;
-    int len;
     parsec_task_t *task = tasks_ring;
 
 #if defined(PARSEC_DEBUG_PARANOID) || defined(PARSEC_DEBUG_NOISIER)
@@ -322,11 +316,83 @@ int __parsec_schedule(parsec_execution_stream_t* es,
     }
 #endif  /* defined(PARSEC_DEBUG_PARANOID) || defined(PARSEC_DEBUG_NOISIER) */
 
-    len = 0;
+#if defined(PARSEC_PAPI_SDE)
+    int len = 0;
     _LIST_ITEM_ITERATOR(task, &task->super, item, {len++; });
     PARSEC_PAPI_SDE_COUNTER_ADD(PARSEC_PAPI_SDE_TASKS_ENABLED, len);
+#endif  /* defined(PARSEC_PAPI_SDE) */
+
     ret = parsec_current_scheduler->module.schedule(es, tasks_ring, distance);
 
+    return ret;
+}
+
+/*
+ * Schedule an array of rings of tasks with one entry per virtual process.
+ * If an execution stream is provided, this function will save the highest
+ * priority task (assuming the ring is ordered or the first task in the ring
+ * otherwise) on the current execution stream virtual process as the next
+ * task to be executed on the provided execution stream. Everything else gets
+ * pushed into the execution stream 0 of the corresponding virtual process.
+ * If the provided execution stream is NULL, all tasks are delivered to their
+ * respective vp.
+ *
+ * Beware, as the manipulation of next_task is not protected, an exeuction
+ * stream should never be used concurrently in two call to this function (or
+ * a thread should never `borrow` an execution stream for this call).
+ */
+int __parsec_schedule_vp(parsec_execution_stream_t* es,
+                         parsec_task_t** task_rings,
+                         int32_t distance)
+{
+    parsec_execution_stream_t* target_es;
+    const parsec_vp_t** vps = (const parsec_vp_t**)es->virtual_process->parsec_context->virtual_processes;
+    int ret = 0;
+
+#if  defined(PARSEC_DEBUG_PARANOID)
+    /* As the setting of the next_task is not protected no thread should call
+     * this function with a stream other than its own. */
+    assert( (NULL == es) || (parsec_my_execution_stream() == es) );
+#endif  /* defined(PARSEC_DEBUG_PARANOID) */
+
+    if( NULL == es || !parsec_runtime_keep_highest_priority_task ) {
+        for(int vp = 0; vp < es->virtual_process->parsec_context->nb_vp; vp++ ) {
+            parsec_task_t* ring = task_rings[vp];
+            if( NULL == ring ) continue;
+
+            target_es = vps[vp]->execution_streams[0];
+
+            ret = __parsec_schedule(target_es, ring, distance);
+            if( 0 != ret )
+                return ret;
+
+            task_rings[vp] = NULL;  /* remove the tasks already scheduled */
+        }
+        return ret;
+    }
+    for(int vp = 0; vp < es->virtual_process->parsec_context->nb_vp; vp++ ) {
+        parsec_task_t* ring = task_rings[vp];
+        if( NULL == ring ) continue;
+
+        target_es = vps[vp]->execution_streams[0];
+
+        if( vp == es->virtual_process->vp_id ) {
+            if( NULL == es->next_task ) {
+                es->next_task = ring;
+                ring = (parsec_task_t*)parsec_list_item_ring_chop(&ring->super);
+                if( NULL == ring ) {
+                    task_rings[vp] = NULL;  /* remove the tasks already scheduled */
+                    continue;
+                }
+            }
+            target_es = es;
+        }
+        ret = __parsec_schedule(target_es, ring, distance);
+        if( 0 != ret )
+            return ret;
+
+        task_rings[vp] = NULL;  /* remove the tasks already scheduled */
+    }
     return ret;
 }
 
@@ -373,7 +439,6 @@ int __parsec_reschedule(parsec_execution_stream_t* es, parsec_task_t* task)
 int __parsec_complete_execution( parsec_execution_stream_t *es,
                                  parsec_task_t *task )
 {
-    parsec_taskpool_t *tp = task->taskpool;
     int rc = 0;
 
     /* complete execution PINS event includes the preparation of the
@@ -397,20 +462,8 @@ int __parsec_complete_execution( parsec_execution_stream_t *es,
     DEBUG_MARK_EXE( es->th_id, es->virtual_process->vp_id, task );
 
     /* Release the execution context */
-    task->task_class->release_task( es, task );
-
-    /* Check to see if the DSL has marked the taskpool as completed */
-    if( 0 == tp->nb_tasks ) {
-        /* The taskpool has been marked as complete. Unfortunately, it is possible
-         * that multiple threads are completing tasks associated with this taskpool
-         * simultaneously and we need to release the runtime action associated with
-         * this taskpool tasks once. We need to protect this action by atomically
-         * setting the number of tasks to a non-zero value.
-         */
-        if( parsec_atomic_cas_int32(&tp->nb_tasks, 0, PARSEC_RUNTIME_RESERVED_NB_TASKS) )
-            parsec_taskpool_update_runtime_nbtask(tp, -1);
-    }
-
+    (void)task->task_class->release_task( es, task );
+    
     return rc;
 }
 
@@ -554,7 +607,12 @@ int __parsec_context_wait( parsec_execution_stream_t* es )
         }
         misses_in_a_row++;  /* assume we fail to extract a task */
 
-        task = parsec_current_scheduler->module.select(es, &distance);
+        if( NULL == (task = es->next_task) ) {
+            task = parsec_current_scheduler->module.select(es, &distance);
+        } else {
+            es->next_task = NULL;
+            distance = 1;
+        }
 
         if( task != NULL ) {
             misses_in_a_row = 0;  /* reset the misses counter */
@@ -617,6 +675,17 @@ int parsec_context_add_taskpool( parsec_context_t* context, parsec_taskpool_t* t
 
     PARSEC_PINS_TASKPOOL_INIT(tp);  /* PINS taskpool initialization */
 
+    /* If the DSL did not install a termination detection module,
+     * assume that the old behavior (local detection when local 
+     * number of tasks is 0) is expected: install the local termination
+     * detection module, and declare the taskpool as ready */
+    if( tp->tdm.module == NULL ) {
+        parsec_termdet_open_module(tp, "local");
+        assert( NULL != tp->tdm.module );
+        tp->tdm.module->monitor_taskpool(tp, parsec_taskpool_termination_detected);
+        tp->tdm.module->taskpool_ready(tp);
+    }
+    
     /* Update the number of pending taskpools */
     (void)parsec_atomic_fetch_inc_int32( &context->active_taskpools );
 
@@ -640,16 +709,8 @@ int parsec_context_add_taskpool( parsec_context_t* context, parsec_taskpool_t* t
 
         tp->startup_hook(context, tp, startup_list);
 
-        for(vpid = 0; vpid < context->nb_vp; vpid++) {
-            if( NULL == startup_list[vpid] )
-                continue;
-
-            /* The tasks are ordered by priority, so just make them available */
-            __parsec_schedule(context->virtual_processes[vpid]->execution_streams[0],
-                              startup_list[vpid], 0);
-        }
-    } else {
-        parsec_check_complete_cb(tp, context, tp->nb_pending_actions);
+        __parsec_schedule_vp(parsec_my_execution_stream(),
+                             startup_list, 0);
     }
 
     return PARSEC_SUCCESS;

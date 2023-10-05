@@ -52,7 +52,7 @@ affinity_of_gpu_d2h_task( parsec_gpu_d2h_task_t* this_task,
 static void
 iterate_successors_of_gpu_d2h_task( parsec_execution_stream_t* es,
                                      const parsec_gpu_d2h_task_t* this_task,
-                                     uint32_t action_mask,
+                                     parsec_dependency_t action_mask,
                                      parsec_ontask_function_t * ontask, void *ontask_arg )
 {
     (void)es; (void)this_task; (void)action_mask; (void)ontask; (void)ontask_arg;
@@ -61,7 +61,7 @@ iterate_successors_of_gpu_d2h_task( parsec_execution_stream_t* es,
 static void
 iterate_predecessors_of_gpu_d2h_task( parsec_execution_stream_t* es,
                                        const parsec_gpu_d2h_task_t* this_task,
-                                       uint32_t action_mask,
+                                       parsec_dependency_t action_mask,
                                        parsec_ontask_function_t * ontask, void *ontask_arg )
 {
     (void)es; (void)this_task; (void)action_mask; (void)ontask; (void)ontask_arg;
@@ -70,7 +70,7 @@ iterate_predecessors_of_gpu_d2h_task( parsec_execution_stream_t* es,
 static int
 release_deps_of_gpu_d2h_task( parsec_execution_stream_t* es,
                                parsec_gpu_d2h_task_t* this_task,
-                               uint32_t action_mask,
+                               parsec_dependency_t action_mask,
                                parsec_remote_deps_t* deps )
 {
     (void)es; (void)this_task; (void)action_mask; (void)deps;
@@ -297,7 +297,7 @@ int parsec_gpu_complete_w2r_task(parsec_device_gpu_module_t *gpu_device,
         parsec_atomic_lock(&gpu_copy->original->lock);
         gpu_copy->readers--;
         gpu_copy->data_transfer_status = PARSEC_DATA_STATUS_COMPLETE_TRANSFER;
-        gpu_device->super.transferred_data_out += gpu_copy->original->nb_elts; /* TODO: not hardcoded, use datatype size */
+        gpu_device->super.data_out_to_host += gpu_copy->original->nb_elts; /* TODO: not hardcoded, use datatype size */
         assert(gpu_copy->readers >= 0);
 
         original = gpu_copy->original;

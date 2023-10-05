@@ -199,7 +199,7 @@ add_task_to_list(parsec_execution_stream_t *es,
 
 static void iterate_successors(parsec_execution_stream_t *es,
                                const parsec_task_t *this_task,
-                               uint32_t action_mask,
+                               parsec_dependency_t action_mask,
                                parsec_ontask_function_t *ontask,
                                void *ontask_arg)
 {
@@ -245,7 +245,7 @@ static void iterate_successors(parsec_execution_stream_t *es,
 
 static int release_deps(parsec_execution_stream_t *es,
                         parsec_task_t *this_task,
-                        uint32_t action_mask,
+                        parsec_dependency_t action_mask,
                         parsec_remote_deps_t *deps)
 {
     parsec_task_t** ready_list;
@@ -259,16 +259,7 @@ static int release_deps(parsec_execution_stream_t *es,
     iterate_successors(es, this_task, action_mask, add_task_to_list, ready_list);
 
     if(action_mask & PARSEC_ACTION_RELEASE_LOCAL_DEPS) {
-        for(i = 0; i < es->virtual_process->parsec_context->nb_vp; i++) {
-            if( NULL == ready_list[i] )
-                continue;
-            if( i == es->virtual_process->vp_id )
-                __parsec_schedule(es, ready_list[i], 0);
-            else
-                __parsec_schedule(es->virtual_process->parsec_context->virtual_processes[i]->execution_streams[0],
-                                  ready_list[i], 0);
-            ready_list[i] = NULL;
-        }
+        __parsec_schedule_vp(es, ready_list, 0);
     }
 
     if(action_mask & PARSEC_ACTION_RELEASE_LOCAL_REFS) {

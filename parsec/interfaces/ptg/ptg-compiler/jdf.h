@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2009-2021 The University of Tennessee and The University
+ * Copyright (c) 2009-2022 The University of Tennessee and The University
  *                         of Tennessee Research Foundation. All rights
  *                         reserved.
  */
@@ -8,6 +8,7 @@
 #define jdf_h
 
 #include "parsec/parsec_config.h"
+#include "string_arena.h"
 
 #include <stdint.h>
 
@@ -120,6 +121,7 @@ typedef struct jdf {
     struct jdf_name_list      *datatypes;
     struct jdf_expr           *inline_c_functions;
     const char                *nb_local_tasks_fn_name;
+    string_arena_t            *termdet_init_line;
 } jdf_t;
 
 /**
@@ -176,8 +178,11 @@ typedef unsigned int jdf_flags_t;
 #define JDF_FUNCTION_FLAG_HAS_DATA_OUTPUT   ((jdf_flags_t)(1 << 5))
 #define JDF_FUNCTION_FLAG_NO_PREDECESSORS   ((jdf_flags_t)(1 << 6))
 
+#define JDF_PROP_TERMDET_NAME                  "termdet"
+#define JDF_PROP_TERMDET_LOCAL                 "local"
+#define JDF_PROP_TERMDET_DYNAMIC               "dynamic"
+
 #define JDF_HAS_UD_NB_LOCAL_TASKS              ((jdf_flags_t)(1 << 0))
-#define JDF_PROP_UD_NB_LOCAL_TASKS_FN_NAME     "nb_local_tasks_fn"
 
 #define JDF_FUNCTION_HAS_UD_HASH_STRUCT        ((jdf_flags_t)(1 << 1))
 #define JDF_PROP_UD_HASH_STRUCT_NAME           "hash_struct"
@@ -189,6 +194,13 @@ typedef unsigned int jdf_flags_t;
 #define JDF_PROP_UD_STARTUP_TASKS_FN_NAME      "startup_fn"
 
 #define JDF_FUNCTION_HAS_UD_DEPENDENCIES_FUNS  ((jdf_flags_t)(1 << 4))
+
+#define JDF_PROP_TERMDET_USER_TRIGGERED        "user-triggered"
+#define JDF_HAS_USER_TRIGGERED_TERMDET         ((jdf_flags_t)(1 << 5))
+
+#define JDF_HAS_DYNAMIC_TERMDET                ((jdf_flags_t)(1 << 6))
+
+#define JDF_PROP_UD_NB_LOCAL_TASKS_FN_NAME     "nb_local_tasks_fn"
 #define JDF_PROP_UD_FIND_DEPS_FN_NAME          "find_deps_fn"
 #define JDF_PROP_UD_ALLOC_DEPS_FN_NAME         "alloc_deps_fn"
 #define JDF_PROP_UD_FREE_DEPS_FN_NAME          "free_deps_fn"
@@ -256,6 +268,11 @@ typedef struct jdf_def_list {
     struct jdf_def_list *properties;
 } jdf_def_list_t;
 
+typedef struct jdf_flow_specifier {
+    struct jdf_object_t       super;
+    struct jdf_expr          *variables;
+} jdf_flow_specifier_t;
+
 typedef struct jdf_dataflow jdf_dataflow_t;
 typedef struct jdf_dep jdf_dep_t;
 typedef uint32_t jdf_flow_flags_t;
@@ -271,11 +288,12 @@ struct jdf_dataflow {
     struct jdf_object_t       super;
     jdf_flow_flags_t          flow_flags;
     jdf_dataflow_t           *next;
+    struct jdf_expr          *local_variables;         /**< flows can specify a range */
     char                     *varname;
     struct jdf_dep           *deps;
     uint8_t                   flow_index;
-    uint32_t                  flow_dep_mask_out;
-    uint32_t                  flow_dep_mask_in;
+    parsec_dependency_t       flow_dep_mask_out;
+    parsec_dependency_t       flow_dep_mask_in;
 };
 
 typedef uint16_t jdf_dep_flags_t;
@@ -326,6 +344,7 @@ typedef struct jdf_call {
     struct jdf_object_t       super;
     struct jdf_expr          *local_defs;     /**< Each call can have some local indicies, allowing to define sets of deps */
     char                     *var;             /**< If func_or_mem is a function, var is the name of the flow on that function */
+    struct jdf_expr          *parametrized_offset;    /**< Offset required if var is an array */
     char                     *func_or_mem;     /**< string of the function (task class) or data collection referred to in this call */
     struct jdf_expr          *parameters;      /**< list of parameters for that task class / data collection */
 } jdf_call_t;
@@ -367,6 +386,7 @@ typedef enum { JDF_EQUAL,
                JDF_SHL,
                JDF_SHR,
                JDF_RANGE,
+               JDF_PARAMETRIZED_FLOW_RANGE,
                JDF_TERNARY,
                JDF_VAR,
                JDF_STRING,
@@ -393,6 +413,7 @@ typedef struct jdf_expr {
     struct jdf_expr              *local_variables; /**< the list of named local variables that are defined with
                                                     *   a named range and are used to define this expression */
     jdf_expr_operand_t            op;
+    char                         *protected_by;    /**< if non NULL the function definition if protected by this #define */
     char                         *alias;           /**< if alias != NULL, this expression defines a local variable named alias */
     int                      ldef_index;           /**< if alias != NULL, the local variable is stored in ldef[ldef_index] */
     int                           scope;           /**< if alias != NULL, scope is the scope of that definition

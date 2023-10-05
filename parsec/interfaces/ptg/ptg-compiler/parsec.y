@@ -280,6 +280,7 @@ process_datatype(jdf_datatransfer_type_t *datatype,
     jdf_def_list_t       *property;
     jdf_name_list_t      *name_list;
     jdf_variable_list_t  *variable_list;
+    jdf_flow_specifier_t *flow_specifier;
     jdf_dataflow_t       *dataflow;
     jdf_expr_t           *named_expr;
     jdf_dep_t            *dep;
@@ -298,10 +299,13 @@ process_datatype(jdf_datatransfer_type_t *datatype,
 %type <variable_list>local_variable
 %type <variable_list>local_variables
 %type <call>partitioning
+%type <flow_specifier>flow_specifier
 %type <dataflow>dataflow_list
 %type <dataflow>dataflow
 %type <named_expr>named_expr
 %type <named_expr>named_expr_list
+%type <expr>array_offset
+%type <expr>named_array_offset_or_nothing
 %type <dep>dependencies
 %type <dep>dependency
 %type <guarded_call>guarded_call
@@ -526,7 +530,24 @@ body:         BODY_START properties BODY_END
              {
                  jdf_body_t* body = new(jdf_body_t);
                  body->properties = $2;
+                 /**
+                  * Go over the list of properties and tag them with the type of the BODY. This
+                  * allows us to protect the generated code to avoid compiler warnings.
+                  */
+                 jdf_expr_t* type_str = jdf_find_property( body->properties, "type", NULL );
+                 if( NULL != type_str ) {
+                     char* protected_by;
+                     asprintf(&protected_by, "PARSEC_HAVE_%s", type_str->jdf_var);
+                     jdf_def_list_t* property = body->properties;
+                     while( NULL != property ) {
+                         assert(NULL == property->expr->protected_by);
+                         property->expr->protected_by = strdup(protected_by);
+                         property = property->next;
+                     }
+                     free(protected_by);
+                 }
                  body->next = NULL;
+                 /* The body of the function is stored as a string in BODY_END */
                  body->external_code = $3;
                  JDF_OBJECT_LINENO(body) = current_lineno;
                  $$ = body;
@@ -619,21 +640,23 @@ simulation_cost:
                 SIMCOST expr_simple
                 {
                     $$ = $2;
+                    $$->protected_by = strdup("PARSEC_SIM");
                 }
              |  {   $$ = NULL; }
              ;
 
-partitioning:   COLON VAR OPEN_PAR expr_list CLOSE_PAR
+partitioning:   COLON VAR { named_expr_push_scope(); } named_array_offset_or_nothing OPEN_PAR expr_list CLOSE_PAR
               {
                   jdf_data_entry_t* data;
                   jdf_call_t *c = new(jdf_call_t);
                   int nbparams;
 
                   c->var = NULL;
+                  c->parametrized_offset = $4;
                   c->func_or_mem = $2;
                   data = jdf_find_or_create_data(&current_jdf, $2);
-                  c->parameters = $4;
-                  JDF_COUNT_LIST_ENTRIES($4, jdf_expr_t, next, nbparams);
+                  c->parameters = $6;
+                  JDF_COUNT_LIST_ENTRIES($6, jdf_expr_t, next, nbparams);
                   if( data->nbparams != -1 ) {
                       if( data->nbparams != nbparams ) {
                           jdf_fatal(current_lineno, "Data %s used with %d parameters at line %d while used with %d parameters line %d\n",
@@ -644,7 +667,8 @@ partitioning:   COLON VAR OPEN_PAR expr_list CLOSE_PAR
                       data->nbparams          = nbparams;
                   }
                   $$ = c;
-                  JDF_OBJECT_LINENO($$) = JDF_OBJECT_LINENO($4);
+                  JDF_OBJECT_LINENO($$) = JDF_OBJECT_LINENO($6);
+                  named_expr_pop_scope();
               }
          ;
 
@@ -667,7 +691,47 @@ optional_flow_flags :
          |      { $$ = JDF_FLOW_TYPE_READ | JDF_FLOW_TYPE_WRITE; }
          ;
 
-dataflow:       optional_flow_flags VAR dependencies
+/*
+PROPERTIES_ON { named_expr_push_scope(); } named_expr_list PROPERTIES_OFF expr_simple
+            {
+                   $$ = $5;
+                   named_expr_pop_scope();
+            }
+*/
+
+flow_specifier: { named_expr_push_scope(); } array_offset
+                {
+                    jdf_flow_specifier_t *f = new(jdf_flow_specifier_t);
+                    f->variables = $2;
+                    if( NULL != f->variables->next ) {
+                        // We can only handle parametrized flow with one variable
+                        jdf_fatal(current_lineno, "Flow %s cannot have more than one variable\n", f->variables->alias);
+                        YYERROR;
+                    }
+                    if( JDF_RANGE != f->variables->op ) {
+                        // Parametrized flows must have a range
+                        jdf_fatal(current_lineno, "Flow %s must be a range\n", f->variables->alias);
+                        YYERROR;
+                    }
+                    f->variables->op = JDF_PARAMETRIZED_FLOW_RANGE; // Ranges in parametrized flows are treated differently
+                    $$ = f;
+
+                   //named_expr_pop_scope();
+                }
+        |
+                {
+                    jdf_flow_specifier_t *f = new(jdf_flow_specifier_t);
+                    f->variables = NULL;
+                    $$ = f;
+
+                    /* We still create a new scope for the (inexisting) named range
+                    * as the scope will be popped unconditionally */
+                   named_expr_push_scope();
+                   //named_expr_pop_scope();
+                }
+         ;
+
+dataflow:       optional_flow_flags VAR flow_specifier dependencies { named_expr_pop_scope(); }
                 {
                     for(jdf_global_entry_t* g = current_jdf.globals; g != NULL; g = g->next) {
                         if( !strcmp(g->name, $2) ) {
@@ -677,16 +741,19 @@ dataflow:       optional_flow_flags VAR dependencies
                         }
                     }
 
+                    jdf_flow_specifier_t *flow_specifier = $3;
+
                     jdf_dataflow_t *flow  = new(jdf_dataflow_t);
                     flow->flow_flags      = $1;
                     flow->varname         = $2;
-                    flow->deps            = $3;
+                    flow->local_variables = flow_specifier->variables;
+                    flow->deps            = $4;
 
                     $$ = flow;
-                    if( NULL == $3) {
+                    if( NULL == $4) {
                         JDF_OBJECT_LINENO($$) = current_lineno;
                     } else {
-                        JDF_OBJECT_LINENO($$) = JDF_OBJECT_LINENO($3);
+                        JDF_OBJECT_LINENO($$) = JDF_OBJECT_LINENO($4);
                     }
                 }
         ;
@@ -714,6 +781,42 @@ named_expr_list: VAR ASSIGNMENT expr_range
                }
        ;
 
+named_array_offset_or_nothing: array_offset
+                        {
+                            $$ = $1;
+                        }
+                |       {
+                            $$ = NULL;
+                        }
+                ;
+
+/*
+array_offset_or_nothing: array_offset
+                        {
+                            $$ = $1;
+                        }
+                |       {
+                            $$ = NULL;
+                        }
+                ;
+*/
+
+array_offset: PROPERTIES_ON named_expr_list PROPERTIES_OFF
+               {
+#if !defined(PARSEC_ALLOW_PARAMETRIZED_FLOWS)
+                    jdf_fatal(current_lineno, "Flow cannot be parametrized (line %d). Set the PARSEC_ALLOW_PARAMETRIZED_FLOWS flag to enable them.\n",
+                              JDF_OBJECT_LINENO($2));
+                    YYERROR;
+#endif
+
+                   $$ = $2;
+               }
+        /*|
+               {
+                   $$ = NULL;
+               }*/
+       ;
+
 dependencies:  dependency dependencies
                {
                    $1->next = $2;
@@ -736,6 +839,8 @@ dependency:   ARROW named_expr guarded_call properties
                   jdf_def_list_t* property_data = $4;
 
                   d->local_defs = $2;
+                  // Add the local definitions of the previous scope (the iterator of the parametrized flow if any)
+
 
                   expr = jdf_find_property($4, "type", &property);
                   expr_remote = jdf_find_property($4, "type_remote", &property_remote);
@@ -847,6 +952,7 @@ guarded_call: call
                   jdf_guarded_call_t *g = new(jdf_guarded_call_t);
                   g->guard_type = JDF_GUARD_UNCONDITIONAL;
                   g->guard = NULL;
+                  //g->guard = ($1->calltrue->parametrized_offset); // NULL if not a referrer of a parametrized flow
                   g->calltrue = $1;
                   g->callfalse = NULL;
                   $$ = g;
@@ -860,6 +966,26 @@ guarded_call: call
                   g->guard = $1;
                   g->calltrue = $3;
                   g->callfalse = NULL;
+                  /*if(g->calltrue->parametrized_offset) // wrong approach, we work in jdf2c to fix the parametrized conds
+                  {
+                    // goal: cond -> (iterator == expr) && cond
+
+                    jdf_expr_t *iterator = malloc(sizeof(jdf_expr));
+                    memcpy(iterator, g->calltrue->parametrized_offset, sizeof(jdf_expr));
+                    iterator->op = JDF_CST;
+
+                    jdf_expr_t *equal_expr = malloc(sizeof(jdf_expr));
+                    equal_expr->op = JDF_EQ;
+                    equal_expr->jdf_ba1 = iterator;
+                    equal_expr->jdf_ba2 = g->calltrue->parametrized_offset->jdf_ba1;
+
+                    jdf_expr_t *and_expr = malloc(sizeof(jdf_expr));
+                    and_expr->op = JDF_AND;
+                    and_expr->jdf_ba1 = equal_expr;
+                    and_expr->jdf_ba2 = $1;
+
+                    g->guard = and_expr;
+                  }*/
                   $$ = g;
                   assert( 0 != JDF_OBJECT_LINENO($1) );
                   JDF_OBJECT_LINENO($$) = JDF_OBJECT_LINENO($1);
@@ -877,33 +1003,35 @@ guarded_call: call
               }
        ;
 
-call:         named_expr VAR VAR OPEN_PAR expr_list_range CLOSE_PAR
+call:         named_expr VAR named_array_offset_or_nothing VAR OPEN_PAR expr_list_range CLOSE_PAR
               {
                   jdf_call_t *c = new(jdf_call_t);
                   c->var = $2;
-                  c->local_defs = $1;
-                  c->func_or_mem = $3;
-                  c->parameters = $5;
+                  c->parametrized_offset = $3;
+                  c->local_defs = $3?$3:$1; // If we want local_defs to contain the parametrized_offset, we need to indicate $3 and not $1
+
+                  c->func_or_mem = $4;
+                  c->parameters = $6;
                   $$ = c;
-                  JDF_OBJECT_LINENO($$) = JDF_OBJECT_LINENO($5);
+                  JDF_OBJECT_LINENO($$) = JDF_OBJECT_LINENO($6);
                   assert( 0 != JDF_OBJECT_LINENO($$) );
                   named_expr_pop_scope();
               }
-       |      VAR OPEN_PAR expr_list_range CLOSE_PAR
+       |      VAR { named_expr_push_scope(); } named_array_offset_or_nothing OPEN_PAR expr_list_range CLOSE_PAR
               {
                   jdf_data_entry_t* data;
                   jdf_call_t *c = new(jdf_call_t);
                   int nbparams;
 
                   c->var = NULL;
+                  c->parametrized_offset = c->local_defs = $3;
                   c->func_or_mem = $1;
-                  c->parameters = $3;
-                  c->local_defs = NULL;
-                  JDF_OBJECT_LINENO(c) = JDF_OBJECT_LINENO($3);
+                  c->parameters = $5;
+                  JDF_OBJECT_LINENO(c) = JDF_OBJECT_LINENO($5);
                   $$ = c;
                   assert( 0 != JDF_OBJECT_LINENO($$) );
                   data = jdf_find_or_create_data(&current_jdf, $1);
-                  JDF_COUNT_LIST_ENTRIES($3, jdf_expr_t, next, nbparams);
+                  JDF_COUNT_LIST_ENTRIES($5, jdf_expr_t, next, nbparams);
                   if( data->nbparams != -1 ) {
                       if( data->nbparams != nbparams ) {
                           jdf_fatal(current_lineno, "Data %s used with %d parameters at line %d while used with %d parameters line %d\n",
@@ -913,12 +1041,14 @@ call:         named_expr VAR VAR OPEN_PAR expr_list_range CLOSE_PAR
                   } else {
                       data->nbparams          = nbparams;
                   }
-                  JDF_OBJECT_LINENO(data) = JDF_OBJECT_LINENO($3);
+                  JDF_OBJECT_LINENO(data) = JDF_OBJECT_LINENO($5);
+                  named_expr_pop_scope();
               }
        |      DATA_NEW
               {
                   jdf_call_t *c = new(jdf_call_t);
                   c->var = NULL;
+                  c->parametrized_offset = NULL;
                   c->local_defs = NULL;
                   c->func_or_mem = strdup(PARSEC_WRITE_MAGIC_NAME);
                   c->parameters = NULL;
@@ -929,6 +1059,7 @@ call:         named_expr VAR VAR OPEN_PAR expr_list_range CLOSE_PAR
              {
                   jdf_call_t *c = new(jdf_call_t);
                   c->var = NULL;
+                  c->parametrized_offset = NULL;
                   c->local_defs = NULL;
                   c->func_or_mem = strdup(PARSEC_NULL_MAGIC_NAME);
                   c->parameters = NULL;

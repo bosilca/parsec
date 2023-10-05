@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2009-2018 The University of Tennessee and The University
+ * Copyright (c) 2009-2022 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  */
@@ -27,22 +27,24 @@ typedef union dep_cmd_u dep_cmd_t;
 
 typedef unsigned long remote_dep_datakey_t;
 
-#define PARSEC_ACTION_DEPS_MASK                  0x00FFFFFF
-#define PARSEC_ACTION_RELEASE_LOCAL_DEPS         0x01000000
-#define PARSEC_ACTION_RELEASE_LOCAL_REFS         0x02000000
-#define PARSEC_ACTION_GET_REPO_ENTRY             0x04000000
-#define PARSEC_ACTION_RESHAPE_ON_RELEASE         0x08000000
-#define PARSEC_ACTION_SEND_INIT_REMOTE_DEPS      0x10000000
-#define PARSEC_ACTION_SEND_REMOTE_DEPS           0x20000000
-#define PARSEC_ACTION_RECV_INIT_REMOTE_DEPS      0x40000000
-#define PARSEC_ACTION_RESHAPE_REMOTE_ON_RELEASE  0x80000000
+#define PARSEC_ACTION_DEPS_MASK                  0x00FFFFFFFFFFFFFF
+#define PARSEC_ACTION_RELEASE_LOCAL_DEPS         0x0100000000000000
+#define PARSEC_ACTION_RELEASE_LOCAL_REFS         0x0200000000000000
+#define PARSEC_ACTION_GET_REPO_ENTRY             0x0400000000000000
+#define PARSEC_ACTION_RESHAPE_ON_RELEASE         0x0800000000000000
+#define PARSEC_ACTION_SEND_INIT_REMOTE_DEPS      0x1000000000000000
+#define PARSEC_ACTION_SEND_REMOTE_DEPS           0x2000000000000000
+#define PARSEC_ACTION_RECV_INIT_REMOTE_DEPS      0x4000000000000000
+#define PARSEC_ACTION_RESHAPE_REMOTE_ON_RELEASE  0x8000000000000000
 #define PARSEC_ACTION_RELEASE_REMOTE_DEPS        (PARSEC_ACTION_SEND_INIT_REMOTE_DEPS | PARSEC_ACTION_SEND_REMOTE_DEPS)
 
 typedef enum {
     REMOTE_DEP_ACTIVATE_TAG = 2,
     REMOTE_DEP_GET_DATA_TAG,
     REMOTE_DEP_PUT_END_TAG,
-    REMOTE_DEP_MAX_CTRL_TAG
+    REMOTE_DEP_MAX_CTRL_TAG,
+    PARSEC_TERMDET_FOURCOUNTER_MSG_TAG,
+    PARSEC_TERMDET_USER_TRIGGER_MSG_TAG
 } parsec_remote_dep_tag_t;
 
 typedef struct remote_dep_wire_activate_s {
@@ -140,19 +142,19 @@ struct remote_dep_output_param_s {
 
 struct parsec_remote_deps_s {
     parsec_list_item_t               super;
-    parsec_lifo_t                   *origin;    /**< The memory arena where the data pointer is comming from */
-    struct parsec_taskpool_s        *taskpool;  /**< parsec taskpool generating this data transfer */
-    int32_t                          pending_ack;  /**< Number of releases before completion */
-    int32_t                          from;    /**< From whom we received the control */
-    int32_t                          root;    /**< The root of the control message */
-    uint32_t                         incoming_mask;  /**< track all incoming actions (receives) */
-    uint32_t                         outgoing_mask;  /**< track all outgoing actions (send) */
-    remote_dep_wire_activate_t       msg;     /**< A copy of the message control */
-    void                            *eager_msg; /**< A pointer to the eager buffer if this is an eager msg, otherwise NULL */
+    parsec_lifo_t                   *origin;        /**< The memory arena where the data pointer is comming from */
+    struct parsec_taskpool_s        *taskpool;      /**< parsec taskpool generating this data transfer */
+    int32_t                          pending_ack;   /**< Number of releases before completion */
+    int32_t                          from;          /**< From whom we received the control */
+    int32_t                          root;          /**< The root of the control message */
+    uint32_t                         incoming_mask; /**< track all incoming actions (receives) */
+    uint32_t                         outgoing_mask; /**< track all outgoing actions (send) */
+    remote_dep_wire_activate_t       msg;           /**< A copy of the message control */
+    void                            *eager_msg;     /**< A pointer to the eager buffer if this is an eager msg, otherwise NULL */
     int32_t                          max_priority;
     int32_t                          priority;
     uint32_t                        *remote_dep_fw_mask;  /**< list of peers already notified about
-                                                            * the control sequence (only used for control messages) */
+                                                           * the control sequence (only used for control messages) */
     struct data_repo_entry_s        *repo_entry;
     struct remote_dep_output_param_s output[1];
 };
@@ -241,6 +243,7 @@ int parsec_remote_dep_propagate(parsec_execution_stream_t* es,
 #define parsec_remote_dep_progress(ctx)        0
 #define parsec_remote_dep_activate(ctx, o, r) -1
 #define parsec_remote_dep_new_taskpool(ctx)    0
+#define remote_dep_mpi_initialize_execution_stream(ctx) 0
 #endif /* DISTRIBUTED */
 
 /* check if this data description represents a CTL dependency */
@@ -363,8 +366,7 @@ extern int comm_yield_ns;
 static inline void
 remote_dep_inc_flying_messages(parsec_taskpool_t* handle)
 {
-    assert( handle->nb_pending_actions > 0 );
-    (void)parsec_atomic_fetch_inc_int32( &(handle->nb_pending_actions) );
+    (void)parsec_taskpool_update_runtime_nbtask(handle, 1);
 }
 
 /* allow for termination when all deps have been served */

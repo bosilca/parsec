@@ -89,7 +89,7 @@ static pthread_t dep_thread_id;
 parsec_dequeue_t dep_cmd_queue;
 parsec_list_t    dep_cmd_fifo;             /* ordered non threaded fifo */
 parsec_list_t    dep_activates_fifo;       /* ordered non threaded fifo */
-parsec_list_t    dep_activates_noobj_fifo; /* non threaded fifo */
+parsec_list_t    dep_activates_noobj_fifo; /* non threaded fifo of dep activates related to taskpools not actually known */
 parsec_list_t    dep_put_fifo;             /* ordered non threaded fifo */
 
 /* help manage the messages in the same category, where a category is either messages
@@ -112,6 +112,7 @@ parsec_execution_stream_t parsec_comm_es = {
     .es_profile = NULL,
 #endif /* PARSEC_PROF_TRACE */
     .scheduler_object = NULL,
+    .next_task = NULL,
 #if defined(PARSEC_SIM)
     .largest_simulation_date = 0,
 #endif
@@ -469,7 +470,9 @@ remote_dep_dequeue_off(parsec_context_t* context)
 static void
 remote_dep_mpi_initialize_execution_stream(parsec_context_t *context)
 {
-    memcpy(&parsec_comm_es, context->virtual_processes[0]->execution_streams[0], sizeof(parsec_execution_stream_t));
+    memcpy(&parsec_comm_es, context->virtual_processes[0]->execution_streams[0],
+           sizeof(parsec_execution_stream_t));
+    parsec_comm_es.next_task = (parsec_task_t*)0xdeadbeef;  /* should not be NULL, but it should also never be used */
 }
 
 void* remote_dep_dequeue_main(parsec_context_t* context)
@@ -892,7 +895,8 @@ remote_dep_get_datatypes(parsec_execution_stream_t* es,
             local_mask = 0;
             local_mask |= (1U<<k);
 
-            parsec_hash_table_lock_bucket(dtd_tp->task_hash_table, (parsec_key_t)key);
+            parsec_key_handle_t kh;
+            parsec_hash_table_lock_bucket_handle(dtd_tp->task_hash_table, (parsec_key_t)key, &kh);
             dtd_task = parsec_dtd_find_task( dtd_tp, key );
 
             if( NULL == dtd_task ) {
@@ -920,7 +924,7 @@ remote_dep_get_datatypes(parsec_execution_stream_t* es,
                 parsec_dtd_track_remote_dep( dtd_tp, key, origin );
             }
 
-            parsec_hash_table_unlock_bucket(dtd_tp->task_hash_table, (parsec_key_t)key);
+            parsec_hash_table_unlock_bucket_handle(dtd_tp->task_hash_table, &kh);
 
             if(return_defer) {
                 return -2;
@@ -1061,6 +1065,8 @@ remote_dep_release_incoming(parsec_execution_stream_t* es,
     if(0 != origin->incoming_mask)  /* not done receiving */
         return origin;
 
+    origin->taskpool->tdm.module->incoming_message_end(origin->taskpool, origin);
+    
     /**
      * All incoming data are now received, start the propagation. We first
      * release the local dependencies, thus we must ensure the communication
@@ -1343,6 +1349,7 @@ static int remote_dep_mpi_pack_dep(int peer,
     peer_mask = 1U << (peer % (sizeof(uint32_t) * 8));
 
     parsec_ce.pack_size(&parsec_ce, dep_count, dep_dtt, &dsize);
+    dsize += deps->taskpool->tdm.module->outgoing_message_piggyback_size;
     if( (length - (*position)) < dsize ) {  /* no room. bail out */
         PARSEC_DEBUG_VERBOSE(20, parsec_debug_output, "Can't pack at %d/%d. Bail out!", *position, length);
         return 1;
@@ -1351,7 +1358,7 @@ static int remote_dep_mpi_pack_dep(int peer,
     *position += dsize;
     assert((0 != msg->output_mask) &&   /* this should be preset */
            (msg->output_mask & deps->outgoing_mask) == deps->outgoing_mask);
-    msg->length = 0;
+    msg->length = deps->taskpool->tdm.module->outgoing_message_piggyback_size;
     item->cmd.activate.task.output_mask = 0;  /* clean start */
     /* Treat for special cases: CTL, Short, etc... */
     for(k = 0; deps->outgoing_mask >> k; k++) {
@@ -1393,7 +1400,8 @@ static int remote_dep_mpi_pack_dep(int peer,
 #endif
     /* And now pack the updated message (msg->length and msg->output_mask) itself. */
     parsec_ce.pack(&parsec_ce, msg, dep_count, dep_dtt, packed_buffer, length, &saved_position);
-    msg->length = dsize;
+    msg->length = dsize + deps->taskpool->tdm.module->outgoing_message_piggyback_size;
+    deps->taskpool->tdm.module->outgoing_message_pack(deps->taskpool, peer, packed_buffer, &saved_position, length);
     return 0;
 }
 
@@ -1769,7 +1777,7 @@ remote_dep_mpi_put_end_cb(parsec_comm_engine_t *ce,
             ((remote_dep_cb_data_t *)cb_data)->k, deps, lreg, rreg);
 
 #if defined(PARSEC_PROF_TRACE)
-    parsec_profiling_ts_trace(MPI_Data_plds_ek, ((remote_dep_cb_data_t *)cb_data)->k, PROFILE_OBJECT_ID_NULL, NULL);
+    TAKE_TIME(parsec_comm_es.es_profile, MPI_Data_plds_ek, ((remote_dep_cb_data_t *)cb_data)->k);
 #endif
 
     remote_dep_complete_and_cleanup(&deps, 1);
@@ -1810,6 +1818,10 @@ static void remote_dep_mpi_recv_activate(parsec_execution_stream_t* es,
            deps->from, tmp, deps->msg.deps, deps->incoming_mask,
            deps->msg.length, *position, length, deps->max_priority);
 #endif
+
+    deps->taskpool->tdm.module->incoming_message_start(deps->taskpool, deps->from, packed_buffer, position,
+                                                       length, deps);
+        
     for(k = 0; deps->incoming_mask>>k; k++) {
         if(!(deps->incoming_mask & (1U<<k))) continue;
         /* Check for CTL and data that do not carry payload */
@@ -1914,11 +1926,13 @@ void
 remote_dep_mpi_new_taskpool(parsec_execution_stream_t* es,
                             dep_cmd_item_t *dep_cmd_item)
 {
-    parsec_list_item_t *item;
     parsec_taskpool_t* obj = dep_cmd_item->cmd.new_taskpool.tp;
+    parsec_list_item_t *item;
 #if defined(PARSEC_DEBUG_NOISIER)
     char tmp[MAX_TASK_STRLEN];
 #endif
+    PARSEC_DEBUG_VERBOSE(10, parsec_debug_output, "OPAQUE_MPI: ThreadID %d\tNew taskpool %d registered",
+                         (int)pthread_self(), obj->taskpool_id);
     for(item = PARSEC_LIST_ITERATOR_FIRST(&dep_activates_noobj_fifo);
         item != PARSEC_LIST_ITERATOR_END(&dep_activates_noobj_fifo);
         item = PARSEC_LIST_ITERATOR_NEXT(item) ) {
@@ -2058,7 +2072,7 @@ static void remote_dep_mpi_get_start(parsec_execution_stream_t* es,
         int _size;
         MPI_Type_size(dtt, &_size);
         PARSEC_DEBUG_VERBOSE(10, parsec_debug_output, "MPI:\tTO\t%d\tGet START\t% -8s\tk=%d\twith datakey %lx at %p type %s count %d displ %ld \t(k=%d, dst_mem_handle=%p)",
-                from, tmp, k, task->deps, PARSEC_DATA_COPY_GET_PTR(deps->output[k].data.data), type_name, dtt, nbdtt,
+                from, tmp, k, task->deps, PARSEC_DATA_COPY_GET_PTR(deps->output[k].data.data), type_name, nbdtt,
                 deps->output[k].data.remote.dst_displ, k, receiver_memory_handle);
 #  endif
 

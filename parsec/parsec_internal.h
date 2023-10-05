@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2020 The University of Tennessee and The University
+ * Copyright (c) 2012-2022 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
  */
@@ -85,6 +85,8 @@ typedef struct parsec_dependencies_s    parsec_dependencies_t;
  */
 typedef struct parsec_vp_s              parsec_vp_t;
 
+#include "parsec/mca/termdet/termdet.h"
+
 /**
  * @brief The prototype of startup functions
  *
@@ -109,7 +111,7 @@ typedef void (*parsec_destruct_fn_t)(parsec_taskpool_t* tp);
 #define PARSEC_TASKPOOL_TYPE_PTG       0x0001
 #define PARSEC_TASKPOOL_TYPE_COMPOUND  0x0002
 #define PARSEC_TASKPOOL_TYPE_DTD       0x0004
-
+    
 /**
  * @brief a PaRSEC taskpool represents an a collection of tasks (with or without their dependencies).
  *        as provided by the Domain Specific Language.
@@ -118,28 +120,31 @@ struct parsec_taskpool_s {
     parsec_list_item_t         super;     /**< A PaRSEC taskpool is also a list_item, so it can be chained into different lists */
     uint32_t                   taskpool_id; /**< Taskpool are uniquely globally consistently named */
     char*                      taskpool_name; /**< Taskpools are not uniquely named for profiling */
-    volatile int32_t           nb_tasks;  /**< A placeholder for the upper level to count (if necessary) the tasks
-                                           *   in the taskpool. This value is checked upon each task completion by
-                                           *   the runtime, to see if the taskpool is completed (a nb_tasks equal
-                                           *   to zero signal a completed taskpool). However, in order to prevent
-                                           *   multiple completions of the taskpool due to multiple tasks completing
-                                           *   simultaneously, the runtime reuse this value (once set to zero), for
-                                           *   internal purposes (in which case it is atomically set to
-                                           *   PARSEC_RUNTIME_RESERVED_NB_TASKS).
-                                           */
+    volatile int32_t           nb_tasks; /**< A placeholder for the upper level to count (if necessary) the tasks
+                                          *   in the taskpool. This value is checked upon each task completion by
+                                          *   the runtime, to see if the taskpool is completed (a nb_tasks equal
+                                          *   to zero signal a completed taskpool). However, in order to prevent
+                                          *   multiple completions of the taskpool due to multiple tasks completing
+                                          *   simultaneously, the runtime reuse this value (once set to zero), for
+                                          *   internal purposes (in which case it is atomically set to
+                                          *   PARSEC_RUNTIME_RESERVED_NB_TASKS).
+                                          *   WARNING: this field may only be modified through the termination
+                                          *   detection module API (tdm below). */
     int16_t                    taskpool_type;
     uint16_t                   devices_index_mask; /**< A bitmask of devices indexes this taskpool has been registered with */
-    uint32_t                   nb_task_classes;      /**< Number of task classes in the taskpool */
-    int32_t                    priority;             /**< A constant used to bump the priority of tasks related to this taskpool */
-    volatile int32_t           nb_pending_actions;  /**< Internal counter of pending actions tracking all runtime
-                                                     *   activities (such as communications, data movement, and
-                                                     *   so on). Also, its value is increase by one for all the tasks
-                                                     *   in the taskpool. This extra reference will be removed upon
-                                                     *   completion of all tasks.
-                                                     */
+    uint32_t                   nb_task_classes;    /**< Number of task classes in the taskpool */
+    int32_t                    priority;           /**< A constant used to bump the priority of tasks related to this taskpool */
+    volatile int32_t           nb_pending_actions; /**< Internal counter of pending actions tracking all runtime
+                                                    *   activities (such as communications, data movement, and
+                                                    *   so on). Also, its value is increase by one for all the tasks
+                                                    *   in the taskpool. This extra reference will be removed upon
+                                                    *   completion of all tasks.
+                                                    *   WARNING: thiis field may only be modified through the
+                                                    *   termination detection module API (tdm below). */
     parsec_context_t*           context;   /**< The PaRSEC context on which this taskpool was enqueued */
+    parsec_termdet_monitor_t    tdm;       /**< Termination detection structures and pointer to module */
     parsec_startup_fn_t         startup_hook;  /**< Pointer to the function that generates initial tasks */
-    const parsec_task_class_t** task_classes_array; /**< Array of task classes that build this DAG */
+    parsec_task_class_t** task_classes_array; /**< Array of task classes that build this DAG */
 #if defined(PARSEC_PROF_TRACE)
     const int*                  profiling_array; /**< Array of profiling keys to start/stop each of the task classes
                                                   *   The array is indexed on the same index as task_classes_array */
@@ -233,7 +238,7 @@ typedef enum  {
 
 typedef int (parsec_release_deps_t)(struct parsec_execution_stream_s*,
                                    parsec_task_t*,
-                                   uint32_t,
+                                   parsec_dependency_t,
                                    parsec_remote_deps_t*);
 #if defined(PARSEC_SIM)
 typedef int (parsec_sim_cost_fct_t)(const parsec_task_t *task);
@@ -255,7 +260,7 @@ typedef parsec_ontask_iterate_t (parsec_ontask_function_t)(struct parsec_executi
  */
 typedef void (parsec_traverse_function_t)(struct parsec_execution_stream_s *,
                                          const parsec_task_t *,
-                                         uint32_t,
+                                         parsec_dependency_t,
                                          parsec_ontask_function_t *,
                                          void *);
 
@@ -264,6 +269,12 @@ typedef void (parsec_traverse_function_t)(struct parsec_execution_stream_s *,
  */
 typedef parsec_key_t (parsec_functionkey_fn_t)(const parsec_taskpool_t *tp,
                                                const parsec_assignment_t *assignments);
+
+/**
+ * Provide a character string representation of the task.
+ * Write max buffer_size characters into buffer and return buffer.
+ */
+typedef char* (parsec_printtask_fn_t)(char *buffer, size_t buffer_size, const parsec_task_t *task);
 /**
  *
  */
@@ -335,7 +346,37 @@ parsec_dependency_t *parsec_default_find_deps(const parsec_taskpool_t *tp,
 parsec_dependency_t *parsec_hash_find_deps(const parsec_taskpool_t *tp,
                                            parsec_execution_stream_t *es,
                                            const parsec_task_t* task);
-
+typedef int (parsec_update_dependency_fn_t)(parsec_taskpool_t *tp,
+                                            const parsec_task_t* restrict task,
+                                            parsec_dependency_t *deps,
+                                            const parsec_task_t* restrict origin,
+                                            const parsec_flow_t* restrict origin_flow,
+                                            const parsec_flow_t* restrict dest_flow);
+int parsec_update_deps_with_mask(parsec_taskpool_t *tp,
+                                 const parsec_task_t* restrict task,
+                                 parsec_dependency_t *deps,
+                                 const parsec_task_t* restrict origin,
+                                 const parsec_flow_t* restrict origin_flow,
+                                 const parsec_flow_t* restrict dest_flow);
+int parsec_update_deps_with_mask_count_task(parsec_taskpool_t *tp,
+                                            const parsec_task_t* restrict task,
+                                            parsec_dependency_t *deps,
+                                            const parsec_task_t* restrict origin,
+                                            const parsec_flow_t* restrict origin_flow,
+                                            const parsec_flow_t* restrict dest_flow);
+int parsec_update_deps_with_counter(parsec_taskpool_t *tp,
+                                    const parsec_task_t* restrict task,
+                                    parsec_dependency_t *deps,
+                                    const parsec_task_t* restrict origin,
+                                    const parsec_flow_t* restrict origin_flow,
+                                    const parsec_flow_t* restrict dest_flow);
+int parsec_update_deps_with_counter_count_task(parsec_taskpool_t *tp,
+                                               const parsec_task_t* restrict task,
+                                               parsec_dependency_t *deps,
+                                               const parsec_task_t* restrict origin,
+                                               const parsec_flow_t* restrict origin_flow,
+                                               const parsec_flow_t* restrict dest_flow);
+    
 typedef struct __parsec_internal_incarnation_s {
     int32_t                     type;
     parsec_evaluate_function_t *evaluate;
@@ -364,8 +405,8 @@ struct parsec_task_class_s {
     parsec_dependency_t          dependencies_goal;
     const parsec_symbol_t       *params[MAX_LOCAL_COUNT];
     const parsec_symbol_t       *locals[MAX_LOCAL_COUNT];
-    const parsec_flow_t         *in[MAX_PARAM_COUNT];
-    const parsec_flow_t         *out[MAX_PARAM_COUNT];
+    const parsec_flow_t         *in[MAX_DATAFLOWS_PER_TASK];
+    const parsec_flow_t         *out[MAX_DATAFLOWS_PER_TASK];
     const parsec_expr_t         *priority;
     const parsec_property_t     *properties;     /**< {NULL, NULL} terminated array of properties holding all function-specific properties expressions */
 
@@ -374,6 +415,7 @@ struct parsec_task_class_s {
     parsec_data_ref_fn_t        *data_affinity;  /**< Populates an array of data references, of size 1 */
     parsec_key_fn_t             *key_functions;
     parsec_functionkey_fn_t     *make_key;
+    parsec_printtask_fn_t       *task_snprintf;
 #if defined(PARSEC_SIM)
     parsec_sim_cost_fct_t       *sim_cost_fct;
 #endif
@@ -382,7 +424,8 @@ struct parsec_task_class_s {
     const __parsec_chore_t      *incarnations;
     parsec_hook_t               *prepare_output;
 
-    parsec_find_dependency_fn_t *find_deps;
+    parsec_find_dependency_fn_t   *find_deps;
+    parsec_update_dependency_fn_t *update_deps;
 
     parsec_traverse_function_t  *iterate_successors;
     parsec_traverse_function_t  *iterate_predecessors;
@@ -416,6 +459,15 @@ PARSEC_DECLSPEC extern size_t parsec_task_startup_chunk;
  * Global configuration variable controlling the getrusage report.
  */
 PARSEC_DECLSPEC extern int parsec_want_rusage;
+
+/**
+ * Global configuration variable controlling what tasks are given to the
+ * scheduler. If this is enabled (the default) then the highest priority task
+ * created as a successor of a completed task, will be retained by the
+ * current execution thread as the next task to be executed. This bypasses
+ * the scheduler, but can provide a better cache reuse.
+ */
+PARSEC_DECLSPEC extern int parsec_runtime_keep_highest_priority_task;
 
 /**
  * Description of the state of the task. It indicates what will be the next
@@ -526,7 +578,7 @@ extern int device_delegate_begin, device_delegate_end;
  * Dependencies management.
  */
 typedef struct {
-    uint32_t                     action_mask;
+    parsec_dependency_t          action_mask;
     uint32_t                     output_usage;
     data_repo_entry_t           *output_entry; /* Current task repo entry */
     data_repo_t                 *output_repo;  /* Current task repo */

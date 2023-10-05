@@ -28,6 +28,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <inttypes.h>
+#include <ctype.h>
 
 #if defined(PARSEC_PROF_GRAPHER)
 
@@ -111,6 +112,10 @@ char *parsec_prof_grapher_taskid(const parsec_task_t *task, char *tmp, int lengt
 
     assert( NULL!= task->taskpool );
     index += snprintf( tmp + index, length - index, "%s_%u", tc->name, task->taskpool->taskpool_id );
+    if(!isalpha(tmp[0])) tmp[0] = '_';
+    for( i = 1; i < index; i++ ) {
+        if(!isalnum(tmp[i])) tmp[i] = '_';
+    }
     for( i = 0; i < tc->nb_parameters; i++ ) {
         index += snprintf( tmp + index, length - index, "_%d",
                            task->locals[tc->params[i]->context_index].value );
@@ -125,7 +130,8 @@ void parsec_prof_grapher_task(const parsec_task_t *context,
     if( NULL != grapher_file ) {
         char tmp[MAX_TASK_STRLEN], nmp[MAX_TASK_STRLEN];
         char sim_date[64];
-        parsec_task_snprintf(tmp, MAX_TASK_STRLEN, context);
+        assert(NULL != context->task_class->task_snprintf);
+        context->task_class->task_snprintf(tmp, MAX_TASK_STRLEN, context);
         parsec_prof_grapher_taskid(context, nmp, MAX_TASK_STRLEN);
 #if defined(PARSEC_SIM)
         snprintf(sim_date, 64, " [%d]", context->sim_exec_date);
@@ -173,6 +179,7 @@ static void parsec_prof_grapher_dataid(const parsec_data_t *dta, char *did, int 
     parsec_grapher_data_identifier_t id;
     parsec_key_t key;
     parsec_grapher_data_identifier_hash_table_item_t *it;
+    parsec_key_handle_t kh;
 
     assert(NULL != dta);
     assert(NULL != grapher_file);
@@ -181,8 +188,8 @@ static void parsec_prof_grapher_dataid(const parsec_data_t *dta, char *did, int 
     id.dc = dta->dc;
     id.data_key = dta->key;
     key = (parsec_key_t)(uintptr_t)&id;
-    parsec_hash_table_lock_bucket(data_ht, key);
-    if( NULL == (it = parsec_hash_table_nolock_find(data_ht, key)) ) {
+    parsec_hash_table_lock_bucket_handle(data_ht, key, &kh);
+    if( NULL == (it = parsec_hash_table_nolock_find_handle(data_ht, &kh)) ) {
         char data_name[MAX_TASK_STRLEN];
         it = (parsec_grapher_data_identifier_hash_table_item_t*)malloc(sizeof(parsec_grapher_data_identifier_hash_table_item_t));
         it->id = id;
@@ -191,8 +198,8 @@ static void parsec_prof_grapher_dataid(const parsec_data_t *dta, char *did, int 
             asprintf(&it->did, "dc%p_%"PRIuPTR, it->id.dc, (uintptr_t)it->id.data_key);
         else
             asprintf(&it->did, "dta%p_%"PRIuPTR, dta, (uintptr_t)it->id.data_key);
-        parsec_hash_table_nolock_insert(data_ht, &it->ht_item);
-        parsec_hash_table_unlock_bucket(data_ht, key);
+        parsec_hash_table_nolock_insert_handle(data_ht, &kh, &it->ht_item);
+        parsec_hash_table_unlock_bucket_handle(data_ht, &kh);
 
         if(NULL != dta->dc && NULL != dta->dc->key_to_string) {
             dta->dc->key_to_string(dta->dc, dta->key, data_name, MAX_TASK_STRLEN);
@@ -201,7 +208,7 @@ static void parsec_prof_grapher_dataid(const parsec_data_t *dta, char *did, int 
         }
         fprintf(grapher_file, "%s [label=\"%s%s\",shape=\"circle\"]\n", it->did, NULL != dta->dc->key_base ? dta->dc->key_base : "", data_name);
     } else
-        parsec_hash_table_unlock_bucket(data_ht, key);
+        parsec_hash_table_unlock_bucket_handle(data_ht, &kh);
     strncpy(did, it->did, size);
 }
 
