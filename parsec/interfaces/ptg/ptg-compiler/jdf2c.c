@@ -1756,13 +1756,13 @@ static void jdf_generate_predeclarations( const jdf_t *jdf )
                             
 
                 // Parametrized flows:
-                coutput("  // Local parametrized flows of %s\n#if defined(PARSEC_DEBUG_NOISIER)\n", f->fname);
+                coutput("  // Local parametrized flows of %s\n//#if defined(PARSEC_DEBUG_NOISIER) // used in release mode too now\n", f->fname);
                 for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
                     if( FLOW_IS_PARAMETRIZED(df) ) {
                         coutput("  int nb_specializations_of_parametrized_flow_of_%s_%s_for_%s;\n", jdf_basename, f->fname, df->varname);
                     }
                 }
-                coutput("#endif\n");
+                coutput("//#endif\n");
                 for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
                     if( FLOW_IS_PARAMETRIZED(df) ) {
                         // if "in" flow
@@ -5147,13 +5147,13 @@ static void jdf_generate_one_function( const jdf_t *jdf, jdf_function_entry_t *f
 
         // Parametrized flows:
         string_arena_add_string(sa, "  // Local parametrized flows of %s\n", f->fname);
-        string_arena_add_string(sa, "#if defined(PARSEC_DEBUG_NOISIER)\n");
+        string_arena_add_string(sa, "//#if defined(PARSEC_DEBUG_NOISIER) // used in release mode too now\n");
         for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
             if( FLOW_IS_PARAMETRIZED(df) ) {
                 string_arena_add_string(sa, "  , .nb_specializations_of_parametrized_flow_of_%s_%s_for_%s = -1\n", jdf_basename, f->fname, df->varname);
             }
         }
-        string_arena_add_string(sa, "#endif\n");
+        string_arena_add_string(sa, "//#endif\n");
         for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
             if( FLOW_IS_PARAMETRIZED(df) ) {
                 // store the offset for every output dep of this parametrized flow
@@ -5896,7 +5896,7 @@ static void jdf_generate_new_function( const jdf_t* jdf )
         coutput("\n");
 
         coutput("  // Set the number of specializations\n");
-        coutput("#if defined(PARSEC_DEBUG_NOISIER)\n");
+        coutput("//#if defined(PARSEC_DEBUG_NOISIER) // used in release mode too now\n");
         for( jdf_function_entry_t* f = jdf->functions; NULL != f; f = f->next ) {
             for( jdf_dataflow_t* df = f->dataflow; NULL != df; df = df->next ) {
                 if( FLOW_IS_PARAMETRIZED(df) ) {
@@ -5905,7 +5905,7 @@ static void jdf_generate_new_function( const jdf_t* jdf )
                 }
             }
         }
-        coutput("#endif\n");
+        coutput("//#endif\n");
         coutput("\n");
 
         // TODO delete parametrized_flows when not needed anymore!
@@ -6430,7 +6430,7 @@ static void jdf_generate_new_function( const jdf_t* jdf )
 
 
         coutput("    // First, ensure that there is no duplicate pointer\n");
-        coutput("#if defined(PARSEC_DEBUG_PARANOID)\n");
+        coutput("//#if defined(PARSEC_DEBUG_PARANOID) // This is not paranoid at all\n");
         coutput("    for(int tcid = 0; tcid < __parsec_tp->super.super.nb_task_classes; tcid++) {\n");
         coutput("      parsec_task_class_t *tc = __parsec_tp->super.super.task_classes_array[tcid];\n");
         coutput("      parsec_dep_t *found_deps[MAX_DEP_IN_COUNT*MAX_DATAFLOWS_PER_TASK];\n");
@@ -6467,7 +6467,7 @@ static void jdf_generate_new_function( const jdf_t* jdf )
         coutput("        }\n");
         coutput("      }\n");
         coutput("    }\n");
-        coutput("#endif\n");
+        coutput("//#endif\n");
 
         coutput("\n");
 
@@ -6557,12 +6557,12 @@ static void jdf_generate_new_function( const jdf_t* jdf )
                         //coutput("    spec_%s.out_offset_flow_of_%s_%s_for_%s = parsec_helper_get_flow_index_that_contains_dep(parsec_task_class_t *tc, parsec_dep_t *dep, int in_out);\n"
                         //    JDF_OBJECT_ONAME(f), jdf_basename, f->fname, df->varname,);
 
-                        coutput("#if defined(PARSEC_DEBUG_NOISIER)\n");
+                        coutput("//#if defined(PARSEC_DEBUG_NOISIER) // used in release mode too now\n");
                         coutput("    spec_%s.nb_specializations_of_parametrized_flow_of_%s_%s_for_%s = nb_specializations_of_parametrized_flow_of_%s_%s_for_parametrized_%s;\n",
                             JDF_OBJECT_ONAME(f),
                             jdf_basename, f->fname, df->varname,
                             jdf_basename, f->fname, df->varname);
-                        coutput("#endif\n");
+                        coutput("//#endif\n");
 
                         if(df->flow_flags & JDF_FLOW_TYPE_READ)
                         {

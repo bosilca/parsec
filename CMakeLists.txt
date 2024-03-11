@@ -691,7 +691,7 @@ int main(int argc, char *argv[]) {
     if (CUDAToolkit_FOUND)
       message(STATUS "Found CUDA ${CUDAToolkit_VERSION} in ${CUDAToolkit_LIBRARY_DIR}")
       CMAKE_PUSH_CHECK_STATE()
-      list(APPEND CMAKE_REQUIRED_LIBRARIES CUDA::cudart)
+      list(APPEND CMAKE_REQUIRED_LIBRARIES CUDA::cudart) # This adds the wrong version of cudart if there are multiple versions installed
       if(CUDAToolkit_VERSION VERSION_LESS "4.0")
           set(PARSEC_HAVE_PEER_DEVICE_MEMORY_ACCESS 0)
       else()
