@@ -132,9 +132,9 @@ __data_repo_entry_used_once(data_repo_t *repo, parsec_key_t key
 
 void
 __data_repo_entry_addto_usage_limit(data_repo_t *repo, parsec_key_t key, uint32_t usagelmt
-#if defined(PARSEC_DEBUG_NOISIER)
+// #if defined(PARSEC_DEBUG_NOISIER) // The printfs glitch if this is enabled
                                     , const char *tablename, const char *file, int line
-#endif
+// #endif
                                     )
 {
     data_repo_entry_t *e;
