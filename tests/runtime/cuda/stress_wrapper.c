@@ -41,7 +41,7 @@ parsec_taskpool_t* testing_stress_New( parsec_context_t *ctx, int depth, int mb 
         nb = 0;
         for(dev = 0; dev < (int)parsec_nb_devices; dev++) {
             parsec_device_module_t *device = parsec_mca_device_get(dev);
-            if( PARSEC_DEV_CUDA == device->type ) {
+            if( PARSEC_DEV_CUDA & device->type ) {
                 dev_index[nb++] = device->device_index;
             }
         }
