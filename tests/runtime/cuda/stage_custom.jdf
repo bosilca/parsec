@@ -161,34 +161,41 @@ BODY [type=CUDA
       batch = true
       dyld=cublasDgemm dyldtype=cublas_dgemm_t]
 {
-    parsec_list_item_t* ghost_elem = (parsec_list_item_t*)gpu_task->list_item.list_prev;
-    if( ghost_elem != gpu_task->list_item.list_next ) {  /* more than one gpu_task in the ring */
-        printf("We got a list of tasks!!! Let's batch them together (up to 5)\n\n");
-        parsec_list_item_t* ring = parsec_list_item_ring_chop((parsec_list_item_t*)gpu_task);
-        parsec_gpu_task_t* task = (parsec_gpu_task_t*)ring;
+    parsec_list_item_singleton(&gpu_task->list_item);
+    parsec_list_item_t* store_back = NULL;
+    if( !parsec_list_nolock_is_empty(gpu_stream->fifo_pending) ) {  /* more than one gpu_task in the ring */
         int how_many = 1;  /* we start with the current gpu_task */
         do {
+            parsec_list_item_t* item = parsec_list_pop_front(gpu_stream->fifo_pending);
+            parsec_list_item_singleton(item);
+            parsec_gpu_task_t* task = (parsec_gpu_task_t*)item;
+
             if( gpu_task->ec->task_class == task->ec->task_class ) {
                 /* same task class as the current one, possible to batch */
-                ring = parsec_list_item_ring_chop((parsec_list_item_t*)task);
                 (void)parsec_list_item_ring_push(&gpu_task->list_item, (parsec_list_item_t*)task);
                 how_many++;  /* one more into the batch */
-                if( (5 == how_many) || (NULL == ring) ) {
+                printf("Add task %p to the %p batch\n", task, gpu_task);
+                if( 5 == how_many ) {
                     /* let's stop here for now */
                     break;
                 }
             } else {
-                ring = (parsec_list_item_t*)ring->list_next;  /* more to the next task */
+                if( NULL == store_back ) {
+                    store_back = item;
+                } else {
+                    parsec_list_item_ring_push(store_back, item);  /* build the list of un-batcheable tasks */
+                }
             }
-            task = (parsec_gpu_task_t*)ring;
-        } while(ring != ghost_elem);
+        } while( !parsec_list_nolock_is_empty(gpu_stream->fifo_pending) );
         /* we now have two separated task rings: the gpu_task with all the tasks that will be batched
          * and the ring that has all the remaining items in the list (including the list's ghost_elem).
          * The remaining list is already stored in the gpu_stream->fifo_pending.
          */
         gpu_task->complete_stage = complete_batched_callback;
-    } else {
-        parsec_list_item_singleton(&gpu_task->list_item);
+        printf("submit multiple tasks into one %p on stream %s{%p}\n", gpu_task, gpu_stream->name, (void*)gpu_stream);
+        if( NULL != store_back ) {
+            parsec_list_push_back(gpu_stream->fifo_pending, store_back);
+        }
     }
     double lalpha = 1.0;
     double lbeta  = 2.0;

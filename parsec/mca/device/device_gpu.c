@@ -1834,6 +1834,7 @@ parsec_device_progress_stream( parsec_device_gpu_module_t* gpu_device,
         if( 1 == rc ) {
             /* Save the task for the next step */
             task = *out_task = stream->tasks[stream->end];
+            printf("Complete task %p on stream %s{%p}\n", (void*)task, stream->name, (void*)stream);
             PARSEC_DEBUG_VERBOSE(19, parsec_gpu_output_stream,
                                  "GPU[%d:%s]: Completed %s on stream %s{%p}",
                                  gpu_device->super.device_index, gpu_device->super.name,
