@@ -138,7 +138,7 @@ int main(int argc, char *argv[])
 
     parsec_atomic_rwlock_init(&rwlock);
 
-    threads = (pthread_t*)calloc(sizeof(pthread_t), maxthreads);
+    threads = (pthread_t*)calloc(maxthreads, sizeof(pthread_t));
 
     for( nbthreads = minthreads; nbthreads < maxthreads; nbthreads++) {
         parsec_barrier_init(&barrier, NULL, nbthreads+1);

@@ -25,7 +25,7 @@ static inline int hiBit(unsigned int n)
 
 parsec_heap_t* heap_create(void)
 {
-    parsec_heap_t* heap = calloc(sizeof(parsec_heap_t), 1);
+    parsec_heap_t* heap = calloc(1, sizeof(parsec_heap_t));
     /* Point back to the parent structure */
     heap->list_item.list_next = (parsec_list_item_t*)heap;
     heap->list_item.list_prev = (parsec_list_item_t*)heap;
@@ -67,7 +67,7 @@ void heap_insert(parsec_heap_t * heap, parsec_task_t * elem)
         }
         parents_size = level_counter;
 
-        parsec_task_t ** parents = calloc(sizeof(parsec_task_t *), level_counter);
+        parsec_task_t ** parents = calloc(level_counter, sizeof(parsec_task_t *));
         // now the bitmask is two places farther than we want it, so back down
         bitmask = bitmask >> 2;
 

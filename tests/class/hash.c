@@ -597,9 +597,9 @@ int main(int argc, char *argv[])
         }
     }
 
-    threads = calloc(sizeof(pthread_t), maxthreads);
-    params = calloc(sizeof(param_t), maxthreads+1);
-    keys = calloc(sizeof(uint64_t), nb_tests);
+    threads = calloc(maxthreads, sizeof(pthread_t));
+    params = calloc(maxthreads+1, sizeof(param_t));
+    keys = calloc(nb_tests, sizeof(uint64_t));
     init_keys(keys, nb_tests, seed, structured_keys);
 
     for(md_tuning = md_tuning_min; md_tuning < md_tuning_max; md_tuning += md_tuning_inc) {

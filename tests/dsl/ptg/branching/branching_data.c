@@ -98,7 +98,7 @@ parsec_data_collection_t *create_and_distribute_data(int rank, int world, int si
 #endif
     parsec_type_create_contiguous(size, parsec_datatype_int32_t, &d->default_dtt);
 
-    m->data = calloc(sizeof(parsec_data_t*), nb);
+    m->data = calloc(nb, sizeof(parsec_data_t*));
     m->nt   = nb;
     m->size = size;
     m->ptr  = (int32_t*)malloc(nb * size * sizeof(int32_t));
