@@ -172,7 +172,7 @@ BODY [type=CUDA
             parsec_list_item_singleton(item);
             parsec_gpu_task_t* task = (parsec_gpu_task_t*)item;
 
-            if( gpu_task->ec->task_class == task->ec->task_class ) {
+            if( false && (gpu_task->ec->task_class == task->ec->task_class) ) {
                 /* same task class as the current one, possible to batch */
                 (void)parsec_list_item_ring_push(&gpu_task->list_item, (parsec_list_item_t*)task);
                 how_many++;  /* one more into the batch */
@@ -194,11 +194,12 @@ BODY [type=CUDA
          * and the ring that has all the remaining items in the list (including the list's ghost_elem).
          * The remaining list is already stored in the gpu_stream->fifo_pending.
          */
-        gpu_task->complete_stage = complete_batched_callback;
+        if( how_many > 1 )
+            gpu_task->complete_stage = complete_batched_callback;
         PARSEC_DEBUG_VERBOSE((10, parsec_debug_output, "submit multiple tasks into one %p on stream %s{%p}\n",
                               gpu_task, gpu_stream->name, (void*)gpu_stream));
         if( NULL != store_back ) {
-            parsec_list_push_back(gpu_stream->fifo_pending, store_back);
+            parsec_list_item_ring_merge(&gpu_stream->fifo_pending->ghost_element, store_back);
         }
     }
     double lalpha = 1.0;
