@@ -117,6 +117,12 @@ typedef void (*cublas_dgemm_t) ( char TRANSA, char TRANSB, int m, int n, int k,
 /* Pre-declare function used as a property of some parameterized task */
 static int64_t gemm_time_estimate(const parsec_task_t *task, parsec_device_module_t *dev);
 
+typedef struct deallocation_helper_s {
+    parsec_assignment_t m;
+    parsec_assignment_t k;
+    void** my_storage[3];
+  } free_helper_t;
+
 static int 
 complete_batched_callback(parsec_device_gpu_module_t *dev,
                           parsec_gpu_task_t ** gpu_task,
@@ -127,6 +133,8 @@ complete_batched_callback(parsec_device_gpu_module_t *dev,
     (void)dev; (void) gpu_task; (void)gpu_stream;
     parsec_list_item_t* output_stream_ghost = &dev->exec_stream[1]->fifo_pending->ghost_element;
     parsec_list_item_ring_merge(output_stream_ghost, &(*gpu_task)->list_item);
+    free_helper_t* helper = (free_helper_t*)(((*gpu_task)->ec)->locals); (void)helper;
+    //printf(" release %p and %p and %p\n", helper->my_storage[0], helper->my_storage[1], helper->my_storage[2]);
     (*gpu_task)->complete_stage = NULL;
     *gpu_task = NULL;
     return PARSEC_HOOK_RETURN_DONE;
@@ -172,7 +180,7 @@ BODY [type=CUDA
             parsec_list_item_singleton(item);
             parsec_gpu_task_t* task = (parsec_gpu_task_t*)item;
 
-            if( false && (gpu_task->ec->task_class == task->ec->task_class) ) {
+            if( gpu_task->ec->task_class == task->ec->task_class ) {
                 /* same task class as the current one, possible to batch */
                 (void)parsec_list_item_ring_push(&gpu_task->list_item, (parsec_list_item_t*)task);
                 how_many++;  /* one more into the batch */
@@ -211,6 +219,10 @@ BODY [type=CUDA
     cublasSetKernelStream( parsec_body.stream );
 
     parsec_gpu_task_t* current_gpu_task = gpu_task;
+    free_helper_t* helper = (free_helper_t*)((gpu_task->ec)->locals);
+    helper->my_storage[0] = (void*)(uintptr_t)0xdeadbeef;
+    helper->my_storage[1] = (void*)(uintptr_t)0xabcdabcd;
+    helper->my_storage[2] = (void*)(uintptr_t)0xcdefcdef;
     do {
         __parsec_stage_custom_TASK_GPU_task_t *task = (__parsec_stage_custom_TASK_GPU_task_t*)current_gpu_task->ec;
         _f_A = task->data._f_A.data_out;
