@@ -201,6 +201,8 @@ parsec_list_t mpi_funnelled_dynamic_sendreq_fifo; /* ordered non threaded fifo *
 parsec_list_t mpi_funnelled_dynamic_recvreq_fifo; /* ordered non threaded fifo */
 parsec_mempool_t *mpi_funnelled_dynamic_req_mempool = NULL;
 
+int parsec_mpi_allow_gpu_memory_communications = 3;
+
 /* This structure is used to save all the information necessary to
  * invoke a callback after a MPI_Request is satisfied
  */
@@ -506,6 +508,14 @@ static int mpi_funneled_init_once(parsec_context_t* context)
                              MAX_MPI_TAG, (unsigned int)MAX_MPI_TAG, MAX_MPI_TAG / MAX_DEP_OUT_COUNT);
     }
 
+#if !defined(PARSEC_MPI_IS_GPU_AWARE)
+    parsec_mpi_allow_gpu_memory_communications = 0;
+#endif
+    parsec_mca_param_reg_int_name("mpi", "gpu_aware",
+                                  "Enabled if PaRSEC should allow MPI to move data directly from or to GPU memory. Otherwise, all data"
+                                  " movements will transit through CPU memory, and will always have a backup copy there. Accepted values "
+                                  "are ORed between 1 for receiving into GPU memory and 2 for sending from GPU memory",
+                                  false, false, parsec_mpi_allow_gpu_memory_communications, &parsec_mpi_allow_gpu_memory_communications);
     (void)context;
     return 0;
 }

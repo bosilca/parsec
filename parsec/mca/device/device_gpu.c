@@ -954,9 +954,9 @@ parsec_device_data_reserve_space( parsec_device_gpu_module_t* gpu_device,
 
         /* Skip CTL flows only */
         if(PARSEC_FLOW_ACCESS_NONE == (PARSEC_FLOW_ACCESS_MASK & flow->flow_flags)) {
-	        gpu_task->flow_nb_elts[i] = 0;  /* assume there is nothing to transfer to the GPU */
+            gpu_task->flow_nb_elts[i] = 0;  /* assume there is nothing to transfer to the GPU */
             continue;
-	    }
+        }
 
         PARSEC_DEBUG_VERBOSE(20, parsec_gpu_output_stream,
                              "GPU[%d:%s]:%s: Investigating flow %s:%d",
@@ -971,7 +971,7 @@ parsec_device_data_reserve_space( parsec_device_gpu_module_t* gpu_device,
                                  gpu_device->super.device_index, gpu_device->super.name, task_name,
                                  flow->name, i, gpu_elem,
                                  this_task->data[i].data_in->data_transfer_status == PARSEC_DATA_STATUS_UNDER_TRANSFER ? " [in transfer]" : "");
-	        this_task->data[i].data_out = this_task->data[i].data_in;
+            this_task->data[i].data_out = this_task->data[i].data_in;
             continue;
         }
         master   = this_task->data[i].data_in->original;
@@ -2477,7 +2477,10 @@ parsec_device_kernel_epilog( parsec_device_gpu_module_t *gpu_device,
             gpu_copy->coherency_state = PARSEC_DATA_COHERENCY_SHARED;
             assert(PARSEC_DATA_STATUS_UNDER_TRANSFER == cpu_copy->data_transfer_status);
             cpu_copy->data_transfer_status = PARSEC_DATA_STATUS_COMPLETE_TRANSFER;
-
+            if( 0 == (parsec_mpi_allow_gpu_memory_communications & PARSEC_RUNTIME_SEND_FROM_GPU_MEMORY) ) {
+                /* Report the CPU copy as the output of the task. */
+                this_task->data[i].data_out = cpu_copy;
+            }
             PARSEC_DEBUG_VERBOSE(20, parsec_gpu_output_stream,
                                  "GPU copy %p [ref_count %d] moved to the read LRU in %s",
                                  gpu_copy, gpu_copy->super.super.obj_reference_count, __func__);
