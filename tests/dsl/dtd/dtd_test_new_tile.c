@@ -277,7 +277,7 @@ int main(int argc, char **argv)
 #if defined(PARSEC_HAVE_DEV_CUDA_SUPPORT) && defined(PARSEC_HAVE_CU_COMPILER)
     for(unsigned int i = 0; i < parsec_nb_devices; i++) {
         parsec_device_module_t *dev = parsec_mca_device_get(i);
-        if( dev->type == PARSEC_DEV_CUDA )
+        if( dev->type & PARSEC_DEV_CUDA )
             nb_gpus++;
     }
     if(nb_gpus > 0) {
@@ -286,7 +286,7 @@ int main(int argc, char **argv)
         nb_gpus = 0;
         for(unsigned int i = 0; i < parsec_nb_devices; i++) {
             parsec_device_module_t *dev = parsec_mca_device_get(i);
-            if( dev->type == PARSEC_DEV_CUDA) {
+            if( dev->type & PARSEC_DEV_CUDA) {
                 cudaError_t status;
                 parsec_device_cuda_module_t *gpu_device = (parsec_device_cuda_module_t *)dev;
                 status = cudaSetDevice( gpu_device->cuda_index );
@@ -378,7 +378,7 @@ int main(int argc, char **argv)
     parsec_dtd_task_class_add_chore(dtd_tp, fourth_tc, PARSEC_DEV_CPU, cpu_reduce);
 
     parsec_dtd_tile_t **new_tiles;
-    new_tiles = (parsec_dtd_tile_t**)calloc(sizeof(parsec_dtd_tile_t *), NCASE*world);
+    new_tiles = (parsec_dtd_tile_t**)calloc(NCASE*world, sizeof(parsec_dtd_tile_t *));
 
     acc = 0;
 

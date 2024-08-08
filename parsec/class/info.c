@@ -217,7 +217,7 @@ void parsec_info_object_array_init(parsec_info_object_array_t *oa, parsec_info_t
     if(oa->known_infos == 0)
         oa->info_objects = NULL;
     else
-        oa->info_objects = calloc(sizeof(void*), oa->known_infos);
+        oa->info_objects = calloc(oa->known_infos, sizeof(void*));
     oa->infos = nfo;
     oa->cons_obj = cons_obj;
 }
@@ -265,7 +265,7 @@ static void parsec_ioa_resize_and_rdlock(parsec_info_object_array_t *oa, parsec_
                 oa->info_objects = realloc(oa->info_objects, sizeof(void *) * ns);
                 memset(&oa->info_objects[oa->known_infos - 1], 0, ns - oa->known_infos);
             } else {
-                oa->info_objects = calloc(sizeof(void*), ns);
+                oa->info_objects = calloc(ns, sizeof(void*));
             }
             oa->known_infos = ns;
         }
@@ -312,6 +312,8 @@ void *parsec_info_get(parsec_info_object_array_t *oa, parsec_info_id_t iid)
     if(NULL == ie->constructor)
         return ret;
     nio = ie->constructor(oa->cons_obj, ie->cons_data);
+    if( NULL == nio )
+        return ret;
     ret = parsec_info_test_and_set(oa, iid, nio, NULL);
     if(ret != nio && NULL != ie->destructor) {
         ie->destructor(nio, ie->des_data);

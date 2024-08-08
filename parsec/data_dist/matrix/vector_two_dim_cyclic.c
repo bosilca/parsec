@@ -251,7 +251,7 @@ static parsec_data_t* vector_twoDBC_data_of(parsec_data_collection_t *desc, ...)
 #endif
 
     /* Compute the local tile row */
-    assert( dc->super.bsiz == dc->super.mb );
+    assert( dc->super.bsiz == (size_t)dc->super.mb );
 
     local_m = m / dc->lcm;
 

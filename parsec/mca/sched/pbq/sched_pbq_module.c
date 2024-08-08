@@ -61,7 +61,7 @@ static int flow_pbq_init(parsec_execution_stream_t* es, struct parsec_barrier_t*
     uint32_t queue_size = 0;
 
     /* Every flow creates its own local object */
-    sched_obj = (parsec_mca_sched_local_queues_scheduler_object_t*)calloc(sizeof(parsec_mca_sched_local_queues_scheduler_object_t), 1);
+    sched_obj = (parsec_mca_sched_local_queues_scheduler_object_t*)calloc(1, sizeof(parsec_mca_sched_local_queues_scheduler_object_t));
     es->scheduler_object = sched_obj;
     if( es->th_id == 0 ) { /* And flow 0 creates the system_queue */
         sched_obj->system_queue = PARSEC_OBJ_NEW(parsec_dequeue_t);

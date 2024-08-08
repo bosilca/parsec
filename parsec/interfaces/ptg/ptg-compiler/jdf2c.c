@@ -672,6 +672,17 @@ static char* dump_local_assignments( void** elem, void* arg )
     if( dos > 0 ) {
         string_arena_init(info->sa);
         string_arena_add_string(info->sa, "const int %s = %s%s.value;", def->name, info->holder, def->name);
+#if 0
+        jdf_expr_t* type_str = jdf_find_property( def->properties, "type", NULL );
+        if( NULL == type_str ) {
+            string_arena_add_string(info->sa, "const int %s = %s%s.value;", def->name, info->holder, def->name);
+        } else {
+            expr_info_t expr_info = {.sa = info->sa, .prefix = "", .suffix = "", .assignments = "locals"};
+            string_arena_add_string(info->sa, "const %s %s = %s%s.value;",
+                                    dump_expr((void**)type_str, &expr_info),
+                                    def->name, info->holder, def->name);
+        }
+#endif
         if( dos > 1 )
             string_arena_add_string(info->sa, " (void)%s;", def->name);
         return string_arena_get_string(info->sa);
@@ -2044,7 +2055,7 @@ static void jdf_generate_affinity( const jdf_t *jdf, const jdf_function_entry_t 
         assert( NULL == data_affinity->var );
     }
 
-    coutput("static inline int %s(%s *this_task,\n"
+    coutput("static inline int %s(const %s *this_task,\n"
             "                     parsec_data_ref_t *ref)\n"
             "{\n"
             "    const __parsec_%s_internal_taskpool_t *__parsec_tp = (const __parsec_%s_internal_taskpool_t*)this_task->taskpool;\n",
@@ -3938,6 +3949,7 @@ jdf_generate_function_incarnation_list( const jdf_t *jdf,
     jdf_def_list_t* dyld_property;
     jdf_def_list_t* evaluate_property = NULL;
     jdf_def_list_t* device_property = NULL;
+    jdf_def_list_t* batch_property = NULL;
 
     (void)jdf;
     string_arena_add_string(sa, "static const __parsec_chore_t __%s_chores[] ={\n", base_name);
@@ -3945,18 +3957,32 @@ jdf_generate_function_incarnation_list( const jdf_t *jdf,
         jdf_find_property(body->properties, "type", &type_property);
         jdf_find_property(body->properties, "dyld", &dyld_property);
         jdf_find_property(body->properties, JDF_BODY_PROP_EVALUATE, &evaluate_property);
-        if( NULL == type_property) {
+        jdf_find_property(body->properties, "batch", &batch_property);
+        if (NULL == type_property)
+        {
             string_arena_add_string(sa, "#if defined(PARSEC_HAVE_DEV_CPU_SUPPORT)\n");
             string_arena_add_string(sa, "    { .type     = PARSEC_DEV_CPU,\n");
             string_arena_add_string(sa, "      .evaluate = (parsec_evaluate_function_t*)%s,\n",
                                     (NULL == evaluate_property) ? "NULL" : evaluate_property->expr->jdf_c_code.fname);
             string_arena_add_string(sa, "      .hook     = (parsec_hook_t*)hook_of_%s },\n", base_name);
             string_arena_add_string(sa, "#endif  /* defined(PARSEC_HAVE_DEV_CPU_SUPPORT) */\n");
-        } else {
+            if( NULL != batch_property ) {
+                fprintf(stderr,
+                        "Error: batched property (%s) not allowed for devices other than accelerators in body of task %s at line %d\n",
+                        batch_property->expr->jdf_var, f->fname, JDF_OBJECT_LINENO(body));
+                assert( NULL != batch_property );
+            }
+        }
+        else
+        {
             char* dev_upper = strdup_upper(type_property->expr->jdf_var);
 
             string_arena_add_string(sa, "#if defined(PARSEC_HAVE_DEV_%s_SUPPORT)\n", dev_upper);
-            string_arena_add_string(sa, "    { .type     = PARSEC_DEV_%s,\n", dev_upper);
+            string_arena_add_string(sa, "    { .type     = PARSEC_DEV_%s", dev_upper);
+            if( NULL != batch_property) {
+                string_arena_add_string(sa, " | PARSEC_DEV_CHORE_ALLOW_BATCH");
+            }
+            string_arena_add_string(sa, ",\n");
             if( NULL == dyld_property ) {
                 string_arena_add_string(sa, "      .dyld     = NULL,\n");
             } else {
@@ -4491,7 +4517,7 @@ static void jdf_generate_startup_hook( const jdf_t *jdf )
             "    parsec_task_class_t* tc = (parsec_task_class_t*)__parsec_tp->super.super.task_classes_array[i];\n"
             "    __parsec_chore_t* chores = (__parsec_chore_t*)tc->incarnations;\n"
             "    uint32_t idx = 0, j;\n"
-            "    for( j = 0; PARSEC_DEV_NONE != chores[j].type; j++ ) {\n"
+            "    for( j = 0; PARSEC_DEV_NONE != (chores[j].type & PARSEC_DEV_ANY_TYPE); j++ ) {\n"
             "      if( !(supported_dev & chores[j].type) ) continue;\n"
             "      if( j != idx ) {\n"
             "        chores[idx] = chores[j];\n"
@@ -4551,11 +4577,14 @@ static void jdf_generate_destructor( const jdf_t *jdf )
             "  free(__parsec_tp->super.super.task_classes_array); __parsec_tp->super.super.task_classes_array = NULL;\n"
             "  __parsec_tp->super.super.nb_task_classes = 0;\n"
             "\n"
+            "#if PARSEC_%s_ADT_IDX_MAX > 0\n"
             "  for(i = 0; i < (uint32_t)__parsec_tp->super.arenas_datatypes_size; i++) {\n"
             "    if( NULL != __parsec_tp->super.arenas_datatypes[i].arena ) {\n"
             "      PARSEC_OBJ_RELEASE(__parsec_tp->super.arenas_datatypes[i].arena);\n"
             "    }\n"
-            "  }\n");
+            "  }\n"
+            "#endif  /* PARSEC_%s_ADT_IDX_MAX > 0 */",
+            jdf_basename, jdf_basename);
 
     coutput("  /* Destroy the data repositories for this object */\n");
     for( f = jdf->functions; NULL != f; f = f->next ) {
@@ -4680,7 +4709,7 @@ static void jdf_generate_constructor( const jdf_t* jdf )
     coutput("  for( i = 0; i < __parsec_tp->super.super.nb_task_classes; i++ ) {\n"
             "    __parsec_tp->super.super.task_classes_array[i] = tc = malloc(sizeof(parsec_task_class_t));\n"
             "    memcpy(tc, %s_task_classes[i], sizeof(parsec_task_class_t));\n"
-            "    for( j = 0; PARSEC_DEV_NONE != tc->incarnations[j].type; j++);  /* compute the number of incarnations */\n"
+            "    for( j = 0; PARSEC_DEV_NONE != (tc->incarnations[j].type & PARSEC_DEV_ANY_TYPE); j++);  /* compute the number of incarnations */\n"
             "    tc->incarnations = (__parsec_chore_t*)malloc((j+1) * sizeof(__parsec_chore_t));\n    "
             "    memcpy((__parsec_chore_t*)tc->incarnations, %s_task_classes[i]->incarnations, (j+1) * sizeof(__parsec_chore_t));\n\n"
             "    /* Add a placeholder for initialization and startup task */\n"
@@ -5577,7 +5606,7 @@ jdf_generate_code_call_initialization(const jdf_t *jdf, const jdf_call_t *call,
             jdf_generate_code_reshape_input_from_desc(jdf, f, flow, dl, spaces);
 
             coutput("%s    this_task->data._f_%s.data_out = chunk;\n"
-                    "%s    PARSEC_OBJ_RETAIN(chunk);\n",
+                    "%s    PARSEC_DATA_COPY_RETAIN(chunk);\n",
                     spaces, flow->varname,
                     spaces);
 
@@ -5603,7 +5632,7 @@ jdf_generate_code_call_initialization(const jdf_t *jdf, const jdf_call_t *call,
                 assert( dl->datatype_local.count != NULL );
                 string_arena_add_string(sa2, "%s", dump_expr((void**)dl->datatype_local.count, &info));
 
-                coutput("%s    chunk = parsec_arena_get_copy(%s->arena, %s, target_device, %s->opaque_dtt);\n"
+                coutput("%s    chunk = parsec_arena_get_new_copy(%s->arena, %s, target_device, %s->opaque_dtt);\n"
                         "%s    chunk->original->owner_device = target_device;\n"
                         "%s    this_task->data._f_%s.data_out = chunk;\n",
                         spaces, string_arena_get_string(sa), string_arena_get_string(sa2), string_arena_get_string(sa),
@@ -5634,12 +5663,19 @@ jdf_generate_code_call_initialization(const jdf_t *jdf, const jdf_call_t *call,
 
         /* Code to create & fulfill a reshape promise locally in case this input dependency is typed */
         jdf_generate_code_reshape_input_from_dep(jdf, f, flow, dl, spaces);
-        coutput("%s    this_task->data._f_%s.data_out = parsec_data_get_copy(chunk->original, target_device);\n"
-                "#if defined(PARSEC_PROF_GRAPHER) && defined(PARSEC_PROF_TRACE)\n"
+        /* TODO: Setting the data_out here is kind of random, especially as some copy of the input flow. The only thing
+         *       that would make sense here is to set the data_out to the dep outputs back into the user memory (output
+         *       dep with a target into a data collection), to give the opportunity to the accelerator components to
+         *       do a pushout to the desired location (instead of the current approach that will do a pushout to the
+         *       data_copy on device 0 followed by a memcpy into the desired location).
+         */
+        //coutput("%s    this_task->data._f_%s.data_out = parsec_data_get_copy(chunk->original, target_device);\n",
+        //        spaces, flow->varname);
+
+        coutput("#if defined(PARSEC_PROF_GRAPHER) && defined(PARSEC_PROF_TRACE)\n"
                 "%s    parsec_prof_grapher_data_input(chunk->original, (parsec_task_t*)this_task, &%s, 0);\n"
                 "#endif\n"
                 "%s  }\n",
-                spaces, flow->varname,
                 spaces, JDF_OBJECT_ONAME( flow ),
                 spaces);
     }
@@ -5713,7 +5749,7 @@ static void jdf_generate_code_call_init_output(const jdf_t *jdf, const jdf_call_
              spaces, flow->varname,
              spaces);
 
-    coutput("%s    chunk = parsec_arena_get_copy(%s->arena, %s, target_device, %s);\n"
+    coutput("%s    chunk = parsec_arena_get_new_copy(%s->arena, %s, target_device, %s);\n"
             "%s    chunk->original->owner_device = target_device;\n",
             spaces, string_arena_get_string(sa_arena), string_arena_get_string(sa_count), string_arena_get_string(sa_datatype),
             spaces);
@@ -6497,10 +6533,10 @@ jdf_generate_code_data_lookup(const jdf_t *jdf,
      * This way, it's only retained once during release_deps.
      */
     coutput("  if( NULL == this_task->repo_entry ){\n"
-            "    this_task->repo_entry = data_repo_lookup_entry_and_create(es, %s_repo, "
+            "    this_task->repo_entry = data_repo_lookup_entry_and_create(es, %s_repo, \n"
             "                                      %s((const parsec_taskpool_t*)__parsec_tp, (const parsec_assignment_t*)&this_task->locals));\n"
-            "    data_repo_entry_addto_usage_limit(%s_repo, this_task->repo_entry->ht_item.key, 1);"
-            "    this_task->repo_entry ->generator = (void*)this_task;  /* for AYU */\n"
+            "    data_repo_entry_addto_usage_limit(%s_repo, this_task->repo_entry->ht_item.key, 1);\n"
+            "    this_task->repo_entry->generator = (void*)this_task;  /* for AYU */\n"
             "#if defined(PARSEC_SIM)\n"
             "    assert(this_task->repo_entry ->sim_exec_date == 0);\n"
             "    this_task->repo_entry ->sim_exec_date = this_task->sim_exec_date;\n"
@@ -6510,7 +6546,7 @@ jdf_generate_code_data_lookup(const jdf_t *jdf,
             jdf_property_get_string(f->properties, JDF_PROP_UD_MAKE_KEY_FN_NAME, NULL),
             f->fname);
 
-    coutput("  /* The reshape repo is the current task repo. */"
+    coutput("  /* The reshape repo is the current task repo. */\n"
             "  reshape_repo = %s_repo;\n"
             "  reshape_entry_key = %s((const parsec_taskpool_t*)__parsec_tp, (const parsec_assignment_t*)&this_task->locals) ;\n"
             "  reshape_entry = this_task->repo_entry;\n",
@@ -6731,8 +6767,8 @@ static void jdf_generate_code_hook_gpu(const jdf_t *jdf,
         coutput("  /* Pointer to dynamic gpu function */\n"
                 "  {\n"
                 "    int chore_idx = 0;\n"
-                "    for ( ; PARSEC_DEV_NONE != this_task->task_class->incarnations[chore_idx].type; ++chore_idx) {\n"
-                "      if (this_task->task_class->incarnations[chore_idx].type == PARSEC_DEV_%s) break;\n"
+                "    for ( ; PARSEC_DEV_NONE != (this_task->task_class->incarnations[chore_idx].type & PARSEC_DEV_ANY_TYPE); ++chore_idx) {\n"
+                "      if (this_task->task_class->incarnations[chore_idx].type & PARSEC_DEV_%s) break;\n"
                 "    }\n"
                 "    /* The void* cast prevents the compiler from complaining about the type change */\n"
                 "    parsec_body.dyld_fn = (%s)(void*)this_task->task_class->incarnations[chore_idx].dyld_fn;\n"
@@ -6983,7 +7019,7 @@ static void jdf_generate_code_hook(const jdf_t *jdf,
     coutput("#if defined(PARSEC_HAVE_DEV_%s_SUPPORT)\n", type_upper);
     if( NULL != type_property) {
 
-        if (!strcasecmp(type_property->expr->jdf_var, "cuda")
+        if (!strncasecmp(type_property->expr->jdf_var, "cuda", 4)  /* for batched */
          || !strcasecmp(type_property->expr->jdf_var, "hip")) {
             jdf_generate_code_hook_gpu(jdf, f, body, name);
             goto hook_end_block;
@@ -7018,6 +7054,12 @@ static void jdf_generate_code_hook(const jdf_t *jdf,
     output = UTIL_DUMP_LIST(sa, f->dataflow, next,
                             dump_data_initialization_from_data_array, &ai2, "", "", "", "");
     if( 0 != strlen(output) ) {
+        coutput("/* Make sure we have the data_out set to the data_in */\n");
+        for( fl = f->dataflow; fl != NULL; fl = fl->next) {
+            if( fl->flow_flags & JDF_FLOW_TYPE_CTL ) continue;
+            coutput("  this_task->data._f_%s.data_out = this_task->data._f_%s.data_in;\n",
+                    fl->varname, fl->varname);
+        }
         coutput("  /** Declare the variables that will hold the data, and all the accounting for each */\n"
                 "%s\n",
                 output);
@@ -8413,14 +8455,14 @@ int jdf_force_termdet_dynamic(jdf_t* jdf)
         return rc;
     }
 
-    termdet_expr = (jdf_expr_t *)calloc(sizeof(jdf_expr_t), 1);
+    termdet_expr = (jdf_expr_t *)calloc(1, sizeof(jdf_expr_t));
     termdet_expr->op = JDF_STRING;
     termdet_expr->local_variables = NULL;
     termdet_expr->scope = -1;
     termdet_expr->alias = NULL;
     termdet_expr->jdf_var = strdup(JDF_PROP_TERMDET_DYNAMIC);
 
-    property = (jdf_def_list_t*)calloc(sizeof(jdf_def_list_t), 1);
+    property = (jdf_def_list_t*)calloc(1, sizeof(jdf_def_list_t));
     property->expr = termdet_expr;
     property->name = strdup(JDF_PROP_TERMDET_NAME);
     property->next = jdf->global_properties;

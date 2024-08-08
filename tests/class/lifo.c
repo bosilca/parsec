@@ -254,8 +254,8 @@ int main(int argc, char *argv[])
         }
     }
 
-    threads = (pthread_t*)calloc(sizeof(pthread_t), nbthreads);
-    times = (uint64_t*)calloc(sizeof(uint64_t), nbthreads);
+    threads = (pthread_t*)calloc(nbthreads, sizeof(pthread_t));
+    times = (uint64_t*)calloc(nbthreads, sizeof(uint64_t));
 
     PARSEC_OBJ_CONSTRUCT(&lifo1, parsec_lifo_t);
     PARSEC_OBJ_CONSTRUCT(&lifo2, parsec_lifo_t);

@@ -1071,7 +1071,7 @@ static dbp_multifile_reader_t *open_files(int nbfiles, char **filenames)
     dbp->last_error = SUCCESS;
     dbp->dico_size = 0;
     dbp->dico_allocated = 8;
-    dbp->dico_keys = calloc(sizeof(dbp_dictionary_t), dbp->dico_allocated);
+    dbp->dico_keys = calloc(dbp->dico_allocated, sizeof(dbp_dictionary_t));
 
     n = 0;
     for(i = 0; i < nbfiles; i++) {

@@ -106,7 +106,7 @@ static const parsec_symbol_t symb_column = {
     .flags = PARSEC_SYMBOL_IS_STANDALONE
 };
 
-static inline int affinity_of_map_operator(parsec_task_t *this_task,
+static inline int affinity_of_map_operator(const parsec_task_t *this_task,
                                            parsec_data_ref_t *ref)
 {
     const parsec_map_operator_taskpool_t *__tp = (const parsec_map_operator_taskpool_t*)this_task->taskpool;
@@ -117,7 +117,7 @@ static inline int affinity_of_map_operator(parsec_task_t *this_task,
     return 1;
 }
 
-static inline int initial_data_of_map_operator(parsec_task_t *this_task,
+static inline int initial_data_of_map_operator(const parsec_task_t *this_task,
                                                parsec_data_ref_t *refs)
 {
     int __flow_nb = 0;
@@ -134,7 +134,7 @@ static inline int initial_data_of_map_operator(parsec_task_t *this_task,
     return __flow_nb;
 }
 
-static inline int final_data_of_map_operator(parsec_task_t *this_task,
+static inline int final_data_of_map_operator(const parsec_task_t *this_task,
                                              parsec_data_ref_t *data_refs)
 {
     int __flow_nb = 0;
@@ -296,13 +296,13 @@ static int data_lookup(parsec_execution_stream_t *es,
         this_task->data[0].data_in   = parsec_data_get_copy(src(m,n), 0);
         this_task->data[0].source_repo_entry = NULL;
         this_task->data[0].data_out  = NULL;
-        PARSEC_OBJ_RETAIN(this_task->data[0].data_in);
+        PARSEC_DATA_COPY_RETAIN(this_task->data[0].data_in);
     }
     if( NULL != __tp->dest ) {
         this_task->data[1].data_in   = parsec_data_get_copy(dest(m,n), 0);
         this_task->data[1].source_repo_entry = NULL;
         this_task->data[1].data_out  = this_task->data[1].data_in;
-        PARSEC_OBJ_RETAIN(this_task->data[1].data_in);
+        PARSEC_DATA_COPY_RETAIN(this_task->data[1].data_in);
     }
     return PARSEC_HOOK_RETURN_DONE;
 }
