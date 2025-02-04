@@ -2,6 +2,7 @@
  * Copyright (c) 2012-2024 The University of Tennessee and The University
  *                         of Tennessee Research Foundation.  All rights
  *                         reserved.
+ * Copyright (c) 2025      NVIDIA Corporation.  All rights reserved.
  */
 
 #include "parsec/parsec_config.h"
@@ -38,7 +39,7 @@ static void parsec_data_copy_construct(parsec_data_copy_t* obj)
     PARSEC_DEBUG_VERBOSE(20, parsec_debug_output, "Allocate data copy %p", obj);
 }
 
-static void parsec_data_copy_destruct(parsec_data_copy_t* obj)
+static int parsec_data_copy_destruct(parsec_data_copy_t* obj)
 {
     PARSEC_DEBUG_VERBOSE(20, parsec_debug_output, "Destruct data copy %p (attached to %p)", obj, obj->original);
 
@@ -54,10 +55,7 @@ static void parsec_data_copy_destruct(parsec_data_copy_t* obj)
          * obj is already detached from obj->original, but this frees the arena chunk */
         parsec_arena_release(obj);
     }
-
-    if (NULL != obj->release_cb) {
-        obj->release_cb(obj, obj->device_index);
-    }
+    return 0;
 }
 
 PARSEC_OBJ_CLASS_INSTANCE(parsec_data_copy_t, parsec_list_item_t,
@@ -69,7 +67,7 @@ static void parsec_data_construct(parsec_data_t* obj )
     obj->owner_device     = -1;
     obj->preferred_device = -1;
     obj->key              = 0;
-    obj->nb_elts          = 0;
+    obj->span          = 0;
     for( uint32_t i = 0; i < parsec_nb_devices;
          obj->device_copies[i] = NULL, i++ );
     obj->dc               = NULL;
@@ -77,7 +75,7 @@ static void parsec_data_construct(parsec_data_t* obj )
     PARSEC_DEBUG_VERBOSE(20, parsec_debug_output, "Allocate data %p", obj);
 }
 
-static void parsec_data_destruct(parsec_data_t* obj )
+static int parsec_data_destruct(parsec_data_t* obj )
 {
     PARSEC_DEBUG_VERBOSE(20, parsec_debug_output, "Destruct data %p", obj);
     for( uint32_t i = 0; i < parsec_nb_devices; i++ ) {
@@ -109,6 +107,7 @@ static void parsec_data_destruct(parsec_data_t* obj )
         }
         assert(NULL == obj->device_copies[i]);
     }
+    return 0;
 }
 
 PARSEC_OBJ_CLASS_INSTANCE(parsec_data_t, parsec_object_t,
@@ -509,7 +508,7 @@ parsec_data_create( parsec_data_t **holder,
         data->owner_device = 0;
         data->key = key;
         data->dc = desc;
-        data->nb_elts = size;
+        data->span = size;
         parsec_data_copy_attach(data, data_copy, 0);
 
         if( !parsec_atomic_cas_ptr(holder, NULL, data) ) {
@@ -546,7 +545,7 @@ parsec_data_create_with_type( parsec_data_collection_t *desc,
     clone->owner_device = 0;
     clone->key = key;
     clone->dc = desc;
-    clone->nb_elts = size;
+    clone->span = size;
     parsec_data_copy_attach(clone, data_copy, 0);
 
     return clone;
