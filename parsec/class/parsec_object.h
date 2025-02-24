@@ -186,7 +186,6 @@ struct parsec_object_t {
 #endif  /* defined(PARSEC_DEBUG_PARANOID) */
     parsec_class_t *obj_class;            /**< class descriptor */
     volatile int32_t obj_reference_count;   /**< reference count */
-    parsec_release_t obj_release;           /**< destruct and release */
 #if defined(PARSEC_DEBUG_PARANOID)
     const char* cls_init_file_name;        /**< In debug mode store the file where the object get contructed */
     int   cls_init_lineno;           /**< In debug mode store the line number where the object get contructed */
@@ -297,37 +296,40 @@ static inline parsec_object_t *parsec_obj_new_debug(parsec_class_t* type, const 
 #define PARSEC_OBJ_SET_MAGIC_ID( OBJECT, VALUE )
 #endif  /* defined(PARSEC_DEBUG_PARANOID) */
 
-void parsec_obj_destruct(parsec_object_t * object);
-void parsec_obj_destruct_and_free(parsec_object_t * object);
-
 /**
  * Release an object (by decrementing its reference count).  If the
  * reference count reaches zero, destruct (finalize) the object and
  * free its storage.
  *
- * Note: If the object is freed, then the value of the pointer is set
- * to NULL.
+ * Note: If the object is expected to be released (aka its refcount reached
+ *       0, then the value of the pointer is set to NULL.
  *
  * @param object        Pointer to the object
  */
 #if defined(PARSEC_DEBUG_PARANOID)
-#define PARSEC_OBJ_RELEASE(object)                                     \
-    do {                                                        \
-        assert(NULL != ((parsec_object_t *) (object))->obj_class);        \
-        assert(PARSEC_OBJ_MAGIC_ID == ((parsec_object_t *) (object))->obj_magic_id); \
-        if (0 == parsec_obj_update((parsec_object_t *) (object), -1)) {     \
-            PARSEC_OBJ_REMEMBER_FILE_AND_LINENO( object, __FILE__, __LINE__ ); \
-            ((parsec_object_t*)object)->obj_release((parsec_object_t*)object);  \
-            object = NULL;                                      \
-        }                                                       \
+#define PARSEC_OBJ_RELEASE(object)                                                  \
+    do                                                                              \
+    {                                                                               \
+        assert(NULL != ((parsec_object_t *)(object))->obj_class);                   \
+        assert(PARSEC_OBJ_MAGIC_ID == ((parsec_object_t *)(object))->obj_magic_id); \
+        if (0 == parsec_obj_update((parsec_object_t *)(object), -1)) {              \
+            PARSEC_OBJ_REMEMBER_FILE_AND_LINENO(object, __FILE__, __LINE__);        \
+            if (0 == parsec_obj_run_destructors((parsec_object_t *)(object))) {     \
+                PARSEC_OBJ_SET_MAGIC_ID((object), 0);                               \
+                free(object);                                                       \
+            }                                                                       \
+            object = NULL;                                                          \
+        }                                                                           \
     } while (0)
 #else
-#define PARSEC_OBJ_RELEASE(object)                                     \
-    do {                                                        \
-        if (0 == parsec_obj_update((parsec_object_t *) (object), -1)) {     \
-            ((parsec_object_t*)object)->obj_release((parsec_object_t*)object); \
-            object = NULL;                                      \
-        }                                                       \
+#define PARSEC_OBJ_RELEASE(object)                                                 \
+    do {                                                                           \
+        if (0 == parsec_obj_update((parsec_object_t *) (object), -1)) {            \
+            if (0 == parsec_obj_run_destructors((parsec_object_t *)(object))) {    \
+                free(object);                                                      \
+            }                                                                      \
+            object = NULL;                                                         \
+        }                                                                          \
     } while (0)
 #endif
 
@@ -371,18 +373,18 @@ do {                                                            \
  * @param object        Pointer to the object
  */
 #if defined(PARSEC_DEBUG_PARANOID)
-#define PARSEC_OBJ_DESTRUCT(object)                                    \
-do {                                                            \
+#define PARSEC_OBJ_DESTRUCT(object)                                              \
+do {                                                                             \
     assert(PARSEC_OBJ_MAGIC_ID == ((parsec_object_t *) (object))->obj_magic_id); \
-    parsec_obj_run_destructors((parsec_object_t *) (object));     \
-    PARSEC_OBJ_SET_MAGIC_ID((object), 0);                              \
-    PARSEC_OBJ_REMEMBER_FILE_AND_LINENO( object, __FILE__, __LINE__ ); \
+    PARSEC_OBJ_REMEMBER_FILE_AND_LINENO( object, __FILE__, __LINE__ );           \
+    if (0 == parsec_obj_run_destructors((parsec_object_t *)(object)))            \
+        PARSEC_OBJ_SET_MAGIC_ID((object), 0);                                    \
 } while (0)
 #else
 #define PARSEC_OBJ_DESTRUCT(object)                                    \
-do {                                                            \
-    parsec_obj_run_destructors((parsec_object_t *) (object));     \
+do {                                                                   \
     PARSEC_OBJ_REMEMBER_FILE_AND_LINENO( object, __FILE__, __LINE__ ); \
+    parsec_obj_run_destructors((parsec_object_t *) (object));          \
 } while (0)
 #endif
 
@@ -480,7 +482,6 @@ static inline parsec_object_t *parsec_obj_new(parsec_class_t * cls)
     if (NULL != object) {
         object->obj_class = cls;
         object->obj_reference_count = 1;
-        object->obj_release = &parsec_obj_destruct_and_free;
         parsec_obj_run_constructors(object);
     }
     return object;
