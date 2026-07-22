@@ -185,8 +185,11 @@ parsec_list_item_ring_merge( parsec_list_item_t* ring1,
  *   Removes an item from a ring of items.
  *
  * @details
- *   item must belong to a ring. It is singletoned, and the ring without
- *   item is returned.
+ *   item must belong to a ring. Its neighbors are reconnected and the ring
+ *   without item is returned, but item's own list_next and list_prev are not
+ *   made consistent with that ring. In release builds they retain their old,
+ *   now broken linkage; paranoid builds poison them instead. The caller must
+ *   reinitialize item before using its list links again.
  *  @param[inout] item the item from the ring of items to be removed.
  *  @return the rest of the ring
  * @remark

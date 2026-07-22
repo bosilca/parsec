@@ -340,6 +340,7 @@ parsec_list_item_t* lifo_merge_ring(parsec_list_item_t *next_in_lifo,
             /* insert a single element */
             parsec_list_item_t* item = ring;
             ring = parsec_list_item_ring_chop(ring);
+            PARSEC_LIST_ITEM_SINGLETON(item);
             if (NULL != prev) {
                 item->list_next = prev->list_next;
                 prev->list_next = item;
