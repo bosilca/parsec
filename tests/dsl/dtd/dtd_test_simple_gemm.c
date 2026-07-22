@@ -99,7 +99,6 @@ typedef struct gemm_cuda_batch_match_data_s {
 #define RndF_Mul 5.4210108624275222e-20f
 #define RndD_Mul 5.4210108624275222e-20
 #define NBELEM 1
-#define GEMM_CUDA_BATCH_LIMIT_REACHED (-1000000)
 
 static int
 gemm_cuda_batch_enabled(void)
@@ -276,7 +275,7 @@ gemm_cuda_batch_match(parsec_gpu_task_t *candidate,
 
     if( (NULL != batch_data) &&
         (batch_data->accepted >= batch_data->max_batch_size - 1) ) {
-        return GEMM_CUDA_BATCH_LIMIT_REACHED;
+        return PARSEC_GPU_TASK_BATCH_STOP;
     }
 
     if( (batch_head->ec->task_class == candidate->ec->task_class) &&
@@ -285,9 +284,9 @@ gemm_cuda_batch_match(parsec_gpu_task_t *candidate,
         if( NULL != batch_data ) {
             batch_data->accepted++;
         }
-        return 0;
+        return PARSEC_GPU_TASK_BATCH_ACCEPT;
     }
-    return 1;
+    return PARSEC_GPU_TASK_BATCH_REJECT;
 }
 
 static void
@@ -569,6 +568,15 @@ int gemm_kernel_cuda(parsec_device_gpu_module_t *gpu_device,
         batch_pool = &stream_state->batch_pool;
     }
 
+    /* Once followers are collected, AGAIN preserves that exact submitted ring
+     * as continuation state. Predictable resource backpressure must therefore
+     * be handled before collection.
+     */
+    if( (GEMM_CUDA_BATCH_CUBLAS == cuda_batch_mode) &&
+        !gemm_cuda_batch_pool_can_submit(batch_pool) ) {
+        return PARSEC_HOOK_RETURN_AGAIN;
+    }
+
     if( gemm_cuda_batch_enabled() && (cuda_max_batch_size > 1) ) {
         gemm_cuda_batch_match_data_t batch_data = {
             .max_batch_size = cuda_max_batch_size,
@@ -576,20 +584,10 @@ int gemm_kernel_cuda(parsec_device_gpu_module_t *gpu_device,
         };
         int nb_batched = parsec_gpu_task_collect_batch(gpu_stream, gpu_task,
                                                        gemm_cuda_batch_match, &batch_data);
-        if( GEMM_CUDA_BATCH_LIMIT_REACHED == nb_batched ) {
-            nb_batched = batch_data.accepted;
-        } else if( nb_batched < 0 ) {
+        if( nb_batched < 0 ) {
             return nb_batched;
         }
         batch_count += nb_batched;
-    }
-
-    /* Check capacity after collecting followers so a saturated batch pool
-     * exercises the runtime's tentative-batch rollback on AGAIN.
-     */
-    if( (GEMM_CUDA_BATCH_CUBLAS == cuda_batch_mode) &&
-        !gemm_cuda_batch_pool_can_submit(batch_pool) ) {
-        return PARSEC_HOOK_RETURN_AGAIN;
     }
 
     one_device = parsec_info_get(&gpu_device->super.infos, Cu1);

@@ -172,6 +172,7 @@ static void parsec_device_release_gpu_task(parsec_gpu_task_t *gpu_task)
 
 static void parsec_device_task_t_constructor(parsec_gpu_task_t *gpu_task)
 {
+    gpu_task->priority = 0;
     gpu_task->task_type = PARSEC_GPU_TASK_TYPE_INVALID; /* need to be set later */
     gpu_task->pushout = 0;
     gpu_task->last_status = 0;
@@ -2164,19 +2165,6 @@ parsec_device_data_stage_in( parsec_device_gpu_module_t* gpu_device,
     return 1;  /* positive returns have special meaning and are used for optimizations */
 }
 
-#if PARSEC_GPU_USE_PRIORITIES
-
-static inline parsec_list_item_t* parsec_device_push_task_ordered( parsec_list_t* list,
-                                                                   parsec_list_item_t* elem )
-{
-    parsec_list_push_sorted(list, elem, parsec_execution_context_priority_comparator);
-    return elem;
-}
-#define PARSEC_PUSH_TASK parsec_device_push_task_ordered
-#else
-#define PARSEC_PUSH_TASK parsec_list_push_back
-#endif
-
 static inline int
 parsec_gpu_task_is_singleton(parsec_gpu_task_t *task)
 {
@@ -2191,23 +2179,45 @@ parsec_gpu_task_is_singleton(parsec_gpu_task_t *task)
     return (item->list_next == item) && (item->list_prev == item);
 }
 
+/* Merge a singleton or task ring into a stream using the stream's ordering
+ * policy. The generic list sorter needs an integer embedded in every list
+ * item, so refresh the wrapper priority snapshots before the merge instead of
+ * incorrectly applying parsec_task_t's priority offset to parsec_gpu_task_t.
+ */
+static inline void
+parsec_gpu_stream_chain_pending(parsec_gpu_exec_stream_t *stream,
+                                parsec_list_item_t *ring)
+{
+#if PARSEC_GPU_USE_PRIORITIES
+    parsec_gpu_task_t *task = (parsec_gpu_task_t *)ring;
+    parsec_gpu_task_t *current = task;
+
+    do {
+        assert(NULL != current->ec);
+        current->priority = current->ec->priority;
+        current = (parsec_gpu_task_t *)current->list_item.list_next;
+    } while( current != task );
+
+    parsec_list_chain_sorted(stream->fifo_pending, ring,
+                             offsetof(parsec_gpu_task_t, priority));
+#else
+    parsec_list_chain_back(stream->fifo_pending, ring);
+#endif
+}
+
 static inline void
 parsec_gpu_stream_push_pending(parsec_gpu_exec_stream_t *stream,
                                parsec_gpu_task_t *task)
 {
-    /* A completed batched kernel returns a proper task ring. Preserve that
-     * order when feeding the tasks to the next stream.
+    /* Singleton and batched tasks must obey the same stream policy; otherwise
+     * appending a successful batch can invalidate a priority-sorted FIFO.
      */
-    if( !parsec_gpu_task_is_singleton(task) ) {
-        parsec_list_chain_back(stream->fifo_pending, &task->list_item);
-        return;
-    }
-    PARSEC_PUSH_TASK(stream->fifo_pending, &task->list_item);
+    parsec_gpu_stream_chain_pending(stream, &task->list_item);
 }
 
-/* Roll back a tentative batch before retrying its head task. Followers are
- * merged back under one lock using the stream's insertion policy, while the
- * submit hook always receives a singleton on retry.
+/* NEXT applies to the selected head rather than its tentatively collected
+ * followers. Merge those followers back under one lock using the stream's
+ * insertion policy, then leave the head as a singleton for normal NEXT handling.
  */
 static inline void
 parsec_gpu_stream_rollback_batch(parsec_gpu_exec_stream_t *stream,
@@ -2218,13 +2228,56 @@ parsec_gpu_stream_rollback_batch(parsec_gpu_exec_stream_t *stream,
     ring = parsec_list_item_ring_chop(&batch_head->list_item);
     PARSEC_LIST_ITEM_SINGLETON(&batch_head->list_item);
     if( NULL != ring ) {
-#if PARSEC_GPU_USE_PRIORITIES
-        parsec_list_chain_sorted(stream->fifo_pending, ring,
-                                 parsec_execution_context_priority_comparator);
-#else
-        parsec_list_chain_back(stream->fifo_pending, ring);
-#endif
+        parsec_gpu_stream_chain_pending(stream, ring);
     }
+}
+
+/* Release every wrapper in a task ring and return the number released. ASYNC
+ * transfers ownership of each underlying execution context to the submit hook,
+ * but the GPU engine remains responsible for returning all device wrappers to
+ * their allocator and removing each one from the manager's outstanding count.
+ */
+static int
+parsec_gpu_task_ring_release(parsec_gpu_task_t *ring)
+{
+    int count = 0;
+
+    while( NULL != ring ) {
+        parsec_gpu_task_t *task = ring;
+
+        ring = (parsec_gpu_task_t *)parsec_list_item_ring_chop(&task->list_item);
+        PARSEC_LIST_ITEM_SINGLETON(&task->list_item);
+        task->release_device_task(task);
+        count++;
+    }
+    return count;
+}
+
+/* A terminal submit error can be reported after the hook queued partial work.
+ * Record and wait for a stream event before cleaning the affected batch. The
+ * runtime currently treats this as fatal; draining the rest of the device is a
+ * separate recovery problem.
+ */
+static int
+parsec_gpu_stream_quiesce_after_failure(parsec_device_gpu_module_t *gpu_device,
+                                        parsec_gpu_exec_stream_t *stream)
+{
+    struct timespec delay = { .tv_sec = 0, .tv_nsec = 100 };
+    int rc;
+
+    rc = gpu_device->event_record(gpu_device, stream, stream->start);
+    if( PARSEC_SUCCESS != rc ) {
+        return PARSEC_HOOK_RETURN_ERROR;
+    }
+
+    do {
+        rc = gpu_device->event_query(gpu_device, stream, stream->start);
+        if( 0 == rc ) {
+            nanosleep(&delay, NULL);
+        }
+    } while( 0 == rc );
+
+    return (1 == rc) ? PARSEC_SUCCESS : PARSEC_HOOK_RETURN_ERROR;
 }
 
 static inline int
@@ -2264,6 +2317,21 @@ parsec_gpu_task_collect_batch(parsec_gpu_exec_stream_t *gpu_stream,
     assert(NULL != batch_head);
     assert(NULL != callback);
 
+    /* A batched AGAIN continuation already owns a committed ring. Let hooks
+     * call the collector on every coroutine resume without detaching followers
+     * or collecting unrelated pending tasks into the in-flight batch.
+     */
+    if( !parsec_gpu_task_is_singleton(batch_head) ) {
+        parsec_gpu_task_t *current =
+            (parsec_gpu_task_t *)batch_head->list_item.list_next;
+
+        while( current != batch_head ) {
+            nb_tasks++;
+            current = (parsec_gpu_task_t *)current->list_item.list_next;
+        }
+        return nb_tasks;
+    }
+
     parsec_list_item_singleton(&batch_head->list_item);
 
     head_task = batch_head->ec;
@@ -2279,6 +2347,9 @@ parsec_gpu_task_collect_batch(parsec_gpu_exec_stream_t *gpu_stream,
     fifo_pending = gpu_stream->fifo_pending;
     assert(NULL != fifo_pending);
 
+    /* The collector deliberately has no scan bound. Submit-hook policy decides
+     * when enough work has been considered and returns STOP at that candidate.
+     */
     parsec_list_lock(fifo_pending);
     for(item = (parsec_list_item_t *)fifo_pending->ghost_element.list_next;
         item != &fifo_pending->ghost_element;
@@ -2291,14 +2362,18 @@ parsec_gpu_task_collect_batch(parsec_gpu_exec_stream_t *gpu_stream,
             continue;
         }
         rc = callback(candidate, batch_head, callback_data);
-        if( rc < 0 ) {
-            parsec_list_unlock(fifo_pending);
-            return rc;
+        if( PARSEC_GPU_TASK_BATCH_STOP == rc ) {
+            break;
         }
-        if( 0 == rc ) {
+        if( PARSEC_GPU_TASK_BATCH_ACCEPT == rc ) {
             (void)parsec_list_nolock_remove(fifo_pending, item);
             (void)parsec_list_item_ring_push(&batch_head->list_item, item);
             nb_tasks++;
+            continue;
+        }
+        if( PARSEC_GPU_TASK_BATCH_REJECT != rc ) {
+            parsec_list_unlock(fifo_pending);
+            return PARSEC_HOOK_RETURN_ERROR;
         }
     }
     parsec_list_unlock(fifo_pending);
@@ -2654,13 +2729,12 @@ parsec_device_progress_stream( parsec_device_gpu_module_t* gpu_device,
             }
 #endif /* (PARSEC_PROF_TRACE) */
             if( PARSEC_HOOK_RETURN_AGAIN == task->last_status ) {
-                /* Batch collection is tentative until the submit hook succeeds.
-                 * Put any followers back in the pending queue and retry only the
-                 * head, which may build a fresh batch on its next submission.
+                /* AGAIN means the submit hook made progress on this exact task
+                 * or batch. Keep the complete ring as continuation state and
+                 * re-enter the same stage only after its event has completed.
                  */
-                parsec_gpu_stream_rollback_batch(stream, task);
                 PARSEC_DEBUG_VERBOSE(2, parsec_gpu_output_stream,
-                                     "GPU[%d:%s]: GPU task %p[%p] is ready to be rescheduled on the same GPU device and same stream",
+                                     "GPU[%d:%s]: GPU task ring %p[%p] is ready to continue on the same GPU device and same stream",
                                      gpu_device->super.device_index, gpu_device->super.name, (void*)task, (void*)task->ec);
                 *out_task = NULL;
                 goto schedule_task;
@@ -2690,8 +2764,11 @@ parsec_device_progress_stream( parsec_device_gpu_module_t* gpu_device,
     assert( NULL == stream->tasks[stream->start] );
 
   schedule_task:
-    /* Queue extraction and batch rollback both normalize the selected task. */
-    assert(parsec_gpu_task_is_singleton(task));
+    /* New queue entries are singletons. An AGAIN continuation deliberately
+     * keeps the complete submitted ring together across event completions.
+     */
+    assert(parsec_gpu_task_is_singleton(task) ||
+           (PARSEC_HOOK_RETURN_AGAIN == task->last_status));
     rc = progress_fct( gpu_device, es, task, stream );
     if( 0 == rc && parsec_device_skip_empty_events ) {
 #if defined(PARSEC_PROF_TRACE)
@@ -2713,15 +2790,33 @@ parsec_device_progress_stream( parsec_device_gpu_module_t* gpu_device,
     if( 0 > rc ) {
         if( PARSEC_HOOK_RETURN_AGAIN != rc ) {
             if( PARSEC_HOOK_RETURN_NEXT == rc ) {
+                /* NEXT applies only to the selected head. Restore tentative
+                 * followers, then use the unchanged singleton NEXT path.
+                 */
+                parsec_gpu_stream_rollback_batch(stream, task);
                 /* Don't reorder the push_back, we are running into physical constraints and need to delay
                  * the resubmission of this task as much as possible, but without losing track of it
                  * (aka. returning it to the upper level).
                  */
                 parsec_gpu_stream_push_pending(stream, task);
-            } else {
-                /* Something else is going on with this task, remove it from the stream queues
-                 * and return it to the upper level for final decision on its fate.
+            } else if( PARSEC_HOOK_RETURN_ASYNC == rc ) {
+                /* A batch-aware hook transfers every execution context in the
+                 * ring. The manager will release all device wrappers.
                  */
+                *out_task = task;
+            } else {
+                /* ERROR and DISABLE are terminal. A hook may have queued work
+                 * before failing, so quiesce the stream before returning the
+                 * complete ring for cleanup. Unknown negative values are
+                 * normalized to ERROR at this boundary.
+                 */
+                rc = (PARSEC_HOOK_RETURN_DISABLE == rc) ?
+                     PARSEC_HOOK_RETURN_DISABLE : PARSEC_HOOK_RETURN_ERROR;
+                task->last_status = rc;
+                if( PARSEC_SUCCESS !=
+                    parsec_gpu_stream_quiesce_after_failure(gpu_device, stream) ) {
+                    rc = task->last_status = PARSEC_HOOK_RETURN_ERROR;
+                }
                 *out_task = task;
             }
             return rc;
@@ -2735,8 +2830,7 @@ parsec_device_progress_stream( parsec_device_gpu_module_t* gpu_device,
          * execution stream pending list (to be executed again).
          */
         PARSEC_DEBUG_VERBOSE(10, parsec_gpu_output_stream,
-                             "GPU[%d:%s]: GPU task %p has returned with ASYNC or AGAIN. Once the event "
-                             "trigger the task will be handled accordingly",
+                             "GPU[%d:%s]: GPU task ring %p returned AGAIN; continue it after the event completes",
                              gpu_device->super.device_index, gpu_device->super.name, (void*)task);
     }
     task->last_status = rc;
@@ -2943,11 +3037,13 @@ parsec_device_kernel_exec( parsec_device_gpu_module_t      *gpu_device,
     }
 #endif /* defined(PARSEC_DEBUG_PARANOID) */
 
-    /* The submit hook may turn gpu_task into a batch ring. Start from a clean
-     * singleton so stale list links left by release-mode list operations cannot
-     * be mistaken for a preexisting ring.
+    /* New submissions start from a clean singleton so stale release-mode list
+     * links cannot be mistaken for a batch. AGAIN is different: its ring is
+     * the submit hook's continuation state and must be passed back intact.
      */
-    PARSEC_LIST_ITEM_SINGLETON(&gpu_task->list_item);
+    if( PARSEC_HOOK_RETURN_AGAIN != gpu_task->last_status ) {
+        PARSEC_LIST_ITEM_SINGLETON(&gpu_task->list_item);
+    }
 
     (void)this_task;
     rc = progress_fct( gpu_device, gpu_task, gpu_stream );
@@ -3392,6 +3488,24 @@ parsec_device_kernel_cleanout( parsec_device_gpu_module_t *gpu_device,
     return 0;
 }
 
+/* Clean every kernel task in a terminally failed submit batch after its
+ * execution stream has been quiesced. Device-wide queue recovery is
+ * intentionally left to the failure path rather than hidden here.
+ */
+static void
+parsec_device_kernel_cleanout_ring(parsec_device_gpu_module_t *gpu_device,
+                                   parsec_gpu_task_t *ring)
+{
+    parsec_gpu_task_t *task = ring;
+
+    do {
+        if( PARSEC_GPU_TASK_TYPE_KERNEL == task->task_type ) {
+            parsec_device_kernel_cleanout(gpu_device, task);
+        }
+        task = (parsec_gpu_task_t *)task->list_item.list_next;
+    } while( task != ring );
+}
+
 /**
  * This version is based on 4 streams: one for transfers from the memory to
  * the GPU, 2 for kernel executions and one for transfers from the GPU into
@@ -3406,9 +3520,11 @@ parsec_device_kernel_scheduler( parsec_device_module_t *module,
                                 void *_gpu_task )
 {
     parsec_device_gpu_module_t* gpu_device = (parsec_device_gpu_module_t *)module;
-    int rc, exec_stream = 0;
+    int rc, exec_stream = 0, released_tasks;
     parsec_gpu_task_t *progress_task, *out_task_submit = NULL, *out_task_pop = NULL;
     parsec_gpu_task_t *gpu_task = (parsec_gpu_task_t*)_gpu_task;
+    parsec_gpu_task_t *failed_batch = NULL;
+    parsec_hook_return_t failure_status = PARSEC_HOOK_RETURN_DISABLE;
 #if defined(PARSEC_DEBUG_NOISIER)
     char tmp[MAX_TASK_STRLEN];
 #endif
@@ -3484,8 +3600,12 @@ parsec_device_kernel_scheduler( parsec_device_module_t *module,
                                         parsec_device_kernel_push,
                                         gpu_task, &progress_task );
     if( rc < 0 ) {  /* In case of error progress_task is the task that raised it */
-        if( PARSEC_HOOK_RETURN_ERROR == rc )
+        if( PARSEC_HOOK_RETURN_ERROR == rc ) {
+            failure_status = PARSEC_HOOK_RETURN_ERROR;
+            failed_batch = progress_task;
+            progress_task = NULL;
             goto disable_gpu;
+        }
         /* We are in the early stages, and if there no room on the GPU for a task we need to
          * delay all retries for the same task for a little while. Meanwhile, put the task back
          * trigger a device flush, and keep executing tasks that have their data on the device.
@@ -3517,8 +3637,12 @@ parsec_device_kernel_scheduler( parsec_device_module_t *module,
                                         parsec_device_kernel_exec,
                                         gpu_task, &progress_task );
     if( rc < 0 ) {
-        if( (PARSEC_HOOK_RETURN_DISABLE == rc) || (PARSEC_HOOK_RETURN_ERROR == rc) )
+        if( (PARSEC_HOOK_RETURN_DISABLE == rc) || (PARSEC_HOOK_RETURN_ERROR == rc) ) {
+            failure_status = rc;
+            failed_batch = progress_task;
+            progress_task = NULL;
             goto disable_gpu;
+        }
         if( PARSEC_HOOK_RETURN_ASYNC != rc ) {
             /* Reschedule the task. As the chore_id has been modified,
                another incarnation of the task will be executed. */
@@ -3555,8 +3679,12 @@ parsec_device_kernel_scheduler( parsec_device_module_t *module,
                                         parsec_device_kernel_pop,
                                         gpu_task, &progress_task );
     if( rc < 0 ) {
-        if( (PARSEC_HOOK_RETURN_ERROR == rc) || (PARSEC_HOOK_RETURN_DISABLE == rc) )
+        if( (PARSEC_HOOK_RETURN_ERROR == rc) || (PARSEC_HOOK_RETURN_DISABLE == rc) ) {
+            failure_status = rc;
+            failed_batch = progress_task;
+            progress_task = NULL;
             goto disable_gpu;
+        }
     }
     if( NULL != progress_task ) {
         /* We have a successfully completed task. However, it is not gpu_task, as
@@ -3623,15 +3751,17 @@ parsec_device_kernel_scheduler( parsec_device_module_t *module,
     rc = __parsec_schedule_flush_private(es);
     assert(PARSEC_SUCCESS == rc);
     gpu_device->super.executed_tasks++;
- remove_gpu_task:
+  remove_gpu_task:
     PARSEC_DEBUG_VERBOSE(10, parsec_gpu_output_stream, "GPU[%d:%s]: gpu_task %p freed",
                          gpu_device->super.device_index, gpu_device->super.name,
                          gpu_task);
     /* Release the GPU task */
-    gpu_task->release_device_task(gpu_task);
+    released_tasks = parsec_gpu_task_ring_release(gpu_task);
+    assert(released_tasks > 0);
 
-    rc = parsec_atomic_fetch_dec_int32( &(gpu_device->mutex) );
-    if( 1 == rc ) {  /* I was the last one */
+    rc = parsec_atomic_fetch_sub_int32(&(gpu_device->mutex), released_tasks);
+    assert(rc >= released_tasks);
+    if( released_tasks == rc ) {  /* I released the last outstanding task(s) */
 #if defined(PARSEC_PROF_TRACE)
         if( gpu_device->trackable_events & PARSEC_PROFILE_GPU_TRACK_OWN )
             PARSEC_PROFILING_TRACE( es->es_profile, parsec_gpu_own_GPU_key_end,
@@ -3646,10 +3776,19 @@ parsec_device_kernel_scheduler( parsec_device_module_t *module,
     goto fetch_task_from_shared_queue;
 
  disable_gpu:
-    /* Something wrong happened. Push all the pending tasks back on the
-     * cores, and disable the gpu.
+    /* The scheduler currently treats device failure as fatal. Clean the batch
+     * that observed the failure before propagating its terminal status.
+     */
+    if( NULL != failed_batch ) {
+        parsec_device_kernel_cleanout_ring(gpu_device, failed_batch);
+        (void)parsec_gpu_task_ring_release(failed_batch);
+    }
+    /* TODO: Recover the tasks in every pending FIFO, recorded event slot, and
+     * gpu_device->pending before making DISABLE recoverable. The upper scheduler
+     * currently treats this return as fatal, so only the failed batch is
+     * quiesced and cleaned here.
      */
     parsec_warning("GPU[%d:%s]: Critical issue related to the GPU discovered. Giving up",
                    gpu_device->super.device_index, gpu_device->super.name);
-    return PARSEC_HOOK_RETURN_DISABLE;
+    return failure_status;
 }

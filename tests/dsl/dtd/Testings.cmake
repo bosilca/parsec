@@ -25,6 +25,13 @@ parsec_addtest_cmd(dsl/dtd/untie ${SHM_TEST_CMD_LIST} dsl/dtd/dtd_test_untie)
 parsec_addtest_cmd(dsl/dtd/new_tile:cpu ${SHM_TEST_CMD_LIST} dsl/dtd/dtd_test_new_tile --mca device_cuda_enabled 0)
 if(PARSEC_HAVE_CUDA AND CMAKE_CUDA_COMPILER)
   parsec_addtest_cmd(dsl/dtd/new_tile:gpu ${SHM_TEST_CMD_LIST} ${CTEST_CUDA_LAUNCHER_OPTIONS} dsl/dtd/dtd_test_new_tile --mca device_cuda_enabled 1 --mca device cuda)
+  parsec_addtest_cmd(dsl/dtd/cuda_batch_status ${SHM_TEST_CMD_LIST}
+                    ${CTEST_CUDA_LAUNCHER_OPTIONS}
+                    dsl/dtd/dtd_test_cuda_again_async
+                    --mca device_cuda_enabled 1
+                    --mca device_cuda_mask 1
+                    --mca device_enable_batching 1
+                    --mca device cuda)
 endif(PARSEC_HAVE_CUDA AND CMAKE_CUDA_COMPILER)
 if(PARSEC_HAVE_DEV_CAPABILITY_BATCH)
   parsec_addtest_cmd(dsl/dtd/batch_cpu ${SHM_TEST_CMD_LIST} dsl/dtd/dtd_test_batch_cpu)

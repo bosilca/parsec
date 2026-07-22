@@ -50,14 +50,27 @@ typedef int (*parsec_advance_task_function_t)(parsec_device_gpu_module_t  *gpu_d
                                               parsec_gpu_task_t           *gpu_task,
                                               parsec_gpu_exec_stream_t    *gpu_stream);
 
+/* Actions returned by a GPU batch collector callback. Keep the callback's int
+ * return type and the existing ACCEPT/REJECT values, but reject values outside
+ * this enum so hook results and private sentinels cannot be mistaken for
+ * batching policy.
+ */
+typedef enum parsec_gpu_task_batch_action_e {
+    PARSEC_GPU_TASK_BATCH_ACCEPT = 0,
+    PARSEC_GPU_TASK_BATCH_REJECT = 1,
+    PARSEC_GPU_TASK_BATCH_STOP = 2
+} parsec_gpu_task_batch_action_t;
+
 /* Callback used by parsec_gpu_task_collect_batch() to decide whether a
- * pending task can be appended to the current batched task ring.
+ * pending task can be appended to the current batched task ring. It executes
+ * while gpu_stream->fifo_pending is locked and must therefore be short and
+ * nonblocking. It must not modify or acquire the same FIFO, call the collector
+ * recursively, or otherwise reenter pending-task operations on this stream.
  *
- * Return values:
- *   < 0: stop iteration and return this error code to the caller.
- *     0: extract candidate from the stream pending queue and append it to
- *        batch_head.
- *   > 0: leave candidate in the stream pending queue and continue.
+ * Return PARSEC_GPU_TASK_BATCH_ACCEPT to append the candidate,
+ * PARSEC_GPU_TASK_BATCH_REJECT to leave it pending and continue, or
+ * PARSEC_GPU_TASK_BATCH_STOP to end collection successfully. STOP leaves the
+ * current and all unvisited candidates pending.
  */
 typedef int (*parsec_gpu_task_batch_cb_t)(parsec_gpu_task_t *candidate,
                                           parsec_gpu_task_t *batch_head,
@@ -116,6 +129,11 @@ typedef struct parsec_gpu_flow_info_s {
 
 struct parsec_gpu_task_s {
     parsec_list_item_t                     list_item;
+    /* The stream queues sort wrappers directly and therefore cannot follow
+     * ec to read parsec_task_t::priority. Refresh this snapshot before each
+     * stream insertion.
+     */
+    int32_t                                priority;
     uint16_t                               task_type;
     uint16_t                               pushout;
     int32_t                                last_status;
@@ -340,10 +358,15 @@ int parsec_gpu_complete_w2r_task(parsec_device_gpu_module_t *gpu_device, parsec_
 /**
  * Iterate over gpu_stream->fifo_pending and append accepted tasks to
  * batch_head. The callback receives each pending candidate, the task passed to
- * the submit function, and user data. The callback should return 0 to append
- * the candidate to batch_head's ring, a positive value to leave it pending, or
- * a negative error code to stop the iteration.
- * The callback must not modify gpu_stream->fifo_pending directly.
+ * the submit function, and user data. The scan is intentionally unbounded: the
+ * callback is responsible for returning PARSEC_GPU_TASK_BATCH_STOP when its
+ * policy has accepted enough work. STOP ends collection successfully and
+ * leaves the current and all unvisited candidates pending.
+ *
+ * The callback executes while gpu_stream->fifo_pending is locked. It must be
+ * short and nonblocking, and must not modify or acquire the same FIFO, call
+ * this collector recursively, or otherwise reenter pending-task operations on
+ * this stream.
  * If batching is disabled, unsupported by the head task's selected device, or
  * not enabled on batch_head's selected incarnation, no iteration is performed
  * and batch_head remains a singleton. Pending tasks whose selected incarnation
@@ -351,14 +374,32 @@ int parsec_gpu_complete_w2r_task(parsec_device_gpu_module_t *gpu_device, parsec_
  * calling the callback.
  *
  * Returns the number of additional tasks appended to batch_head's ring on
- * success, or the negative callback error code. If an error is returned, tasks
- * already accepted remain attached to batch_head and the remaining candidates
- * stay in fifo_pending.
+ * success. Any callback result other than PARSEC_GPU_TASK_BATCH_ACCEPT,
+ * PARSEC_GPU_TASK_BATCH_REJECT, or PARSEC_GPU_TASK_BATCH_STOP is normalized to
+ * PARSEC_HOOK_RETURN_ERROR. If an error is returned, tasks already accepted
+ * remain attached to batch_head and the remaining candidates stay in
+ * fifo_pending.
  *
- * The collected ring is tentative until the submit hook succeeds. If the hook
- * returns PARSEC_HOOK_RETURN_AGAIN, the GPU engine restores the followers to
- * the execution stream's pending queue and retries the singleton head, which
- * may collect a fresh batch.
+ * On an initial singleton submission, the collector scans fifo_pending and
+ * builds a tentative ring. On a batched PARSEC_HOOK_RETURN_AGAIN continuation,
+ * batch_head already owns the committed ring; the collector leaves it intact,
+ * does not scan fifo_pending, and returns its existing follower count.
+ *
+ * A submit result applies to the complete ring. AGAIN records an event and
+ * re-enters the submit hook with the same ring after the event completes; it
+ * therefore means progress was submitted for every member. NEXT restores the
+ * followers before applying the normal singleton NEXT handling to the head.
+ * ASYNC transfers every execution context in the ring to the submit hook; the
+ * hook must eventually complete or reschedule each one, while the GPU engine
+ * releases their device wrappers. ERROR and DISABLE quiesce the affected
+ * execution stream and clean the complete batch before the terminal status is
+ * propagated. Device-wide recovery after DISABLE is not currently supported.
+ *
+ * The runtime does not disband an AGAIN ring. A hook that wants to split it
+ * must detach the followers itself, restore valid singleton/ring linkage, and
+ * explicitly transfer every detached wrapper to a new owner, such as the
+ * stream pending FIFO using its configured priority policy. Returning AGAIN
+ * retains only the ring or singleton that remains attached to batch_head.
  */
 int parsec_gpu_task_collect_batch(parsec_gpu_exec_stream_t *gpu_stream,
                                   parsec_gpu_task_t *batch_head,
