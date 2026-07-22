@@ -567,9 +567,6 @@ int gemm_kernel_cuda(parsec_device_gpu_module_t *gpu_device,
 
     if( GEMM_CUDA_BATCH_CUBLAS == cuda_batch_mode ) {
         batch_pool = &stream_state->batch_pool;
-        if( !gemm_cuda_batch_pool_can_submit(batch_pool) ) {
-            return PARSEC_HOOK_RETURN_AGAIN;
-        }
     }
 
     if( gemm_cuda_batch_enabled() && (cuda_max_batch_size > 1) ) {
@@ -585,6 +582,14 @@ int gemm_kernel_cuda(parsec_device_gpu_module_t *gpu_device,
             return nb_batched;
         }
         batch_count += nb_batched;
+    }
+
+    /* Check capacity after collecting followers so a saturated batch pool
+     * exercises the runtime's tentative-batch rollback on AGAIN.
+     */
+    if( (GEMM_CUDA_BATCH_CUBLAS == cuda_batch_mode) &&
+        !gemm_cuda_batch_pool_can_submit(batch_pool) ) {
+        return PARSEC_HOOK_RETURN_AGAIN;
     }
 
     one_device = parsec_info_get(&gpu_device->super.infos, Cu1);

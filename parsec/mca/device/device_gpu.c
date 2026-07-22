@@ -2205,6 +2205,28 @@ parsec_gpu_stream_push_pending(parsec_gpu_exec_stream_t *stream,
     PARSEC_PUSH_TASK(stream->fifo_pending, &task->list_item);
 }
 
+/* Roll back a tentative batch before retrying its head task. Followers are
+ * merged back under one lock using the stream's insertion policy, while the
+ * submit hook always receives a singleton on retry.
+ */
+static inline void
+parsec_gpu_stream_rollback_batch(parsec_gpu_exec_stream_t *stream,
+                                 parsec_gpu_task_t *batch_head)
+{
+    parsec_list_item_t *ring;
+
+    ring = parsec_list_item_ring_chop(&batch_head->list_item);
+    PARSEC_LIST_ITEM_SINGLETON(&batch_head->list_item);
+    if( NULL != ring ) {
+#if PARSEC_GPU_USE_PRIORITIES
+        parsec_list_chain_sorted(stream->fifo_pending, ring,
+                                 parsec_execution_context_priority_comparator);
+#else
+        parsec_list_chain_back(stream->fifo_pending, ring);
+#endif
+    }
+}
+
 static inline int
 parsec_gpu_task_selected_chore_allows_batch(parsec_task_t *task,
                                             parsec_device_module_t *device)
@@ -2632,7 +2654,11 @@ parsec_device_progress_stream( parsec_device_gpu_module_t* gpu_device,
             }
 #endif /* (PARSEC_PROF_TRACE) */
             if( PARSEC_HOOK_RETURN_AGAIN == task->last_status ) {
-                /* we can now reschedule the task on the same execution stream */
+                /* Batch collection is tentative until the submit hook succeeds.
+                 * Put any followers back in the pending queue and retry only the
+                 * head, which may build a fresh batch on its next submission.
+                 */
+                parsec_gpu_stream_rollback_batch(stream, task);
                 PARSEC_DEBUG_VERBOSE(2, parsec_gpu_output_stream,
                                      "GPU[%d:%s]: GPU task %p[%p] is ready to be rescheduled on the same GPU device and same stream",
                                      gpu_device->super.device_index, gpu_device->super.name, (void*)task, (void*)task->ec);
@@ -2664,6 +2690,8 @@ parsec_device_progress_stream( parsec_device_gpu_module_t* gpu_device,
     assert( NULL == stream->tasks[stream->start] );
 
   schedule_task:
+    /* Queue extraction and batch rollback both normalize the selected task. */
+    assert(parsec_gpu_task_is_singleton(task));
     rc = progress_fct( gpu_device, es, task, stream );
     if( 0 == rc && parsec_device_skip_empty_events ) {
 #if defined(PARSEC_PROF_TRACE)
@@ -3386,6 +3414,14 @@ parsec_device_kernel_scheduler( parsec_device_module_t *module,
 #endif
     int pop_null = 0;
 
+    /* GPU management can retain this worker for many progress iterations.
+     * Expose any task held in its private next_task slot before doing so.
+     */
+    rc = __parsec_schedule_flush_private(es);
+    if( PARSEC_SUCCESS != rc ) {
+        return PARSEC_HOOK_RETURN_ERROR;
+    }
+
 #if defined(PARSEC_PROF_TRACE)
     PARSEC_PROFILING_TRACE_FLAGS( es->es_profile,
                                   PARSEC_PROF_FUNC_KEY_END(gpu_task->ec->taskpool,
@@ -3580,6 +3616,12 @@ parsec_device_kernel_scheduler( parsec_device_module_t *module,
     }
     parsec_device_kernel_epilog( gpu_device, gpu_task );
     __parsec_complete_execution( es, gpu_task->ec );
+    /* Completing a GPU task can reserve one newly enabled successor in this
+     * manager's private next_task slot. The manager does not return to normal
+     * task selection while GPU work remains, so make that successor stealable.
+     */
+    rc = __parsec_schedule_flush_private(es);
+    assert(PARSEC_SUCCESS == rc);
     gpu_device->super.executed_tasks++;
  remove_gpu_task:
     PARSEC_DEBUG_VERBOSE(10, parsec_gpu_output_stream, "GPU[%d:%s]: gpu_task %p freed",
