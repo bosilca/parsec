@@ -345,11 +345,16 @@ __parsec_schedule(parsec_execution_stream_t* es,
 
 /*
  * Schedule an array of rings of tasks with one entry per virtual process.
- * If an execution stream is provided, this function will save the highest
- * priority task (assuming the ring is ordered or the first task in the ring
- * otherwise) on the current execution stream virtual process as the next
- * task to be executed on the provided execution stream. Everything else gets
- * pushed into the execution stream 0 of the corresponding virtual process.
+ * If an execution stream is provided, this function removes the highest
+ * priority task (assuming the ring is ordered, or the first task otherwise)
+ * from the local VP ring and stores it in submission_es->next_task. This
+ * one-element private queue is consumed before the scheduler is queried, so
+ * the task stays local and avoids a scheduler round trip. It is also invisible
+ * to every other execution stream until submission_es consumes or explicitly
+ * flushes it. Code that blocks or takes on long-lived progress work, such as
+ * GPU management, must flush this private slot to avoid delaying ready work.
+ * Everything else gets pushed into the execution stream 0 of the corresponding
+ * virtual process.
  * If the provided execution stream is NULL, all tasks are delivered to their
  * respective vp.
  *
@@ -397,8 +402,17 @@ int __parsec_schedule_vp(parsec_execution_stream_t* submission_es,
 
         if( vp == submission_es->virtual_process->vp_id ) {
             if( NULL == submission_es->next_task ) {
+                /* Reserve one local ready task outside the scheduler. The
+                 * execution stream will consume it before scheduler selection,
+                 * or expose it with __parsec_schedule_flush_private() before
+                 * entering work that delays normal task selection.
+                 */
                 submission_es->next_task = ring;
                 ring = (parsec_task_t*)parsec_list_item_ring_chop(&ring->super);
+                /* next_task may be flushed through __parsec_schedule(), which
+                 * requires even a single task to be a valid ring.
+                 */
+                PARSEC_LIST_ITEM_SINGLETON(submission_es->next_task);
                 if( NULL == ring ) {
                     task_rings[vp] = NULL;  /* remove the tasks already scheduled */
                     continue;
@@ -416,6 +430,10 @@ int __parsec_schedule_vp(parsec_execution_stream_t* submission_es,
     return ret;
 }
 
+/* Move the task reserved in es->next_task back to the scheduler. The slot is
+ * private to es, and __parsec_schedule_vp() keeps its task as a singleton ring
+ * so it can be passed directly to __parsec_schedule().
+ */
 int __parsec_schedule_flush_private( parsec_execution_stream_t* es )
 {
     parsec_task_t* task = es->next_task;
