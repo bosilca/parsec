@@ -1,3 +1,7 @@
+<!--
+Copyright (c) 2026 NVIDIA Corporation.  All rights reserved.
+-->
+
 Task Batching {#task_batching}
 ==============
 
@@ -61,9 +65,13 @@ Recommended collection helper
 
 The preferred interface for GPU submit hooks is
 `parsec_gpu_task_collect_batch()`. The runtime passes the submit hook a
-singleton `parsec_gpu_task_t *gpu_task`. The hook calls the collector with a
-callback that decides, for each task currently pending on the same stream,
-whether that candidate can be added to the batch headed by `gpu_task`.
+singleton `parsec_gpu_task_t *gpu_task` on its initial invocation. The hook
+calls the collector with a callback that decides, for each task currently
+pending on the same stream, whether that candidate can be added to the batch
+headed by `gpu_task`. After a batched hook returns `PARSEC_HOOK_RETURN_AGAIN`,
+the continuation invocation receives the same intact ring. Calling the
+collector again is safe: it returns the existing follower count without
+scanning or modifying the pending FIFO.
 
 The callback has the type `parsec_gpu_task_batch_cb_t` and receives:
 
@@ -73,12 +81,19 @@ The callback has the type `parsec_gpu_task_batch_cb_t` and receives:
 
 The callback return value controls the iterator:
 
-- negative: stop immediately and return that error code;
-- zero: remove `candidate` from the pending FIFO and append it to
-  `batch_head`'s task ring;
-- positive: leave `candidate` pending and continue to the next pending task.
+- `PARSEC_GPU_TASK_BATCH_ACCEPT`: remove `candidate` from the pending FIFO and
+  append it to `batch_head`'s task ring;
+- `PARSEC_GPU_TASK_BATCH_REJECT`: leave `candidate` pending and continue to the
+  next pending task;
+- `PARSEC_GPU_TASK_BATCH_STOP`: end collection successfully, leaving the
+  current candidate and all unvisited candidates pending.
 
-The callback must not modify `gpu_stream->fifo_pending` directly.
+The collector does not impose a scan or batch-size bound. The submit hook owns
+that policy and its callback should return `PARSEC_GPU_TASK_BATCH_STOP` once it
+has accepted enough work. The callback executes while
+`gpu_stream->fifo_pending` is locked, so it must remain short and nonblocking.
+It must not modify or acquire that FIFO, call the collector recursively, or
+otherwise reenter pending-task operations on the same stream.
 
 Example:
 
@@ -93,9 +108,9 @@ gemm_batch_match(parsec_gpu_task_t *candidate,
     if( (batch_head->ec->task_class == candidate->ec->task_class) &&
         (batch_head->ec->selected_chore == candidate->ec->selected_chore) &&
         (batch_head->ec->selected_device == candidate->ec->selected_device) ) {
-        return 0;
+        return PARSEC_GPU_TASK_BATCH_ACCEPT;
     }
-    return 1;
+    return PARSEC_GPU_TASK_BATCH_REJECT;
 }
 
 int
@@ -129,20 +144,59 @@ gemm_kernel_cuda(parsec_device_gpu_module_t *gpu_device,
 }
 ```
 
-`parsec_gpu_task_collect_batch()` returns the number of additional tasks appended
-to the ring on success, or the negative callback error. A return value of 0
-means no task was batched, either because no compatible pending task was found,
-because batching is disabled or unsupported by the head task's selected device,
-or because the head task's selected incarnation is not batch-capable. Tasks
-accepted before an error remain attached to `gpu_task`; tasks not accepted
-remain in `gpu_stream->fifo_pending`.
+`parsec_gpu_task_collect_batch()` returns the number of additional tasks
+appended to the ring on success, including when the callback stops collection.
+A return value of 0 means no task was batched, either because the callback
+stopped before accepting one, no compatible pending task was found, batching
+is disabled or unsupported by the head task's selected device, or the head
+task's selected incarnation is not batch-capable. Any callback value outside
+the three actions above returns `PARSEC_HOOK_RETURN_ERROR`. Tasks accepted
+before that error remain attached to `gpu_task`; tasks not accepted remain in
+`gpu_stream->fifo_pending`.
 
 The submit hook does not need a completion callback merely to return the ring to
 the runtime. If a batched submit hook returns a non-singleton task ring, the GPU
 progress engine automatically chains that ring into the next stream's pending
 FIFO after the recorded device event completes. The normal data retrieval,
 epilog, ownership, pushout, and task completion paths then process the tasks one
-at a time.
+at a time. Every stream insertion merges all ring members according to the
+stream's priority policy; equal-priority members retain their ring order.
+
+The submit result settles ownership of the complete ring:
+
+- `PARSEC_HOOK_RETURN_DONE` commits every member to the submitted device work;
+- `PARSEC_HOOK_RETURN_AGAIN` commits the ring as continuation state, waits for
+  work queued by the hook, and re-enters the hook with the same ring after the
+  stream event completes. The hook must have submitted progress for every ring
+  member before returning `AGAIN`;
+- `PARSEC_HOOK_RETURN_NEXT` immediately restores the followers and applies the
+  existing singleton `NEXT` path to the head;
+- `PARSEC_HOOK_RETURN_ASYNC` transfers every execution context in the ring to
+  the hook, which must eventually complete or reschedule each context. The GPU
+  engine releases all corresponding device-task wrappers;
+- `PARSEC_HOOK_RETURN_ERROR` and `PARSEC_HOOK_RETURN_DISABLE` quiesce the
+  affected execution stream and clean every member of the failed batch before
+  propagating the terminal status.
+
+Device-wide recovery after `PARSEC_HOOK_RETURN_DISABLE` is not implemented.
+The terminal path settles the batch that observed the error, but it does not
+drain other stream FIFOs, event slots, or the device-wide pending queue.
+
+Because `AGAIN` preserves a collected ring, hooks must check predictable
+resource constraints before calling `parsec_gpu_task_collect_batch()`. Returning
+`AGAIN` before collection is a normal singleton retry; returning it afterward
+means that the collected batch has started and must continue as one unit.
+
+The runtime never disbands a ring on the `AGAIN` path. A submit hook that no
+longer wants to continue the batch must split the ring itself before returning:
+detach the followers, restore the head as a valid singleton, and explicitly
+give every detached wrapper a new owner. For example, followers may be returned
+to `gpu_stream->fifo_pending` using that stream's priority-preserving insertion
+policy, or the hook may explicitly retain responsibility for completing the
+execution contexts and releasing their wrappers. Merely breaking the links is
+insufficient because it leaves the followers unreachable. If the hook returns
+`AGAIN` after disbanding, only the ring or singleton it leaves attached to
+`gpu_task` is retained by the event.
 
 Iterating over the returned ring
 --------------------------------
