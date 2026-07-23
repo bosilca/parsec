@@ -127,15 +127,20 @@ stage_custom_batch_match(parsec_gpu_task_t *candidate,
 {
     int *how_many = (int *)callback_data;
 
-    if( (*how_many < 5) &&
-        (batch_head->ec->task_class == candidate->ec->task_class) ) {
+    /* Collection runs under the pending FIFO lock. Stop once the batch is full
+     * instead of scanning and rejecting the rest of the pending tasks.
+     */
+    if( *how_many >= 5 ) {
+        return PARSEC_GPU_TASK_BATCH_STOP;
+    }
+    if( batch_head->ec->task_class == candidate->ec->task_class ) {
         (*how_many)++;
         PARSEC_DEBUG_VERBOSE(10, parsec_debug_output,
                              "Add task %p to the %p batch\n",
                              candidate, batch_head);
-        return 0;
+        return PARSEC_GPU_TASK_BATCH_ACCEPT;
     }
-    return 1;
+    return PARSEC_GPU_TASK_BATCH_REJECT;
 }
 %}
 
