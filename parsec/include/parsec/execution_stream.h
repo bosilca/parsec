@@ -50,8 +50,10 @@ struct parsec_execution_stream_s {
 
     /* One ready task reserved for this execution stream. It bypasses the
      * scheduler and is invisible to other workers until consumed or flushed.
-     * Code that keeps the stream away from normal task selection must call
-     * __parsec_schedule_flush_private() before entering that long-lived work.
+     * Once code commits this stream to long-lived work, it must call
+     * __parsec_schedule_flush_private() before entering that work. A path that
+     * merely hands work to an existing manager and returns should retain the
+     * private task for this stream to execute next.
      */
     struct parsec_task_s* next_task;
 
