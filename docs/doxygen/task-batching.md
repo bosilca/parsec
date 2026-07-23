@@ -198,6 +198,108 @@ insufficient because it leaves the followers unreachable. If the hook returns
 `AGAIN` after disbanding, only the ring or singleton it leaves attached to
 `gpu_task` is retained by the event.
 
+Ownership examples
+------------------
+
+### Coroutine-style `AGAIN`
+
+Calling the collector on every coroutine entry is safe. The initial call may
+build a batch; continuation calls only report the followers already attached
+to the same ring. The application-specific progress routine must submit work
+for every member before reporting that another continuation is needed:
+
+```c
+int
+submit_coroutine_batch(parsec_device_gpu_module_t *gpu_device,
+                       parsec_gpu_task_t *gpu_task,
+                       parsec_gpu_exec_stream_t *gpu_stream)
+{
+    int nb_batched;
+
+    (void)gpu_device;
+    nb_batched = parsec_gpu_task_collect_batch(gpu_stream, gpu_task,
+                                               batch_match, NULL);
+    if( nb_batched < 0 ) {
+        return nb_batched;
+    }
+
+    /* Application code: resume and submit one progress step for every member
+     * of gpu_task's ring. The same ring returns here after AGAIN completes.
+     */
+    return submit_coroutine_step(gpu_task, gpu_stream)
+               ? PARSEC_HOOK_RETURN_AGAIN
+               : PARSEC_HOOK_RETURN_DONE;
+}
+```
+
+### Batched `ASYNC`
+
+`ASYNC` transfers every execution context, not the device-task wrappers, to the
+hook. Save or enqueue each `ec` before returning; the GPU engine releases the
+wrappers after the hook returns. The new owner must eventually complete or
+reschedule every saved context:
+
+```c
+parsec_gpu_task_t *current = gpu_task;
+
+do {
+    parsec_gpu_task_t *next =
+        (parsec_gpu_task_t *)current->list_item.list_next;
+    parsec_task_t *ec = current->ec;
+
+    PARSEC_LIST_ITEM_SINGLETON(ec);
+    async_owner_enqueue(ec);  /* Eventually complete or reschedule ec. */
+    current = next;
+} while( current != gpu_task );
+
+return PARSEC_HOOK_RETURN_ASYNC;
+```
+
+The asynchronous owner must retain the execution contexts, not pointers to
+`parsec_gpu_task_t`, because those wrappers become invalid after the return.
+
+### Manually disbanding an `AGAIN` ring
+
+`parsec_list_item_ring_chop()` reconnects the followers but deliberately leaves
+the removed head's links invalid. Restore the head as a singleton, refresh the
+followers' priority snapshots, and return the follower ring to the pending
+stream with its configured ordering policy. Call this helper from the submit
+hook after the collector returns, never from the collector callback while the
+pending FIFO is locked:
+
+```c
+static void
+requeue_batch_followers(parsec_gpu_exec_stream_t *gpu_stream,
+                        parsec_gpu_task_t *gpu_task)
+{
+    parsec_list_item_t *followers;
+
+    followers = parsec_list_item_ring_chop(&gpu_task->list_item);
+    PARSEC_LIST_ITEM_SINGLETON(&gpu_task->list_item);
+    if( NULL == followers ) {
+        return;
+    }
+
+#if PARSEC_GPU_USE_PRIORITIES
+    parsec_gpu_task_t *first = (parsec_gpu_task_t *)followers;
+    parsec_gpu_task_t *current = first;
+
+    do {
+        current->priority = current->ec->priority;
+        current = (parsec_gpu_task_t *)current->list_item.list_next;
+    } while( current != first );
+    parsec_list_chain_sorted(gpu_stream->fifo_pending, followers,
+                             offsetof(parsec_gpu_task_t, priority));
+#else
+    parsec_list_chain_back(gpu_stream->fifo_pending, followers);
+#endif
+}
+```
+
+After this helper, `gpu_task` is the only member retained by an `AGAIN` return.
+The hook must submit progress for that head before returning `AGAIN`; the
+followers have already received a new owner through `fifo_pending`.
+
 Profiling semantics
 -------------------
 
