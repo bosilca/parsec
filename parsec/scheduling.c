@@ -351,8 +351,10 @@ __parsec_schedule(parsec_execution_stream_t* es,
  * one-element private queue is consumed before the scheduler is queried, so
  * the task stays local and avoids a scheduler round trip. It is also invisible
  * to every other execution stream until submission_es consumes or explicitly
- * flushes it. Code that blocks or takes on long-lived progress work, such as
- * GPU management, must flush this private slot to avoid delaying ready work.
+ * flushes it. Once code commits the stream to blocking or long-lived progress
+ * work, such as GPU management, it must flush this private slot to avoid
+ * delaying ready work. A path that hands work to an existing manager and
+ * returns to normal selection should retain the private task.
  * Everything else gets pushed into the execution stream 0 of the corresponding
  * virtual process.
  * If the provided execution stream is NULL, all tasks are delivered to their

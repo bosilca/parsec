@@ -3530,14 +3530,6 @@ parsec_device_kernel_scheduler( parsec_device_module_t *module,
 #endif
     int pop_null = 0;
 
-    /* GPU management can retain this worker for many progress iterations.
-     * Expose any task held in its private next_task slot before doing so.
-     */
-    rc = __parsec_schedule_flush_private(es);
-    if( PARSEC_SUCCESS != rc ) {
-        return PARSEC_HOOK_RETURN_ERROR;
-    }
-
 #if defined(PARSEC_PROF_TRACE)
     PARSEC_PROFILING_TRACE_FLAGS( es->es_profile,
                                   PARSEC_PROF_FUNC_KEY_END(gpu_task->ec->taskpool,
@@ -3548,11 +3540,9 @@ parsec_device_kernel_scheduler( parsec_device_module_t *module,
 #endif /* defined(PARSEC_PROF_TRACE) */
 
     /* Check the GPU status -- three kinds of values for rc:
-     *   - rc < 0: somebody is doing a short atomic operation while there is no manager,
-     *             so wait.
-     *   - rc == 0: there is no manager, and at the exit of the while, this thread
-     *             made rc go from 0 to 1, so it is the new manager of the GPU and
-     *             needs to deal with gpu_task
+     *   - rc < 0: somebody owns an exclusive no-manager transition, so wait.
+     *   - rc == 0: there is no manager, and at the exit of the while this
+     *             worker changed the mutex from 0 to 1 and became the manager.
      *   - rc > 0: there is a manager, and at the exit of the while, this thread has
      *             committed new work that the manager will need to do, but the work is
      *             not in the queue yet.
@@ -3574,6 +3564,18 @@ parsec_device_kernel_scheduler( parsec_device_module_t *module,
         parsec_fifo_push( &(gpu_device->pending), (parsec_list_item_t*)gpu_task );
         return PARSEC_HOOK_RETURN_ASYNC;
     }
+
+    /* Only the worker that changed mutex from 0 to 1 becomes the long-lived
+     * manager. Expose its private ready task before entering GPU progress;
+     * workers that merely enqueue behind this manager retain next_task. Other
+     * submitters may enqueue during the flush, but this manager has not started
+     * consuming the device queues yet.
+     */
+    rc = __parsec_schedule_flush_private(es);
+    if( PARSEC_SUCCESS != rc ) {
+        return PARSEC_HOOK_RETURN_ERROR;
+    }
+
     PARSEC_DEBUG_VERBOSE(5, parsec_gpu_output_stream, "GPU[%d:%s]: Entering GPU management",
                          gpu_device->super.device_index, gpu_device->super.name);
 
