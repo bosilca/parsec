@@ -6748,22 +6748,6 @@ static void jdf_generate_code_hook_gpu(const jdf_t *jdf,
     jdf_generate_code_dry_run_before(jdf, f);
     jdf_coutput_prettycomment('-', "%s BODY", f->fname);
 
-    if( profile_on ) {
-        coutput("#if defined(PARSEC_PROF_TRACE)\n"
-                "  if(gpu_stream->prof_event_track_enable) {\n"
-                "    PARSEC_TASK_PROF_TRACE(gpu_stream->profiling,\n"
-                "                           PARSEC_PROF_FUNC_KEY_START(this_task->taskpool,\n"
-                "                                     this_task->task_class->task_class_id),\n"
-                "                           (parsec_task_t*)this_task, 1);\n"
-                "    gpu_task->prof_key_end = PARSEC_PROF_FUNC_KEY_END(this_task->taskpool,\n"
-                "                                   this_task->task_class->task_class_id);\n"
-                "    gpu_task->prof_event_id = this_task->task_class->key_functions->\n"
-                "           key_hash(this_task->task_class->make_key(this_task->taskpool, ((parsec_task_t*)this_task)->locals), NULL);\n"
-                "    gpu_task->prof_tp_id = this_task->taskpool->taskpool_id;\n"
-                "  }\n"
-                "#endif /* PARSEC_PROF_TRACE */\n");
-    }
-
     if ( NULL != dyld ) {
         coutput("  /* Pointer to dynamic gpu function */\n"
                 "  {\n"
@@ -6850,6 +6834,16 @@ static void jdf_generate_code_hook_gpu(const jdf_t *jdf,
             "  gpu_task->submit = &%s_kernel_submit_%s_%s;\n"
             "  gpu_task->task_type = PARSEC_GPU_TASK_TYPE_KERNEL;\n",
             dev_lower, jdf_basename, f->fname);
+
+    /* Execution profiling is emitted by the common GPU runtime after the
+     * submit hook has finalized a possible batch. Preserve the PTG body-level
+     * profiling property on the wrapper so that common path can honor it.
+     */
+    coutput("#if defined(PARSEC_PROF_TRACE)\n"
+            "  gpu_task->prof_exec_state = %s;\n"
+            "#endif\n",
+            profile_on ? "PARSEC_GPU_TASK_PROF_EXEC_PENDING"
+                       : "PARSEC_GPU_TASK_PROF_EXEC_DISABLED");
 
     /* Set up stage in/out callbacks */
     jdf_find_property(body->properties, "stage_in", &stage_in_property);
