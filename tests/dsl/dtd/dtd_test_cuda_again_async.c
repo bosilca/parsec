@@ -58,6 +58,8 @@ static int next_completed[STATUS_TASKS];
 static int async_batch_observed;
 static int again_batch_observed;
 static int again_batch_yields;
+static int again_batch_release_count;
+static int again_profile_state_valid = 1;
 static int next_batch_observed;
 static int next_returned;
 static int priority_batch_observed;
@@ -67,6 +69,21 @@ static int priority_last_released = INT_MAX;
 static parsec_gpu_task_t *stop_candidate;
 static int stop_observed;
 static int stop_candidate_completed;
+
+/* Verify that final event completion closes the logical execution interval
+ * before the device wrapper is released.
+ */
+static void
+cuda_again_release(parsec_gpu_task_t *gpu_task)
+{
+#if defined(PARSEC_PROF_TRACE)
+    if( PARSEC_GPU_TASK_PROF_EXEC_OPEN == gpu_task->prof_exec_state ) {
+        again_profile_state_valid = 0;
+    }
+#endif
+    again_batch_release_count++;
+    PARSEC_OBJ_RELEASE(gpu_task);
+}
 
 /* Only collect tasks from the same test phase and task class. Phase matching
  * prevents resubmitted ASYNC contexts from joining their initial submission.
@@ -222,6 +239,7 @@ int cuda_task_batch_again(parsec_device_gpu_module_t *gpu_device,
             seen |= (1U << id);
             again_batch_tasks[id] = current;
             again_batch_order[count] = current;
+            current->release_device_task = cuda_again_release;
             phase = 1;
             cuda_pack_value_args(current->ec, &id, &phase);
             count++;
@@ -248,6 +266,15 @@ int cuda_task_batch_again(parsec_device_gpu_module_t *gpu_device,
             (again_batch_order[count] != current) || (seen & (1U << id)) ) {
             return PARSEC_HOOK_RETURN_ERROR;
         }
+#if defined(PARSEC_PROF_TRACE)
+        /* Every member starts once after the first finalized submission. The
+         * interval must remain open on each coroutine continuation.
+         */
+        if( gpu_stream->prof_event_track_enable && parsec_profile_enabled &&
+            (PARSEC_GPU_TASK_PROF_EXEC_OPEN != current->prof_exec_state) ) {
+            return PARSEC_HOOK_RETURN_ERROR;
+        }
+#endif
         seen |= (1U << id);
         count++;
         current = (parsec_gpu_task_t *)current->list_item.list_next;
@@ -562,6 +589,13 @@ int main(int argc, char* argv[])
     if( (again_batch_observed <= 1) || (2 != again_batch_yields) ) {
         parsec_warning("GPU AGAIN batch size=%d yielded=%d times\n",
                        again_batch_observed, again_batch_yields);
+        ret = 1;
+    }
+    if( !again_profile_state_valid ||
+        (again_batch_release_count != again_batch_observed) ) {
+        parsec_warning("GPU AGAIN profiling state valid=%d released=%d expected=%d\n",
+                       again_profile_state_valid, again_batch_release_count,
+                       again_batch_observed);
         ret = 1;
     }
     if( (priority_batch_observed <= 1) || !priority_order_valid ||

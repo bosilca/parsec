@@ -127,6 +127,14 @@ typedef struct parsec_gpu_flow_info_s {
 
 } parsec_gpu_flow_info_t;
 
+#if defined(PARSEC_PROF_TRACE)
+typedef enum parsec_gpu_task_prof_exec_state_e {
+    PARSEC_GPU_TASK_PROF_EXEC_DISABLED = 0,
+    PARSEC_GPU_TASK_PROF_EXEC_PENDING,
+    PARSEC_GPU_TASK_PROF_EXEC_OPEN
+} parsec_gpu_task_prof_exec_state_t;
+#endif
+
 struct parsec_gpu_task_s {
     parsec_list_item_t                     list_item;
     /* The stream queues sort wrappers directly and therefore cannot follow
@@ -143,9 +151,20 @@ struct parsec_gpu_task_s {
     parsec_stage_out_function_t           *stage_out;
     parsec_release_device_task_function_t  release_device_task;
 #if defined(PARSEC_PROF_TRACE)
-    int                                    prof_key_end;
+    /* The event ID is shared by logical execution and deferred stage events.
+     * Keep this 64-bit member before the two 32-bit stage fields.
+     */
     uint64_t                               prof_event_id;
-    uint32_t                               prof_tp_id;
+    /* Key and object ID saved for a deferred stage end. Prefetch events use the
+     * GPU device index, while move-out events use the taskpool ID. Logical
+     * execution derives both values directly from ec instead.
+     */
+    int                                    prof_stage_key_end;
+    uint32_t                               prof_stage_object_id;
+    /* Combine the body policy with whether an execution interval remains open
+     * across an AGAIN continuation.
+     */
+    parsec_gpu_task_prof_exec_state_t      prof_exec_state;
 #endif
     union {
         struct {
@@ -400,6 +419,10 @@ int parsec_gpu_complete_w2r_task(parsec_device_gpu_module_t *gpu_device, parsec_
  * explicitly transfer every detached wrapper to a new owner, such as the
  * stream pending FIFO using its configured priority policy. Returning AGAIN
  * retains only the ring or singleton that remains attached to batch_head.
+ * Each wrapper also retains its open execution-profiling state when detached;
+ * returning it through the normal GPU path closes that interval at final
+ * completion. Releasing an open detached wrapper would leave an unmatched
+ * profiling start.
  */
 int parsec_gpu_task_collect_batch(parsec_gpu_exec_stream_t *gpu_stream,
                                   parsec_gpu_task_t *batch_head,

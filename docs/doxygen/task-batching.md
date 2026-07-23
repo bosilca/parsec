@@ -198,6 +198,28 @@ insufficient because it leaves the followers unreachable. If the hook returns
 `AGAIN` after disbanding, only the ring or singleton it leaves attached to
 `gpu_task` is retained by the event.
 
+Profiling semantics
+-------------------
+
+GPU execution profiling is owned by the common device runtime, not by the
+submit hook. After a hook first returns `PARSEC_HOOK_RETURN_DONE` or
+`PARSEC_HOOK_RETURN_AGAIN`, the runtime emits one task start for every member of
+the finalized ring. It emits one matching task end for every member when the
+submitted execution finally completes. A task therefore contributes exactly
+one start/end pair whether it was submitted alone or as part of a batch.
+
+An `AGAIN` event only resumes the same logical execution. The runtime keeps all
+member intervals open across any number of repeated `AGAIN` continuations and
+does not emit progress markers for those intermediate steps. A committed
+non-singleton ring has already been fully accounted, so repeated continuations
+do not rescan every member looking for new profiling starts.
+
+The open profiling state belongs to each device-task wrapper. If a hook
+manually disbands an `AGAIN` ring and returns followers to the GPU stream's
+pending FIFO, their intervals follow them and close when those wrappers
+eventually complete. A hook must not simply release an open detached wrapper,
+because that would leave its profiling interval without a matching end.
+
 Iterating over the returned ring
 --------------------------------
 

@@ -182,9 +182,10 @@ static void parsec_device_task_t_constructor(parsec_gpu_task_t *gpu_task)
     gpu_task->stage_out = NULL;
     gpu_task->release_device_task = NULL;
 #if defined(PARSEC_PROF_TRACE)
-    gpu_task->prof_key_end = 0;
     gpu_task->prof_event_id = 0;
-    gpu_task->prof_tp_id = 0;
+    gpu_task->prof_stage_key_end = -1;
+    gpu_task->prof_stage_object_id = 0;
+    gpu_task->prof_exec_state = PARSEC_GPU_TASK_PROF_EXEC_PENDING;
 #endif
     gpu_task->ec = NULL;
     gpu_task->last_data_check_epoch = UINT64_MAX; /* force at least one validation for the task */
@@ -2090,16 +2091,16 @@ parsec_device_data_stage_in( parsec_device_gpu_module_t* gpu_device,
             info.desc    = (parsec_dc_t*)original;
             info.data_id = -1;
         }
-        gpu_task->prof_key_end = -1;
+        gpu_task->prof_stage_key_end = -1;
 
         if( PARSEC_GPU_TASK_TYPE_PREFETCH == gpu_task->task_type && (gpu_device->trackable_events & PARSEC_PROFILE_GPU_TRACK_PREFETCH) ) {
-            gpu_task->prof_key_end = parsec_gpu_prefetch_key_end;
+            gpu_task->prof_stage_key_end = parsec_gpu_prefetch_key_end;
             gpu_task->prof_event_id = (int64_t)gpu_elem->device_private;
-            gpu_task->prof_tp_id = gpu_device->super.device_index;
+            gpu_task->prof_stage_object_id = gpu_device->super.device_index;
             PARSEC_PROFILING_TRACE(gpu_stream->profiling,
                                    parsec_gpu_prefetch_key_start,
                                    gpu_task->prof_event_id,
-                                   gpu_task->prof_tp_id,
+                                   gpu_task->prof_stage_object_id,
                                    &info);
         }
         if(PARSEC_GPU_TASK_TYPE_PREFETCH != gpu_task->task_type && (gpu_device->trackable_events & PARSEC_PROFILE_GPU_TRACK_DATA_IN) ) {
@@ -2231,6 +2232,120 @@ parsec_gpu_stream_rollback_batch(parsec_gpu_exec_stream_t *stream,
         parsec_gpu_stream_chain_pending(stream, ring);
     }
 }
+
+#if defined(PARSEC_PROF_TRACE)
+/* Return whether any member owns an open logical GPU execution interval. The
+ * state lives on each wrapper so it follows followers that are manually
+ * detached and returned to runtime scheduling.
+ */
+static inline int
+parsec_gpu_profile_exec_ring_is_open(parsec_gpu_task_t *ring)
+{
+    _LIST_ITEM_ITERATOR(&ring->list_item, &ring->list_item, item, {
+        parsec_gpu_task_t *task = (parsec_gpu_task_t *)item;
+
+        if( PARSEC_GPU_TASK_PROF_EXEC_OPEN == task->prof_exec_state ) {
+            return 1;
+        }
+    });
+    return 0;
+}
+
+/* Start each logical task at its first committed GPU submission. The user hook
+ * has returned at this point, so the runtime can see the complete finalized
+ * ring. Members already opened by an earlier AGAIN continuation are skipped.
+ */
+static inline void
+parsec_gpu_profile_exec_ring_start(parsec_gpu_exec_stream_t *stream,
+                                   parsec_gpu_task_t *ring)
+{
+    parsec_gpu_task_t *task;
+    parsec_task_t *ec;
+    const parsec_task_class_t *tc;
+    int key_start, key_end;
+
+    if( !stream->prof_event_track_enable || !parsec_profile_enabled ) {
+        return;
+    }
+    _LIST_ITEM_ITERATOR(&ring->list_item, &ring->list_item, item, {
+        task = (parsec_gpu_task_t *)item;
+        ec = task->ec;
+        tc = ec->task_class;
+
+        if( (PARSEC_GPU_TASK_PROF_EXEC_PENDING == task->prof_exec_state) &&
+            (NULL != ec->taskpool->profiling_array) ) {
+            key_start = PARSEC_PROF_FUNC_KEY_START(ec->taskpool, tc->task_class_id);
+            key_end = PARSEC_PROF_FUNC_KEY_END(ec->taskpool, tc->task_class_id);
+            if( (key_start >= 2) && (key_end >= 2) ) {
+                task->prof_event_id = tc->key_functions->key_hash(
+                    tc->make_key(ec->taskpool, ec->locals), NULL);
+                PARSEC_PROFILING_TRACE_INFO_FN(stream->profiling, key_start,
+                                               task->prof_event_id,
+                                               ec->taskpool->taskpool_id,
+                                               tc->profile_info, (void *)ec);
+                task->prof_exec_state = PARSEC_GPU_TASK_PROF_EXEC_OPEN;
+            }
+        }
+    });
+}
+
+/* Close every open logical execution interval in a ring exactly once. This is
+ * called only for final completion or a terminal ownership transfer, never for
+ * an intermediate AGAIN event.
+ */
+static inline int
+parsec_gpu_profile_exec_ring_end(parsec_gpu_exec_stream_t *stream,
+                                 parsec_gpu_task_t *ring)
+{
+    parsec_gpu_task_t *task = ring;
+    parsec_task_t *ec;
+    const parsec_task_class_t *tc;
+    int key_end;
+    int found = 0;
+
+    do {
+        if( PARSEC_GPU_TASK_PROF_EXEC_OPEN == task->prof_exec_state ) {
+            found = 1;
+            if( stream->prof_event_track_enable ) {
+                ec = task->ec;
+                tc = ec->task_class;
+                key_end = PARSEC_PROF_FUNC_KEY_END(ec->taskpool,
+                                                   tc->task_class_id);
+                PARSEC_PROFILING_TRACE(stream->profiling, key_end,
+                                       task->prof_event_id,
+                                       ec->taskpool->taskpool_id, NULL);
+            }
+            task->prof_exec_state = PARSEC_GPU_TASK_PROF_EXEC_PENDING;
+        }
+        task = (parsec_gpu_task_t *)task->list_item.list_next;
+    } while( task != ring );
+    return found;
+}
+
+/* Complete the profiling interval associated with one recorded stream event.
+ * Transfer stages use the legacy head-only key. Execution batches instead
+ * close every logical member, except when AGAIN retains the interval.
+ */
+static inline void
+parsec_gpu_profile_event_complete(parsec_gpu_exec_stream_t *stream,
+                                  parsec_gpu_task_t *ring,
+                                  int keep_exec_open)
+{
+    if( keep_exec_open && parsec_gpu_profile_exec_ring_is_open(ring) ) {
+        return;
+    }
+    if( !keep_exec_open &&
+        parsec_gpu_profile_exec_ring_end(stream, ring) ) {
+        return;
+    }
+    if( stream->prof_event_track_enable &&
+        (ring->prof_stage_key_end != -1) ) {
+        PARSEC_PROFILING_TRACE(stream->profiling, ring->prof_stage_key_end,
+                               ring->prof_event_id,
+                               ring->prof_stage_object_id, NULL);
+    }
+}
+#endif /* defined(PARSEC_PROF_TRACE) */
 
 /* Release every wrapper in a task ring and return the number released. ASYNC
  * transfers ownership of each underlying execution context to the submit hook,
@@ -2440,7 +2555,7 @@ parsec_device_send_transfercomplete_cmd_to_device(parsec_data_copy_t *copy,
     gpu_task->ec->data[0].source_repo_entry = NULL;
     gpu_task->ec->data[0].source_repo = NULL;
 #if defined(PARSEC_PROF_TRACE)
-    gpu_task->prof_key_end = -1; /* D2D complete tasks are pure internal management, we do not trace them */
+    gpu_task->prof_stage_key_end = -1; /* D2D complete tasks are pure internal management, we do not trace them */
 #endif
     (void)current_dev;
     PARSEC_DEBUG_VERBOSE(3, parsec_gpu_output_stream,
@@ -2722,11 +2837,8 @@ parsec_device_progress_stream( parsec_device_gpu_module_t* gpu_device,
             stream->end = (stream->end + 1) % stream->max_events;
 
 #if defined(PARSEC_PROF_TRACE)
-            if( stream->prof_event_track_enable ) {
-                if( task->prof_key_end != -1 ) {
-                    PARSEC_PROFILING_TRACE(stream->profiling, task->prof_key_end, task->prof_event_id, task->prof_tp_id, NULL);
-                }
-            }
+            parsec_gpu_profile_event_complete(
+                stream, task, PARSEC_HOOK_RETURN_AGAIN == task->last_status);
 #endif /* (PARSEC_PROF_TRACE) */
             if( PARSEC_HOOK_RETURN_AGAIN == task->last_status ) {
                 /* AGAIN means the submit hook made progress on this exact task
@@ -2772,11 +2884,7 @@ parsec_device_progress_stream( parsec_device_gpu_module_t* gpu_device,
     rc = progress_fct( gpu_device, es, task, stream );
     if( 0 == rc && parsec_device_skip_empty_events ) {
 #if defined(PARSEC_PROF_TRACE)
-        if( stream->prof_event_track_enable ) {
-            if( task->prof_key_end != -1 ) {
-                PARSEC_PROFILING_TRACE(stream->profiling, task->prof_key_end, task->prof_event_id, task->prof_tp_id, NULL);
-            }
-        }
+        parsec_gpu_profile_event_complete(stream, task, 0);
 #endif
         /* If progress_fct added nothing on that stream, skip the GPU event.
          * Input stages with copies already queued on the input stream return a
@@ -2803,6 +2911,9 @@ parsec_device_progress_stream( parsec_device_gpu_module_t* gpu_device,
                 /* A batch-aware hook transfers every execution context in the
                  * ring. The manager will release all device wrappers.
                  */
+#if defined(PARSEC_PROF_TRACE)
+                parsec_gpu_profile_exec_ring_end(stream, task);
+#endif
                 *out_task = task;
             } else {
                 /* ERROR and DISABLE are terminal. A hook may have queued work
@@ -2817,6 +2928,9 @@ parsec_device_progress_stream( parsec_device_gpu_module_t* gpu_device,
                     parsec_gpu_stream_quiesce_after_failure(gpu_device, stream) ) {
                     rc = task->last_status = PARSEC_HOOK_RETURN_ERROR;
                 }
+#if defined(PARSEC_PROF_TRACE)
+                parsec_gpu_profile_exec_ring_end(stream, task);
+#endif
                 *out_task = task;
             }
             return rc;
@@ -2980,16 +3094,16 @@ parsec_device_kernel_push( parsec_device_gpu_module_t      *gpu_device,
                          parsec_task_snprintf(tmp, MAX_TASK_STRLEN, this_task));
     gpu_task->complete_stage = parsec_device_callback_complete_push;
 #if defined(PARSEC_PROF_TRACE)
-    gpu_task->prof_key_end = -1; /* We do not log that event as the completion of this task */
+    gpu_task->prof_stage_key_end = -1; /* We do not log that event as the completion of this task */
 #endif
     return input_stream_work;
 }
 
 /**
- * @brief Prepare a task for execution on the GPU. Basically, does some upstream initialization,
- * setup the profiling information and then calls directly into the task submission body. Upon
- * return from the body handle the state machine of the task, taking care of the special cases
- * such as AGAIN and ASYNC.
+ * @brief Prepare a task for execution on the GPU. Invoke the task submission
+ * body, then start execution profiling for every member of the finalized ring.
+ * Upon return from the body, handle the task state machine, including AGAIN
+ * continuations and ASYNC ownership transfer.
  * @returns An error if anything unexpected came out of the task submission body, otherwise
  */
 static int
@@ -3001,6 +3115,9 @@ parsec_device_kernel_exec( parsec_device_gpu_module_t      *gpu_device,
     parsec_advance_task_function_t progress_fct = gpu_task->submit;
     parsec_task_t* this_task = gpu_task->ec;
     int rc;
+#if defined(PARSEC_PROF_TRACE)
+    int continuing_batch;
+#endif
 
 #if defined(PARSEC_DEBUG_NOISIER)
     char tmp[MAX_TASK_STRLEN];
@@ -3009,21 +3126,6 @@ parsec_device_kernel_exec( parsec_device_gpu_module_t      *gpu_device,
                          (parsec_task_t *) this_task), gpu_stream->name);
 #endif /* defined(PARSEC_DEBUG_NOISIER) */
     (void)es;
-#if defined(PARSEC_PROF_TRACE)
-    if (gpu_stream->prof_event_track_enable &&
-        (0 == gpu_task->prof_key_end)) {
-        parsec_task_class_t* tc = (parsec_task_class_t*)this_task->task_class;
-        PARSEC_TASK_PROF_TRACE(gpu_stream->profiling,
-                               PARSEC_PROF_FUNC_KEY_START(this_task->taskpool,
-                                                          tc->task_class_id),
-                               (parsec_task_t *) this_task, 1);
-        gpu_task->prof_key_end = PARSEC_PROF_FUNC_KEY_END(this_task->taskpool, tc->task_class_id);
-        gpu_task->prof_event_id = tc->key_functions->key_hash(
-                                        tc->make_key(this_task->taskpool, ((parsec_task_t *) this_task)->locals), NULL);
-        gpu_task->prof_tp_id = this_task->taskpool->taskpool_id;
-    }
-#endif /* PARSEC_PROF_TRACE */
-
 #if defined(PARSEC_DEBUG_PARANOID)
     const parsec_flow_t *flow;
     for( uint i = 0; i < gpu_task->nb_flows  /* this_task->task_class->nb_flows */; i++ ) {
@@ -3041,12 +3143,28 @@ parsec_device_kernel_exec( parsec_device_gpu_module_t      *gpu_device,
      * links cannot be mistaken for a batch. AGAIN is different: its ring is
      * the submit hook's continuation state and must be passed back intact.
      */
+#if defined(PARSEC_PROF_TRACE)
+    /* A committed non-singleton AGAIN ring was fully accounted when it first
+     * yielded. Avoid rescanning every member on each coroutine progress step.
+     */
+    continuing_batch = (PARSEC_HOOK_RETURN_AGAIN == gpu_task->last_status) &&
+                       !parsec_gpu_task_is_singleton(gpu_task);
+#endif
     if( PARSEC_HOOK_RETURN_AGAIN != gpu_task->last_status ) {
         PARSEC_LIST_ITEM_SINGLETON(&gpu_task->list_item);
     }
 
     (void)this_task;
     rc = progress_fct( gpu_device, gpu_task, gpu_stream );
+#if defined(PARSEC_PROF_TRACE)
+    if( !continuing_batch &&
+        ((rc >= 0) || (PARSEC_HOOK_RETURN_AGAIN == rc)) ) {
+        /* The hook has finalized the submitted ring. Start every new logical
+         * member here so generated and user-defined hooks share one policy.
+         */
+        parsec_gpu_profile_exec_ring_start(gpu_stream, gpu_task);
+    }
+#endif
     gpu_task->last_status = rc;
     /* Empty-stage event skipping is only valid for input/output streams.
      * A non-negative kernel submit result means the execution stream needs an
@@ -3244,16 +3362,16 @@ parsec_device_kernel_pop( parsec_device_gpu_module_t   *gpu_device,
                             info.desc    = (parsec_dc_t*)original;
                             info.data_id = -1;
                         }
-                        gpu_task->prof_key_end = parsec_gpu_moveout_key_end;
-                        gpu_task->prof_tp_id   = this_task->taskpool->taskpool_id;
+                        gpu_task->prof_stage_key_end = parsec_gpu_moveout_key_end;
+                        gpu_task->prof_stage_object_id = this_task->taskpool->taskpool_id;
                         gpu_task->prof_event_id = this_task->task_class->key_functions->key_hash(this_task->task_class->make_key(this_task->taskpool, this_task->locals), NULL);
                         PARSEC_PROFILING_TRACE(gpu_stream->profiling,
                                                parsec_gpu_moveout_key_start,
                                                gpu_task->prof_event_id,
-                                               gpu_task->prof_tp_id,
+                                               gpu_task->prof_stage_object_id,
                                                &info);
                     } else {
-                        gpu_task->prof_key_end = -1;
+                        gpu_task->prof_stage_key_end = -1;
                     }
                 }
 #endif
