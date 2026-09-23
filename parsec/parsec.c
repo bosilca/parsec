@@ -2646,25 +2646,30 @@ static int parsec_check_overlapping_binding(parsec_context_t *context)
         if( 1 < nl ) {
             /* double check that our binding is not conflicting with other local procs */
             hwloc_cpuset_t proc_global_mask = parsec_hwloc_cpuset_convert_to_system(context->cpuset_used_mask);
-            int idx, length = hwloc_bitmap_last(proc_global_mask);  /* find the highest PU for this process */
-            MPI_Allreduce(MPI_IN_PLACE, &length, 1, MPI_INT, MPI_MAX, comml);  /* find the highest PU for this node */
-            uint8_t *proc_mask = alloca(length);
-            memset(proc_mask, 0, length);
+            int idx, last_pu = hwloc_bitmap_last(proc_global_mask);  /* find the highest PU for this process */
+            MPI_Allreduce(MPI_IN_PLACE, &last_pu, 1, MPI_INT, MPI_MAX, comml);  /* find the highest PU for this node */
+            /* last_pu is the index of the highest PU in use, so one slot per PU means
+             * last_pu+1 entries. It is -1 when no PU is bound anywhere on this node. */
+            if( 0 <= last_pu ) {
+                int length = last_pu + 1;
+                uint8_t *proc_mask = alloca(length);
+                memset(proc_mask, 0, length);
 
-            hwloc_bitmap_foreach_begin(idx, proc_global_mask)
-                proc_mask[idx]++;
-            hwloc_bitmap_foreach_end();
+                hwloc_bitmap_foreach_begin(idx, proc_global_mask)
+                    proc_mask[idx]++;
+                hwloc_bitmap_foreach_end();
 
-            MPI_Allreduce(MPI_IN_PLACE, proc_mask, length, MPI_BYTE, MPI_SUM, comml);
-            for( int i = 0; i < length; i++ ) {
-                if( 1 < proc_mask[i] ) {
-                    parsec_warning("/!\\ PERFORMANCE MIGHT BE REDUCED /!\\: "
-                                   "Multiple PaRSEC processes on the same node may share the same physical core(s);\n"
-                                    "\tThis is often unintentional, and will perform poorly.\n"
-                                   "\tNote that in managed environments (e.g., ALPS, jsrun), the launcher may set `cgroups`\n"
-                                   "\tand hide the real binding from PaRSEC; if you verified that the binding is correct,\n"
-                                   "\tthis message can be silenced using the MCA argument `runtime_warn_slow_binding`.\n");
-                    break;
+                MPI_Allreduce(MPI_IN_PLACE, proc_mask, length, MPI_BYTE, MPI_SUM, comml);
+                for( int i = 0; i < length; i++ ) {
+                    if( 1 < proc_mask[i] ) {
+                        parsec_warning("/!\\ PERFORMANCE MIGHT BE REDUCED /!\\: "
+                                       "Multiple PaRSEC processes on the same node may share the same physical core(s);\n"
+                                        "\tThis is often unintentional, and will perform poorly.\n"
+                                       "\tNote that in managed environments (e.g., ALPS, jsrun), the launcher may set `cgroups`\n"
+                                       "\tand hide the real binding from PaRSEC; if you verified that the binding is correct,\n"
+                                       "\tthis message can be silenced using the MCA argument `runtime_warn_slow_binding`.\n");
+                        break;
+                    }
                 }
             }
             hwloc_bitmap_free(proc_global_mask);

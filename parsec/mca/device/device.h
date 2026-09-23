@@ -198,6 +198,10 @@ extern int parsec_device_output;
  * necessary (enabled by default).
  */
 extern int parsec_device_skip_empty_events;
+#if defined(PARSEC_DEBUG) || defined(PARSEC_DEBUG_NOISIER)
+/** Debug: make the Nth accelerator kernel submission decline the device. */
+extern int parsec_device_inject_disable;
+#endif  /* defined(PARSEC_DEBUG) || defined(PARSEC_DEBUG_NOISIER) */
 
 /**
  * @brief Find the best device to execute the kernel based on the compute

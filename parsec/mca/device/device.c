@@ -66,6 +66,9 @@ static int parsec_device_load_balance_allow_cpu = 0;
  * necessary (enabled by default).
  */
 int parsec_device_skip_empty_events = 1;
+#if defined(PARSEC_DEBUG) || defined(PARSEC_DEBUG_NOISIER)
+int parsec_device_inject_disable = 0;
+#endif  /* defined(PARSEC_DEBUG) || defined(PARSEC_DEBUG_NOISIER) */
 
 /**
  * @brief Estimates how many nanoseconds this_task will run on devid
@@ -356,6 +359,14 @@ int parsec_mca_device_init(void)
     (void)parsec_mca_param_reg_int_name("device", "load_balance_allow_cpu",
                                         "Allow load balancing tasks with GPU incarnations to CPU cores",
                                         false, false, parsec_device_load_balance_allow_cpu, NULL);
+#if defined(PARSEC_DEBUG) || defined(PARSEC_DEBUG_NOISIER)
+    (void)parsec_mca_param_reg_int_name("device", "inject_disable",
+                                        "Debug: make the Nth accelerator kernel submission decline the "
+                                        "device, to exercise the fallback onto another incarnation "
+                                        "(0 disables the injection)",
+                                        false, false, parsec_device_inject_disable,
+                                        &parsec_device_inject_disable);
+#endif  /* defined(PARSEC_DEBUG) || defined(PARSEC_DEBUG_NOISIER) */
     (void)parsec_mca_param_reg_int_name("device", "enable_batching",
                                         "Boolean to allow batched task execution on all devices",
                                         false, !parsec_device_enable_batching,

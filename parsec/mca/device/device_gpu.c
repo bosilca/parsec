@@ -2880,6 +2880,18 @@ parsec_device_kernel_exec( parsec_device_gpu_module_t      *gpu_device,
     parsec_task_t* this_task = gpu_task->ec;
     int rc;
 
+#if defined(PARSEC_DEBUG) || defined(PARSEC_DEBUG_NOISIER)
+    if( 0 != parsec_device_inject_disable ) {
+        static int32_t nb_submitted = 0;
+        if( parsec_atomic_fetch_inc_int32(&nb_submitted) + 1 == parsec_device_inject_disable ) {
+            /* Decline the device exactly once, as an unsupported kernel would, so
+             * the fallback onto another incarnation is exercised on hardware that
+             * otherwise runs every kernel successfully. */
+            return PARSEC_HOOK_RETURN_DISABLE;
+        }
+    }
+#endif  /* defined(PARSEC_DEBUG) || defined(PARSEC_DEBUG_NOISIER) */
+
 #if defined(PARSEC_DEBUG_NOISIER)
     char tmp[MAX_TASK_STRLEN];
     PARSEC_DEBUG_VERBOSE(10, parsec_gpu_output_stream, "GPU[%d:%s]:\tEnqueue on device %s stream %s"     ,
@@ -3481,8 +3493,31 @@ parsec_device_kernel_scheduler( parsec_device_module_t *module,
                                         parsec_device_kernel_exec,
                                         gpu_task, &progress_task );
     if( rc < 0 ) {
-        if( (PARSEC_HOOK_RETURN_DISABLE == rc) || (PARSEC_HOOK_RETURN_ERROR == rc) )
+        if( PARSEC_HOOK_RETURN_ERROR == rc )
             goto disable_gpu;
+        if( PARSEC_HOOK_RETURN_DISABLE == rc ) {
+            /* The body declined this device. That is a statement about this
+             * incarnation, not a reason to abort the execution, so retire the
+             * incarnation for this task and let another one take over.
+             * progress_stream hands back the task that raised the error.
+             */
+            if( NULL != progress_task ) {
+                parsec_task_t *ec = progress_task->ec;
+                ec->chore_mask &= ~(1 << ec->selected_chore);
+                if( 0 != ec->chore_mask ) {
+                    char decl[MAX_TASK_STRLEN];
+                    parsec_warning("GPU[%d:%s]: %s cannot run on this device, falling back to another incarnation",
+                                   gpu_device->super.device_index, gpu_device->super.name,
+                                   parsec_task_snprintf(decl, MAX_TASK_STRLEN, ec));
+                    parsec_device_kernel_cleanout(gpu_device, progress_task);
+                    __parsec_reschedule(es, ec);
+                    gpu_task = progress_task;
+                    progress_task = NULL;
+                    goto remove_gpu_task;
+                }
+            }
+            goto disable_gpu;  /* no incarnation left to fall back on */
+        }
         if( PARSEC_HOOK_RETURN_ASYNC != rc ) {
             /* Reschedule the task. As the chore_id has been modified,
                another incarnation of the task will be executed. */
