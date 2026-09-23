@@ -463,7 +463,8 @@ mpi_funnelled_internal_put_am_callback(parsec_comm_engine_t *ce,
     cb->cb_type.onesided_mimic_am.msg = callback_data;
     cb->storage1 = mpi_funnelled_last_active_req;
     cb->storage2 = src;
-    cb->cb_data  = cb->cb_data;
+    /* The completion callback recovers its state from the message payload. */
+    cb->cb_data  = NULL;
     cb->tag_reg  = NULL;
     cb->type     = MPI_FUNNELLED_TYPE_ONESIDED_MIMIC_AM;
     cb->is_dynamic_recv = true;
