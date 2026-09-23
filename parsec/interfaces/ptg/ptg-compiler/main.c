@@ -19,6 +19,26 @@
 
 #include "parsec.y.h"
 
+#if defined(__has_feature)
+#  if __has_feature(address_sanitizer)
+#    define PARSEC_PTGPP_WITH_ASAN 1
+#  endif
+#endif
+#if defined(__SANITIZE_ADDRESS__)
+#  define PARSEC_PTGPP_WITH_ASAN 1
+#endif
+
+#if defined(PARSEC_PTGPP_WITH_ASAN)
+/* parsec-ptgpp is a single-shot code generator: the JDF AST rooted at
+ * current_jdf lives until the process exits and is deliberately never torn
+ * down. Without this hook LeakSanitizer reports that AST and exits non-zero,
+ * which fails every code generation step of an ASan build. Scoped to this
+ * binary, so leak checking stays on for libparsec and the tests.
+ */
+int __lsan_is_turned_off(void);
+int __lsan_is_turned_off(void) { return 1; }
+#endif
+
 extern int current_lineno;
 extern int yydebug;
 char *yyfilename;
