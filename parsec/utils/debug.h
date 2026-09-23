@@ -162,6 +162,26 @@ extern void (*parsec_weaksym_exit)(int status);
 #define PARSEC_DEBUG_VERBOSE(...) do{} while(0)
 #endif /* defined(PARSEC_DEBUG_NOISIER) */
 
+/** Run CMD only if a message logged at LVL on OUT would be recorded.
+ *
+ * The logging macros take their arguments as macro arguments, so those are
+ * always evaluated, even when the message is dropped for being above the
+ * current verbosity. Use this to produce arguments that are expensive to
+ * build, such as task names, without paying for them when nothing consumes
+ * them.
+ */
+#if defined(PARSEC_DEBUG_HISTORY)
+/* The history buffer records every message whatever the output verbosity. */
+#define PARSEC_DEBUG_VERBOSE_ENABLED(LVL, OUT, CMD) do {             \
+    (void)(LVL); (void)(OUT);                                        \
+    CMD;                                                             \
+} while(0)
+#else
+#define PARSEC_DEBUG_VERBOSE_ENABLED(LVL, OUT, CMD) do {             \
+    if( parsec_output_get_verbosity(OUT) >= (LVL) ) { CMD; }         \
+} while(0)
+#endif /* defined(PARSEC_DEBUG_HISTORY) */
+
 /** $brief To check if any parsec function returned error.
  */
 #define PARSEC_CHECK_ERROR(rc, MSG)                             \
