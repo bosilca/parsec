@@ -675,16 +675,37 @@ void parsec_data_protect_cpu_mirror(parsec_data_t *data)
 
 int parsec_data_release_self_contained_data(parsec_data_t *data)
 {
-    int32_t nb_copies = data->nb_copies;
-    if (data->super.obj_reference_count != nb_copies) return 0;
+    return parsec_data_release_self_contained_data_ext(data, 0);
+}
+
+int parsec_data_release_self_contained_data_ext(parsec_data_t *data, int32_t extra_refs)
+{
     parsec_data_copy_t *copy = NULL;
+    int32_t nb_copies;
+    int rc = 0;
+
+    if( NULL == data ) return 0;
+
+    /* Deciding that the data is self-contained and acting on that decision must
+     * be a single atomic step: two threads that each just dropped a reference
+     * would otherwise both observe the condition below and both free every
+     * copy. The lock covers the decision and the teardown. Releasing the last
+     * copy also destroys the data, and with it the lock we still have to
+     * unlock, so hold a reference of our own for the duration and discount it
+     * along with the caller's.
+     */
+    PARSEC_OBJ_RETAIN(data);
+    parsec_atomic_lock(&data->lock);
+    nb_copies = data->nb_copies;
+    if( (0 == nb_copies) || (data->super.obj_reference_count != nb_copies + extra_refs + 1) )
+        goto unlock;
     /* this data is only referenced by it's own copies. If these copies are also only referenced by
      * data, then we can release them all.
      */
     for( uint32_t i = 0; i < parsec_nb_devices; i++) {
         if (NULL == (copy = data->device_copies[i])) continue;
         if( copy->super.super.obj_reference_count > 1 || copy->readers > 0 )
-            return 0;
+            goto unlock;
     }
     PARSEC_DEBUG_VERBOSE(90, parsec_debug_output, "Release copy %p from self-contained data %p", copy, data);
     for( uint32_t i = 0; i < parsec_nb_devices; i++) {
@@ -724,8 +745,14 @@ int parsec_data_release_self_contained_data(parsec_data_t *data)
             PARSEC_DATA_COPY_RELEASE(copy);
             assert(NULL == copy);
         }
-        if (0 == --nb_copies) return 1; /* we deallocate the data_t during the copy_release/detach of the last copy, so we need to stop now */
+        if (0 == --nb_copies) { /* every copy is gone; nothing left to walk */
+            rc = 1;
+            goto unlock;
+        }
     }
     parsec_warning("Release copy %p from self-contained data %p had %d more copies than present in device_copies", copy, data, nb_copies);
-    return 0;
+  unlock:
+    parsec_atomic_unlock(&data->lock);
+    PARSEC_OBJ_RELEASE(data);
+    return rc;
 }

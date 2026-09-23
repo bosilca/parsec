@@ -92,6 +92,10 @@ PARSEC_DECLSPEC PARSEC_OBJ_CLASS_DECLARATION(parsec_data_copy_t);
     ((DATA)->device_copies[(DEVID)])
 
 int parsec_data_release_self_contained_data(parsec_data_t* data);
+/** Same, for callers that hold EXTRA_REFS references on DATA beyond the ones
+ *  held by its own copies. Those references are discounted when deciding
+ *  whether the data is only reachable through its own copies. */
+int parsec_data_release_self_contained_data_ext(parsec_data_t* data, int32_t extra_refs);
 void parsec_data_protect_cpu_mirror(parsec_data_t* data);
 /**
  * Decrease the refcount of this copy of the data. If the refcount reach
@@ -139,15 +143,24 @@ static inline void __parsec_data_copy_release(parsec_data_copy_t** copy)
         }
         return;
     }
+    /* Hold the original across the release of our copy. Dropping our reference
+     * hands the copy to whoever still owns one, and destroying the last copy
+     * destroys the original too, so neither may be dereferenced afterwards.
+     * This reference is discounted by the _ext variant below.
+     */
+    if( NULL != original ) PARSEC_OBJ_RETAIN(original);
     PARSEC_OBJ_RELEASE(*copy);
     if( release_protected_cpu_mirror ) {
-        if( parsec_data_release_self_contained_data(original) && releasing_protected_cpu_mirror ) {
+        if( parsec_data_release_self_contained_data_ext(original, 1) && releasing_protected_cpu_mirror ) {
             *copy = NULL;
         }
+        PARSEC_OBJ_RELEASE(original);
         return;
     }
-    if ((NULL != *copy) && (NULL != (*copy)->original) && (1 == (*copy)->super.super.obj_reference_count))
-        parsec_data_release_self_contained_data((*copy)->original);
+    if( NULL != original ) {
+        parsec_data_release_self_contained_data_ext(original, 1);
+        PARSEC_OBJ_RELEASE(original);
+    }
 }
 #define PARSEC_DATA_COPY_RELEASE(COPY) \
     __parsec_data_copy_release(&(COPY))
