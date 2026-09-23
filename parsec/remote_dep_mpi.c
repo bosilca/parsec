@@ -72,16 +72,25 @@ remote_dep_cmd_to_string(remote_dep_wire_activate_t* origin,
                          char* str,
                          size_t len)
 {
-    parsec_task_t task;
+    parsec_taskpool_t *tp = parsec_taskpool_lookup( origin->taskpool_id );
+    if( NULL == tp ) return snprintf(str, len, "UNKNOWN_of_TASKPOOL_%d", origin->taskpool_id), str;
+    const parsec_task_class_t *tc = tp->task_classes_array[origin->task_class_id];
+    if( NULL == tc ) return snprintf(str, len, "UNKNOWN_of_TASKCLASS_%d", origin->task_class_id), str;
 
-    task.taskpool = parsec_taskpool_lookup( origin->taskpool_id );
-    if( NULL == task.taskpool ) return snprintf(str, len, "UNKNOWN_of_TASKPOOL_%d", origin->taskpool_id), str;
-    task.task_class   = task.taskpool->task_classes_array[origin->task_class_id];
-    if( NULL == task.task_class ) return snprintf(str, len, "UNKNOWN_of_TASKCLASS_%d", origin->task_class_id), str;
-    memcpy(&task.locals, origin->locals, sizeof(parsec_assignment_t) * task.task_class->nb_locals);
-    task.priority     = 0xFFFFFFFF;
-    for(int i = 0; i < task.task_class->nb_flows; task.data[i++].data_in = NULL);
-    return parsec_task_snprintf(str, len, &task);
+    /* An activation message carries the task class and its locals, never a task
+     * object. Do not build one to hand to parsec_task_snprintf: that dispatches
+     * to the interface task_snprintf, and those reach past the end of
+     * parsec_task_t into the trailing fields of their own derived task type,
+     * which a synthesized task does not have. */
+    size_t index = snprintf(str, len, "%s(", tc->name);
+    if( index >= len ) return str;
+    for( unsigned int ip = 0; ip < tc->nb_parameters; ip++ ) {
+        index += snprintf(str + index, len - index, "%s%d", (ip == 0) ? "" : ", ",
+                          origin->locals[tc->params[ip]->context_index].value);
+        if( index >= len ) return str;
+    }
+    snprintf(str + index, len - index, ")");
+    return str;
 }
 
 /* TODO: fix heterogeneous restriction by using proper mpi datatypes */
@@ -1356,7 +1365,9 @@ static int remote_dep_mpi_pack_dep(int peer,
     uint32_t peer_bank, peer_bit, peer_mask, expected = 0, *data_sizes;
 #if defined(PARSEC_DEBUG) || defined(PARSEC_DEBUG_NOISIER)
     char tmp[MAX_TASK_STRLEN];
-    remote_dep_cmd_to_string(&deps->msg, tmp, 128);
+    tmp[0] = '\0';
+    PARSEC_DEBUG_VERBOSE_ENABLED(10, parsec_comm_output_stream,
+                                 remote_dep_cmd_to_string(&deps->msg, tmp, MAX_TASK_STRLEN));
 #endif
 
     remote_dep_rank_to_bit(peer, &peer_bank, &peer_bit, deps->root);
@@ -1870,7 +1881,9 @@ static void remote_dep_mpi_recv_activate(parsec_execution_stream_t* es,
     uint32_t *data_sizes = (uint32_t*)(packed_buffer + *position);
 #if defined(PARSEC_DEBUG) || defined(PARSEC_DEBUG_NOISIER)
     char tmp[MAX_TASK_STRLEN];
-    remote_dep_cmd_to_string(&deps->msg, tmp, MAX_TASK_STRLEN);
+    tmp[0] = '\0';
+    PARSEC_DEBUG_VERBOSE_ENABLED(6, parsec_comm_output_stream,
+                                 remote_dep_cmd_to_string(&deps->msg, tmp, MAX_TASK_STRLEN));
 #endif
 
 #if defined(PARSEC_DEBUG) || defined(PARSEC_DEBUG_NOISIER)
@@ -2127,7 +2140,9 @@ static void remote_dep_mpi_get_start(parsec_execution_stream_t* es,
 #if defined(PARSEC_DEBUG_NOISIER)
     char tmp[MAX_TASK_STRLEN], type_name[MPI_MAX_OBJECT_NAME];
     int len;
-    remote_dep_cmd_to_string(task, tmp, MAX_TASK_STRLEN);
+    tmp[0] = '\0';
+    PARSEC_DEBUG_VERBOSE_ENABLED(10, parsec_debug_output,
+                                 remote_dep_cmd_to_string(task, tmp, MAX_TASK_STRLEN));
 #endif
     for(k = count = 0; deps->incoming_mask >> k; k++)
         if( ((1U<<k) & deps->incoming_mask) ) count++;
