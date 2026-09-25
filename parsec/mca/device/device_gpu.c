@@ -3738,6 +3738,59 @@ parsec_device_kernel_cleanout_ring(parsec_device_gpu_module_t *gpu_device,
     } while( task != ring );
 }
 
+/* Report whether every member of a declined ring still has an incarnation to
+ * fall back on. Retiring a chore mutates the task, so the ring has to be probed
+ * before any member is modified: retiring part of a batch and then discovering
+ * that another member is stuck would leave the batch half-retired with no way
+ * back.
+ */
+static int
+parsec_device_kernel_ring_can_retry_elsewhere(parsec_gpu_task_t *ring)
+{
+    parsec_gpu_task_t *task = ring;
+
+    do {
+        parsec_task_t *ec = task->ec;
+
+        if( (PARSEC_GPU_TASK_TYPE_KERNEL != task->task_type) || (NULL == ec) )
+            return 0;
+        if( 0 == (ec->chore_mask & ~(1 << ec->selected_chore)) )
+            return 0;
+        task = (parsec_gpu_task_t *)task->list_item.list_next;
+    } while( task != ring );
+    return 1;
+}
+
+/* Retire the declined incarnation for every member of the ring and hand each
+ * execution context back to the scheduler. Only call this once
+ * parsec_device_kernel_ring_can_retry_elsewhere() has agreed that no member
+ * would be left without an incarnation.
+ */
+static void
+parsec_device_kernel_retire_incarnation_ring(parsec_device_gpu_module_t *gpu_device,
+                                             parsec_execution_stream_t *es,
+                                             parsec_gpu_task_t *ring)
+{
+    parsec_gpu_task_t *task = ring;
+
+    do {
+        parsec_task_t *ec = task->ec;
+        char decl[MAX_TASK_STRLEN];
+
+        ec->chore_mask &= ~(1 << ec->selected_chore);
+        assert(0 != ec->chore_mask);
+        parsec_warning("GPU[%d:%s]: %s cannot run on this device, falling back to another incarnation",
+                       gpu_device->super.device_index, gpu_device->super.name,
+                       parsec_task_snprintf(decl, MAX_TASK_STRLEN, ec));
+        parsec_device_kernel_cleanout(gpu_device, task);
+        /* Advance before rescheduling: ec re-enters the scheduler immediately
+         * and must no longer be reachable through this walk.
+         */
+        task = (parsec_gpu_task_t *)task->list_item.list_next;
+        __parsec_reschedule(es, ec);
+    } while( task != ring );
+}
+
 /**
  * This version is based on 4 streams: one for transfers from the memory to
  * the GPU, 2 for kernel executions and one for transfers from the GPU into
@@ -3884,27 +3937,19 @@ parsec_device_kernel_scheduler( parsec_device_module_t *module,
         if( PARSEC_HOOK_RETURN_DISABLE == rc ) {
             /* The body declined this device. That is a statement about this
              * incarnation, not a reason to abort the execution, so retire the
-             * incarnation for this task and let another one take over.
-             * progress_stream hands back the task that raised the error.
+             * incarnation and let another one take over. progress_stream hands
+             * back the task, or the complete batch, that raised the error.
              *
-             * Only a singleton can be retired this way. A declined batch has
-             * followers that rescheduling the head alone would strand, so it
-             * falls through to the batch cleanout path below.
+             * A declined batch is retired as a unit, so that no follower is
+             * stranded by rescheduling the head alone. The ring is probed for a
+             * surviving incarnation before any member is modified.
              */
-            if( (NULL != progress_task) && parsec_gpu_task_is_singleton(progress_task) ) {
-                parsec_task_t *ec = progress_task->ec;
-                ec->chore_mask &= ~(1 << ec->selected_chore);
-                if( 0 != ec->chore_mask ) {
-                    char decl[MAX_TASK_STRLEN];
-                    parsec_warning("GPU[%d:%s]: %s cannot run on this device, falling back to another incarnation",
-                                   gpu_device->super.device_index, gpu_device->super.name,
-                                   parsec_task_snprintf(decl, MAX_TASK_STRLEN, ec));
-                    parsec_device_kernel_cleanout(gpu_device, progress_task);
-                    __parsec_reschedule(es, ec);
-                    gpu_task = progress_task;
-                    progress_task = NULL;
-                    goto remove_gpu_task;
-                }
+            if( (NULL != progress_task) &&
+                parsec_device_kernel_ring_can_retry_elsewhere(progress_task) ) {
+                parsec_device_kernel_retire_incarnation_ring(gpu_device, es, progress_task);
+                gpu_task = progress_task;
+                progress_task = NULL;
+                goto remove_gpu_task;
             }
             failure_status = rc;
             failed_batch = progress_task;
