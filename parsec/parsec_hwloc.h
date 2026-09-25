@@ -57,6 +57,12 @@ BEGIN_C_DECLS
 #define HWLOC_OR(d,s1,s2)     ((void)(0))
 #define HWLOC_ASPRINTF(s,b)   ((void)(*(s) = NULL))
 #define HWLOC_SET_RANGE(b,start,count)  ((void)(0))
+/* parsec_hwloc_get_binding() is declared and defined unconditionally, so the
+ * flags callers pass it have to exist without hwloc too. Its stub ignores
+ * them and reports no binding.
+ */
+#define HWLOC_CPUBIND_PROCESS 0
+#define HWLOC_CPUBIND_THREAD  1
 #endif  /* defined(PARSEC_HAVE_HWLOC) */
 
 /**
