@@ -3809,6 +3809,7 @@ parsec_device_kernel_scheduler( parsec_device_module_t *module,
     parsec_gpu_task_t *progress_task = NULL;
     parsec_gpu_task_t *gpu_task = (parsec_gpu_task_t*)_gpu_task;
     parsec_gpu_task_t *failed_batch = NULL;
+    int failed_batch_staged = 1;
     parsec_hook_return_t failure_status = PARSEC_HOOK_RETURN_DISABLE;
 #if defined(PARSEC_DEBUG_NOISIER)
     char tmp[MAX_TASK_STRLEN];
@@ -3875,8 +3876,18 @@ parsec_device_kernel_scheduler( parsec_device_module_t *module,
 #endif  /* defined(PARSEC_PROF_TRACE) */
 
     rc = gpu_device->set_device(gpu_device);
-    if(PARSEC_SUCCESS != rc)
-        return PARSEC_HOOK_RETURN_DISABLE;
+    if(PARSEC_SUCCESS != rc) {
+        /* This thread is already the manager and has already opened its own-GPU
+         * interval, so it cannot just return: take the common exit so the
+         * wrapper, the outstanding count and the profiling interval are all
+         * settled. Nothing has been staged for this task yet, which is why the
+         * cleanout is suppressed below.
+         */
+        failed_batch = gpu_task;
+        failed_batch_staged = 0;
+        gpu_task = NULL;
+        goto disable_gpu;
+    }
 
  check_in_deps:
     if( NULL != gpu_task ) {
@@ -4092,14 +4103,38 @@ parsec_device_kernel_scheduler( parsec_device_module_t *module,
      * that observed the failure before propagating its terminal status.
      */
     if( NULL != failed_batch ) {
-        parsec_device_kernel_cleanout_ring(gpu_device, failed_batch);
-        (void)parsec_gpu_task_ring_release(failed_batch);
+        /* Only a batch that reached the device pipeline owns device copies.
+         * parsec_device_kernel_cleanout() reads data[i].data_out expecting the
+         * device copy installed by stage-in; on a task that never got that far
+         * it is still the host copy, and detaching that from this device index
+         * would corrupt the original.
+         */
+        if( failed_batch_staged ) {
+            parsec_device_kernel_cleanout_ring(gpu_device, failed_batch);
+        }
+        released_tasks = parsec_gpu_task_ring_release(failed_batch);
+        /* The wrappers are gone, so they must also leave the manager's
+         * outstanding count. Skipping this pins the count above zero forever:
+         * every later caller would then observe a live manager, hand its task
+         * to gpu_device->pending and return ASYNC, and that task would never be
+         * picked up again because no thread can win the election.
+         */
+        rc = parsec_atomic_fetch_sub_int32(&(gpu_device->mutex), released_tasks);
+        assert(rc >= released_tasks); (void)rc;
     }
     /* TODO: Recover the tasks in every pending FIFO, recorded event slot, and
      * gpu_device->pending before making DISABLE recoverable. The upper scheduler
      * currently treats this return as fatal, so only the failed batch is
      * quiesced and cleaned here.
      */
+#if defined(PARSEC_PROF_TRACE)
+    /* This thread is the manager and is leaving for good, so the interval it
+     * opened on election has to be closed here as well as on the normal exit.
+     */
+    if( gpu_device->trackable_events & PARSEC_PROFILE_GPU_TRACK_OWN )
+        PARSEC_PROFILING_TRACE( es->es_profile, parsec_gpu_own_GPU_key_end,
+                                (unsigned long)es, PROFILE_OBJECT_ID_NULL, NULL );
+#endif  /* defined(PARSEC_PROF_TRACE) */
     parsec_warning("GPU[%d:%s]: Critical issue related to the GPU discovered. Giving up",
                    gpu_device->super.device_index, gpu_device->super.name);
     return failure_status;
