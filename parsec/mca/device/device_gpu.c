@@ -173,7 +173,6 @@ static void parsec_device_release_gpu_task(parsec_gpu_task_t *gpu_task)
 
 static void parsec_device_task_t_constructor(parsec_gpu_task_t *gpu_task)
 {
-    gpu_task->priority = 0;
     gpu_task->task_type = PARSEC_GPU_TASK_TYPE_INVALID; /* need to be set later */
     gpu_task->pushout = 0;
     gpu_task->last_status = 0;
