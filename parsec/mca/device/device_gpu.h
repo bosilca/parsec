@@ -79,6 +79,29 @@ typedef int (*parsec_gpu_task_batch_cb_t)(parsec_gpu_task_t *candidate,
                                           parsec_gpu_task_t *batch_head,
                                           void *callback_data);
 
+/* Actions returned by a GPU batch split callback. Distinct from the collector
+ * actions so the two directions cannot be confused at a call site.
+ */
+typedef enum parsec_gpu_task_split_action_e {
+    PARSEC_GPU_TASK_SPLIT_KEEP = 0,
+    PARSEC_GPU_TASK_SPLIT_RETURN = 1,
+    PARSEC_GPU_TASK_SPLIT_STOP = 2
+} parsec_gpu_task_split_action_t;
+
+/* Callback used by parsec_gpu_task_split_batch() to decide whether a member
+ * stays in the batch. It observes the same restrictions as the collector
+ * callback: short, nonblocking, and no reentrant pending-task operations on
+ * this stream.
+ *
+ * Return PARSEC_GPU_TASK_SPLIT_KEEP to leave the member attached to
+ * batch_head, PARSEC_GPU_TASK_SPLIT_RETURN to hand it back to the stream, or
+ * PARSEC_GPU_TASK_SPLIT_STOP to end the walk. STOP keeps the current and all
+ * unvisited members attached.
+ */
+typedef int (*parsec_gpu_task_split_cb_t)(parsec_gpu_task_t *member,
+                                          parsec_gpu_task_t *batch_head,
+                                          void *callback_data);
+
 /* Function type to transfer data to the GPU device.
  * Transfer transfer the <count> contiguous bytes from
  * task->data[i].data_in to task->data[i].data_out.
@@ -418,20 +441,45 @@ int parsec_gpu_complete_w2r_task(parsec_device_gpu_module_t *gpu_device, parsec_
  * execution stream and clean the complete batch before the terminal status is
  * propagated. Device-wide recovery after DISABLE is not currently supported.
  *
- * The runtime does not disband an AGAIN ring. A hook that wants to split it
- * must detach the followers itself, restore valid singleton/ring linkage, and
- * explicitly transfer every detached wrapper to a new owner, such as the
- * stream pending FIFO using its configured priority policy. Returning AGAIN
- * retains only the ring or singleton that remains attached to batch_head.
- * Each wrapper also retains its open execution-profiling state when detached;
- * returning it through the normal GPU path closes that interval at final
- * completion. Releasing an open detached wrapper would leave an unmatched
- * profiling start.
+ * The runtime does not disband an AGAIN ring on its own. Use
+ * parsec_gpu_task_split_batch() to give members back to the stream; returning
+ * AGAIN retains only what remains attached to batch_head.
  */
 int parsec_gpu_task_collect_batch(parsec_gpu_exec_stream_t *gpu_stream,
                                   parsec_gpu_task_t *batch_head,
                                   parsec_gpu_task_batch_cb_t callback,
                                   void *callback_data);
+
+/**
+ * Walk the members attached to batch_head and give back the ones the callback
+ * declines to keep. This is the inverse of parsec_gpu_task_collect_batch():
+ * returned members are removed from the ring and merged into
+ * gpu_stream->fifo_pending under the same ordering policy the collector took
+ * them from, so a hook never has to manipulate the ring or the FIFO directly.
+ *
+ * batch_head itself is never visited and always stays attached. It is the task
+ * the submit hook was called with and the one the runtime applies the hook
+ * result to, so a split always leaves at least a valid singleton to return
+ * AGAIN, NEXT, or DONE with.
+ *
+ * Call this from the submit hook after the collector returns, never from the
+ * collector callback while the pending FIFO is being traversed.
+ *
+ * Returned members stay in the device's care, so the manager's outstanding
+ * task count is unchanged. Each one also keeps its open execution-profiling
+ * state, and because it goes back on the normal GPU path that interval is
+ * closed exactly once at final completion.
+ *
+ * Returns the number of members handed back to the stream, 0 if batch_head is
+ * a singleton. Any callback result other than PARSEC_GPU_TASK_SPLIT_KEEP,
+ * PARSEC_GPU_TASK_SPLIT_RETURN, or PARSEC_GPU_TASK_SPLIT_STOP is normalized to
+ * PARSEC_HOOK_RETURN_ERROR; members already declined are still returned to the
+ * stream before the error propagates, so none are lost.
+ */
+int parsec_gpu_task_split_batch(parsec_gpu_exec_stream_t *gpu_stream,
+                                parsec_gpu_task_t *batch_head,
+                                parsec_gpu_task_split_cb_t callback,
+                                void *callback_data);
 
 void parsec_device_enable_debug(void);
 
