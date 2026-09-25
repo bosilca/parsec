@@ -188,16 +188,14 @@ resource constraints before calling `parsec_gpu_task_collect_batch()`. Returning
 `AGAIN` before collection is a normal singleton retry; returning it afterward
 means that the collected batch has started and must continue as one unit.
 
-The runtime never disbands a ring on the `AGAIN` path. A submit hook that no
-longer wants to continue the batch must split the ring itself before returning:
-detach the followers, restore the head as a valid singleton, and explicitly
-give every detached wrapper a new owner. For example, followers may be returned
-to `gpu_stream->fifo_pending` using that stream's priority-preserving insertion
-policy, or the hook may explicitly retain responsibility for completing the
-execution contexts and releasing their wrappers. Merely breaking the links is
-insufficient because it leaves the followers unreachable. If the hook returns
-`AGAIN` after disbanding, only the ring or singleton it leaves attached to
-`gpu_task` is retained by the event.
+The runtime never disbands a ring on its own. A submit hook that no longer
+wants to continue with every member calls `parsec_gpu_task_split_batch()`
+before returning, which hands the declined members back to
+`gpu_stream->fifo_pending` under the same ordering policy the collector took
+them from. If the hook returns `AGAIN` after a split, only what remains
+attached to `gpu_task` is retained by the event. A hook may instead keep
+members itself, but then it owns completing those execution contexts and
+releasing their wrappers; merely breaking the links leaves them unreachable.
 
 Ownership examples
 ------------------
@@ -259,47 +257,50 @@ return PARSEC_HOOK_RETURN_ASYNC;
 The asynchronous owner must retain the execution contexts, not pointers to
 `parsec_gpu_task_t`, because those wrappers become invalid after the return.
 
-### Manually disbanding an `AGAIN` ring
+### Splitting an `AGAIN` ring
 
-`parsec_list_item_ring_chop()` reconnects the followers but deliberately leaves
-the removed head's links invalid. Restore the head as a singleton, refresh the
-followers' priority snapshots, and return the follower ring to the pending
-stream with its configured ordering policy. Call this helper from the submit
-hook after the collector returns, never from the collector callback while the
-pending FIFO is being traversed:
+`parsec_gpu_task_split_batch()` is the inverse of the collector. It walks the
+members attached to `gpu_task` and asks the callback which ones to keep;
+`PARSEC_GPU_TASK_SPLIT_RETURN` sends a member back to
+`gpu_stream->fifo_pending`, `PARSEC_GPU_TASK_SPLIT_KEEP` leaves it in the ring,
+and `PARSEC_GPU_TASK_SPLIT_STOP` ends the walk with the current and all
+unvisited members still attached. Call it from the submit hook after the
+collector returns, never from the collector callback while the pending FIFO is
+being traversed.
 
 ```c
-static void
-requeue_batch_followers(parsec_gpu_exec_stream_t *gpu_stream,
-                        parsec_gpu_task_t *gpu_task)
+static int
+drop_when_out_of_workspace(parsec_gpu_task_t *member,
+                           parsec_gpu_task_t *batch_head,
+                           void *cb_data)
 {
-    parsec_list_item_t *followers;
+    size_t *budget = (size_t *)cb_data;
 
-    followers = parsec_list_item_ring_chop(&gpu_task->list_item);
-    PARSEC_LIST_ITEM_SINGLETON(&gpu_task->list_item);
-    if( NULL == followers ) {
-        return;
+    (void)batch_head;
+    if( *budget < member_footprint(member) ) {
+        return PARSEC_GPU_TASK_SPLIT_RETURN;
     }
+    *budget -= member_footprint(member);
+    return PARSEC_GPU_TASK_SPLIT_KEEP;
+}
 
-#if PARSEC_GPU_USE_PRIORITIES
-    parsec_gpu_task_t *first = (parsec_gpu_task_t *)followers;
-    parsec_gpu_task_t *current = first;
-
-    do {
-        current->priority = current->ec->priority;
-        current = (parsec_gpu_task_t *)current->list_item.list_next;
-    } while( current != first );
-    parsec_list_chain_sorted(gpu_stream->fifo_pending, followers,
-                             offsetof(parsec_gpu_task_t, priority));
-#else
-    parsec_list_chain_back(gpu_stream->fifo_pending, followers);
-#endif
+/* ... in the submit hook, after parsec_gpu_task_collect_batch(): */
+nb_returned = parsec_gpu_task_split_batch(gpu_stream, gpu_task,
+                                          drop_when_out_of_workspace, &budget);
+if( nb_returned < 0 ) {
+    return nb_returned;
 }
 ```
 
-After this helper, `gpu_task` is the only member retained by an `AGAIN` return.
-The hook must submit progress for that head before returning `AGAIN`; the
-followers have already received a new owner through `fifo_pending`.
+`gpu_task` is never visited and always stays attached, so the hook always has a
+valid head to return `AGAIN`, `NEXT`, or `DONE` with. The hook must submit
+progress for whatever remains in the ring before returning `AGAIN`; the
+returned members already have a new owner through `fifo_pending`.
+
+Returned members are still in the device's care, so the manager's outstanding
+task count does not change, and each one keeps its open execution-profiling
+state. Because they go back on the normal GPU path, those intervals are closed
+exactly once at final completion.
 
 Profiling semantics
 -------------------

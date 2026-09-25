@@ -2572,6 +2572,68 @@ parsec_gpu_task_collect_batch(parsec_gpu_exec_stream_t *gpu_stream,
     return nb_tasks;
 }
 
+int
+parsec_gpu_task_split_batch(parsec_gpu_exec_stream_t *gpu_stream,
+                            parsec_gpu_task_t *batch_head,
+                            parsec_gpu_task_split_cb_t callback,
+                            void *callback_data)
+{
+    parsec_gpu_task_t *member, *next;
+    parsec_list_item_t *returned = NULL;
+    int nb_tasks = 0;
+    int rc = PARSEC_GPU_TASK_SPLIT_KEEP;
+
+    assert(NULL != gpu_stream);
+    assert(NULL != batch_head);
+    assert(NULL != callback);
+
+    if( parsec_gpu_task_is_singleton(batch_head) ) {
+        return nb_tasks;
+    }
+
+    member = (parsec_gpu_task_t *)batch_head->list_item.list_next;
+    while( member != batch_head ) {
+        /* Detaching rewrites the member's own links, so read the successor
+         * while the ring is still intact.
+         */
+        next = (parsec_gpu_task_t *)member->list_item.list_next;
+
+        rc = callback(member, batch_head, callback_data);
+        if( PARSEC_GPU_TASK_SPLIT_STOP == rc ) {
+            break;
+        }
+        if( PARSEC_GPU_TASK_SPLIT_RETURN == rc ) {
+            (void)parsec_list_item_ring_chop(&member->list_item);
+            PARSEC_LIST_ITEM_SINGLETON(&member->list_item);
+            if( NULL == returned ) {
+                returned = &member->list_item;
+            } else {
+                (void)parsec_list_item_ring_push(returned, &member->list_item);
+            }
+            nb_tasks++;
+        } else if( PARSEC_GPU_TASK_SPLIT_KEEP != rc ) {
+            break;
+        }
+        member = next;
+    }
+
+    /* Merge once, after the walk: a priority-sorted FIFO costs a scan per
+     * insertion, and the members are not reachable from anywhere until this
+     * runs. That also covers the malformed-result exit below, so a buggy
+     * callback cannot strand the members it already declined.
+     */
+    if( NULL != returned ) {
+        parsec_gpu_stream_chain_pending(gpu_stream, returned);
+    }
+
+    if( (PARSEC_GPU_TASK_SPLIT_KEEP != rc) &&
+        (PARSEC_GPU_TASK_SPLIT_RETURN != rc) &&
+        (PARSEC_GPU_TASK_SPLIT_STOP != rc) ) {
+        return PARSEC_HOOK_RETURN_ERROR;
+    }
+    return nb_tasks;
+}
+
 static parsec_flow_t parsec_device_d2d_complete_flow = {
     .name = "D2D FLOW",
     .flow_flags = PARSEC_FLOW_ACCESS_READ,
