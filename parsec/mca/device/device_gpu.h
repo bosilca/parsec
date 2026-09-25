@@ -64,9 +64,11 @@ typedef enum parsec_gpu_task_batch_action_e {
 
 /* Callback used by parsec_gpu_task_collect_batch() to decide whether a
  * pending task can be appended to the current batched task ring. It executes
- * while gpu_stream->fifo_pending is locked and must therefore be short and
- * nonblocking. It must not modify or acquire the same FIFO, call the collector
- * recursively, or otherwise reenter pending-task operations on this stream.
+ * inside the collector's traversal of gpu_stream->fifo_pending, which is
+ * private to the GPU manager thread and therefore walked without locking. The
+ * callback must be short and nonblocking, and must not modify the same FIFO,
+ * call the collector recursively, or otherwise reenter pending-task operations
+ * on this stream.
  *
  * Return PARSEC_GPU_TASK_BATCH_ACCEPT to append the candidate,
  * PARSEC_GPU_TASK_BATCH_REJECT to leave it pending and continue, or
@@ -383,10 +385,11 @@ int parsec_gpu_complete_w2r_task(parsec_device_gpu_module_t *gpu_device, parsec_
  * policy has accepted enough work. STOP ends collection successfully and
  * leaves the current and all unvisited candidates pending.
  *
- * The callback executes while gpu_stream->fifo_pending is locked. It must be
- * short and nonblocking, and must not modify or acquire the same FIFO, call
- * this collector recursively, or otherwise reenter pending-task operations on
- * this stream.
+ * The callback executes inside the collector's traversal of
+ * gpu_stream->fifo_pending, which is private to the GPU manager thread and
+ * therefore walked without locking. It must be short and nonblocking, and must
+ * not modify the same FIFO, call this collector recursively, or otherwise
+ * reenter pending-task operations on this stream.
  * If batching is disabled, unsupported by the head task's selected device, or
  * not enabled on batch_head's selected incarnation, no iteration is performed
  * and batch_head remains a singleton. Pending tasks whose selected incarnation

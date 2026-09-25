@@ -90,9 +90,10 @@ The callback return value controls the iterator:
 
 The collector does not impose a scan or batch-size bound. The submit hook owns
 that policy and its callback should return `PARSEC_GPU_TASK_BATCH_STOP` once it
-has accepted enough work. The callback executes while
-`gpu_stream->fifo_pending` is locked, so it must remain short and nonblocking.
-It must not modify or acquire that FIFO, call the collector recursively, or
+has accepted enough work. The callback executes inside the collector's
+traversal of `gpu_stream->fifo_pending`, which is private to the GPU manager
+thread and therefore walked without locking, so it must remain short and
+nonblocking. It must not modify that FIFO, call the collector recursively, or
 otherwise reenter pending-task operations on the same stream.
 
 Example:
@@ -265,7 +266,7 @@ the removed head's links invalid. Restore the head as a singleton, refresh the
 followers' priority snapshots, and return the follower ring to the pending
 stream with its configured ordering policy. Call this helper from the submit
 hook after the collector returns, never from the collector callback while the
-pending FIFO is locked:
+pending FIFO is being traversed:
 
 ```c
 static void
@@ -350,8 +351,9 @@ specialized submit hook can still use the original direct style and manipulate
 the pending FIFO and task ring itself.
 
 This style is more fragile and should be reserved for code that is already
-device-runtime aware. The hook must preserve FIFO correctness, keep rejected
-tasks pending, and unlock the FIFO on every exit path.
+device-runtime aware. The hook must preserve FIFO correctness and keep rejected
+tasks pending. The FIFO is private to the GPU manager thread, so the walk uses
+the `nolock` list operations.
 
 ```c
 parsec_list_t *pending = gpu_stream->fifo_pending;
@@ -361,7 +363,6 @@ int batch_count = 1;
 
 PARSEC_LIST_ITEM_SINGLETON(&gpu_task->list_item);
 
-parsec_list_lock(pending);
 for(item = (parsec_list_item_t *)pending->ghost_element.list_next;
     item != &pending->ghost_element;
     item = next) {
@@ -376,7 +377,6 @@ for(item = (parsec_list_item_t *)pending->ghost_element.list_next;
         batch_count++;
     }
 }
-parsec_list_unlock(pending);
 ```
 
 The direct style avoids the generic iterator and callback dispatch, and it can
