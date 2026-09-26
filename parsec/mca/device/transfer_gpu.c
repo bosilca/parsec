@@ -355,8 +355,10 @@ int parsec_gpu_complete_w2r_task(parsec_device_gpu_module_t *gpu_device,
         }
         parsec_atomic_unlock(&gpu_copy->original->lock);
     }
+    int nb_transferred = task->locals[0].value;
+
     parsec_thread_mempool_free(es->context_mempool, task);
     PARSEC_OBJ_RELEASE(gpu_task); /* no need to call release_device_task, just release the task */
     gpu_device->data_avail_epoch++;
-    return 0;
+    return nb_transferred;
 }
